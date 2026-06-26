@@ -1,0 +1,210 @@
+{
+  "discovery_timestamp": "2026-06-25T20:03:16.984638",
+  "erp_platform": "Odoo",
+  "erp_url": "https://erp.gu.edu.eg",
+  "db_name": "GU-Live",
+  "user_info": {
+    "uid": 12226,
+    "name": "عبد الرحمن ايهاب صلاح حسين",
+    "username": "aes400196@gu.edu.eg",
+    "partner_id": 92436,
+    "company_id": 1,
+    "server_version": "15.0+e-20221127",
+    "is_admin": false,
+    "is_system": false
+  },
+  "routes_from_html": [
+    {
+      "id": 1,
+      "name": "العبور - وصول 9:00- عودة 4:45"
+    },
+    {
+      "id": 2,
+      "name": "جامعة الجلالة"
+    },
+    {
+      "id": 3,
+      "name": "اكتوبر وصول 9:00 - عودة 4:45"
+    },
+    {
+      "id": 4,
+      "name": "حدائق الاهرام - وصول 9:00 - عودة 4:45"
+    },
+    {
+      "id": 6,
+      "name": "جامعة القاهرة - وصول 9:00 - عودة 4:45"
+    },
+    {
+      "id": 7,
+      "name": "المعادى - وصول 9:00 - عودة 4:45"
+    },
+    {
+      "id": 11,
+      "name": "الحلمية و جسر السويس - وصول 9:00 عودة 4:45"
+    },
+    {
+      "id": 12,
+      "name": "م نصر - وصول 9:00 - عودة 4:45"
+    },
+    {
+      "id": 14,
+      "name": "المقطم - وصول 9:00 - عودة 4:45"
+    },
+    {
+      "id": 15,
+      "name": "حلوان و مايو - وصول 9:00 - عودة 4:45"
+    },
+    {
+      "id": 16,
+      "name": "العاشر من رمضان - وصول 9:00 - عودة 4:45"
+    },
+    {
+      "id": 17,
+      "name": "الرحاب - وصول 9:00 - عودة 4:45"
+    },
+    {
+      "id": 19,
+      "name": "مصر الجديدة و كوبرى القبة - وصول 9:00 - عودة 4:45"
+    },
+    {
+      "id": 24,
+      "name": "الدائرى - وصول 9:00 - عودة 4:45"
+    },
+    {
+      "id": 25,
+      "name": "مدينتى - وصول 9:00 - عودة 4:45"
+    },
+    {
+      "id": 26,
+      "name": "شبرا - رمسيس وصول 9:00 - عودة 4:45"
+    },
+    {
+      "id": 27,
+      "name": "التجمع الخامس  - وصول 9:00 - عودة 4:45"
+    },
+    {
+      "id": 28,
+      "name": "زهراء م نصر و التجمع الاول - وصول 9:00 - عودة 4:45"
+    },
+    {
+      "id": 29,
+      "name": "بورتوفيق- قصر الشوق - وصول 9:00 -  عودة 4:45"
+    },
+    {
+      "id": 30,
+      "name": "السلام - المستقبل - وصول 9:00 - عودة 4:45"
+    },
+    {
+      "id": 33,
+      "name": "السويس \" مسجد نبى الله داوود \" - وصول 9:00 - عودة 4:45"
+    },
+    {
+      "id": 35,
+      "name": "الشروق و بدر - وصول 9:00 - عودة 4:45"
+    },
+    {
+      "id": 61,
+      "name": "القاهرة"
+    },
+    {
+      "id": 66,
+      "name": "السويس"
+    },
+    {
+      "id": 83,
+      "name": "اكتوبر - حدائق الاهرام - حلوان التربية العسكرية"
+    },
+    {
+      "id": 84,
+      "name": "الدائرى - المعادى التربية العسكرية"
+    },
+    {
+      "id": 85,
+      "name": "رمسيس - مدينة نصر التربية العسكرية"
+    },
+    {
+      "id": 86,
+      "name": "العبور - الشروق - مدينتى التربية العسكرية"
+    },
+    {
+      "id": 87,
+      "name": "م الجديدة - الرحاب - التجمع الخامس التربية العسكرية"
+    },
+    {
+      "id": 88,
+      "name": "السويس التربية العسكرية"
+    },
+    {
+      "id": 91,
+      "name": "السويس خط مجمع خلال ايام الاجازة"
+    }
+  ],
+  "session_info": {
+    "uid": "12226",
+    "is_system": "False",
+    "is_admin": "False",
+    "user_context": "{'lang': 'en_US', 'tz': 'Africa/Cairo', 'uid': 12226}",
+    "db": "GU-Live",
+    "server_version": "15.0+e-20221127",
+    "server_version_info": "[15, 0, 0, 'final', 0, 'e']",
+    "support_url": "https://www.odoo.com/help",
+    "name": "عبد الرحمن ايهاب صلاح حسين",
+    "username": "aes400196@gu.edu.eg",
+    "partner_display_name": "عبد الرحمن ايهاب صلاح حسين",
+    "company_id": "1",
+    "partner_id": "92436",
+    "web.base.url": "https://erp.gu.edu.eg",
+    "active_ids_limit": "20000",
+    "profile_session": "None",
+    "profile_collectors": "None",
+    "profile_params": "None",
+    "max_file_upload_size": "134217728",
+    "home_action_id": "False",
+    "cache_hashes": "{'translations': 'fa35f3669b24c4c459d1782a57f09eec98ba2cb8', 'assets_discuss_public': '382a0ddae472a2c2abc964597cbea846174b385e76ff486765c928eeda310a9a'}",
+    "currencies": "{'74': {'symbol': 'EGP', 'position': 'after', 'digits': [69, 4]}, '2': {'symbol': '$', 'position': 'before', 'digits': [69, 2]}}",
+    "user_id": "[12226]"
+  },
+  "found_models": {
+    "bus.booking": {
+      "access": "denied"
+    },
+    "bus.point": {
+      "access": "denied"
+    },
+    "bus.bus": {
+      "access": "denied"
+    },
+    "fleet.vehicle": {
+      "access": "denied"
+    },
+    "fleet.vehicle.model": {
+      "access": "denied"
+    }
+  },
+  "found_endpoints": {},
+  "user_profile": {
+    "id": 12226,
+    "name": "عبد الرحمن ايهاب صلاح حسين",
+    "login": "aes400196@gu.edu.eg",
+    "partner_id": [
+      92436,
+      "عبد الرحمن ايهاب صلاح حسين"
+    ],
+    "email": "aes400196@gu.edu.eg",
+    "phone": "01012470663",
+    "groups_id": [
+      110,
+      77,
+      89,
+      9,
+      48
+    ],
+    "company_id": [
+      1,
+      "Galala University"
+    ]
+  },
+  "js_bus_urls_web.assets_frontend_lazy.min.js": [
+    "bus_booking_confirm/"
+  ]
+}

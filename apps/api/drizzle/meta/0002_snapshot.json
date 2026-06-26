@@ -1,0 +1,967 @@
+{
+  "id": "37074bb0-8936-433d-abd3-140202eeee7a",
+  "prevId": "4c832e3c-a89c-461a-809d-cfffe98111b5",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.audit_logs": {
+      "name": "audit_logs",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "action": {
+          "name": "action",
+          "type": "varchar(50)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "entity_type": {
+          "name": "entity_type",
+          "type": "varchar(50)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "entity_id": {
+          "name": "entity_id",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "details": {
+          "name": "details",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ip_address": {
+          "name": "ip_address",
+          "type": "varchar(45)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "audit_logs_user_id_users_id_fk": {
+          "name": "audit_logs_user_id_users_id_fk",
+          "tableFrom": "audit_logs",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
+    },
+    "public.boarding_logs": {
+      "name": "boarding_logs",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "booking_id": {
+          "name": "booking_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "scanned_by": {
+          "name": "scanned_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "scanned_at": {
+          "name": "scanned_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "scan_result": {
+          "name": "scan_result",
+          "type": "varchar(25)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'valid'"
+        },
+        "device_info": {
+          "name": "device_info",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "latitude": {
+          "name": "latitude",
+          "type": "numeric(10, 8)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "longitude": {
+          "name": "longitude",
+          "type": "numeric(11, 8)",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "boarding_logs_booking_id_bookings_id_fk": {
+          "name": "boarding_logs_booking_id_bookings_id_fk",
+          "tableFrom": "boarding_logs",
+          "tableTo": "bookings",
+          "columnsFrom": [
+            "booking_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "boarding_logs_scanned_by_users_id_fk": {
+          "name": "boarding_logs_scanned_by_users_id_fk",
+          "tableFrom": "boarding_logs",
+          "tableTo": "users",
+          "columnsFrom": [
+            "scanned_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
+    },
+    "public.bookings": {
+      "name": "bookings",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "trip_id": {
+          "name": "trip_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "seat_number": {
+          "name": "seat_number",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending_payment'"
+        },
+        "booking_type": {
+          "name": "booking_type",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'one_way'"
+        },
+        "leg_type": {
+          "name": "leg_type",
+          "type": "varchar(15)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'to_campus'"
+        },
+        "paired_booking_id": {
+          "name": "paired_booking_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "qr_token": {
+          "name": "qr_token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "qr_version": {
+          "name": "qr_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "qr_expires_at": {
+          "name": "qr_expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "qr_used_at": {
+          "name": "qr_used_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "payment_id": {
+          "name": "payment_id",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "payment_status": {
+          "name": "payment_status",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "receipt_image": {
+          "name": "receipt_image",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "receipt_ref": {
+          "name": "receipt_ref",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cancelled_at": {
+          "name": "cancelled_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cancel_reason": {
+          "name": "cancel_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "swapped_from_booking_id": {
+          "name": "swapped_from_booking_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "bookings_trip_id_trips_id_fk": {
+          "name": "bookings_trip_id_trips_id_fk",
+          "tableFrom": "bookings",
+          "tableTo": "trips",
+          "columnsFrom": [
+            "trip_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "bookings_user_id_users_id_fk": {
+          "name": "bookings_user_id_users_id_fk",
+          "tableFrom": "bookings",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "bookings_qr_token_unique": {
+          "name": "bookings_qr_token_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "qr_token"
+          ]
+        }
+      }
+    },
+    "public.buses": {
+      "name": "buses",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "erp_vehicle_id": {
+          "name": "erp_vehicle_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "name": {
+          "name": "name",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "license_plate": {
+          "name": "license_plate",
+          "type": "varchar(50)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "total_seats": {
+          "name": "total_seats",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 50
+        },
+        "seat_rows": {
+          "name": "seat_rows",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 10
+        },
+        "seats_per_row": {
+          "name": "seats_per_row",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 5
+        },
+        "bus_type": {
+          "name": "bus_type",
+          "type": "varchar(50)",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "'seating'"
+        },
+        "is_active": {
+          "name": "is_active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false,
+          "default": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "buses_erp_vehicle_id_unique": {
+          "name": "buses_erp_vehicle_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "erp_vehicle_id"
+          ]
+        }
+      }
+    },
+    "public.routes": {
+      "name": "routes",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "erp_point_id": {
+          "name": "erp_point_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "name_ar": {
+          "name": "name_ar",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name_en": {
+          "name": "name_en",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "is_active": {
+          "name": "is_active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false,
+          "default": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "routes_erp_point_id_unique": {
+          "name": "routes_erp_point_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "erp_point_id"
+          ]
+        }
+      }
+    },
+    "public.stops": {
+      "name": "stops",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "route_id": {
+          "name": "route_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "name_ar": {
+          "name": "name_ar",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name_en": {
+          "name": "name_en",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "latitude": {
+          "name": "latitude",
+          "type": "numeric(10, 8)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "longitude": {
+          "name": "longitude",
+          "type": "numeric(11, 8)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "google_place_id": {
+          "name": "google_place_id",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "arrive_time": {
+          "name": "arrive_time",
+          "type": "varchar(8)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "depart_time": {
+          "name": "depart_time",
+          "type": "varchar(8)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "stop_order": {
+          "name": "stop_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "stops_route_id_routes_id_fk": {
+          "name": "stops_route_id_routes_id_fk",
+          "tableFrom": "stops",
+          "tableTo": "routes",
+          "columnsFrom": [
+            "route_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
+    },
+    "public.swap_logs": {
+      "name": "swap_logs",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "old_booking_id": {
+          "name": "old_booking_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "new_booking_id": {
+          "name": "new_booking_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "performed_by": {
+          "name": "performed_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "old_trip_id": {
+          "name": "old_trip_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "old_seat_number": {
+          "name": "old_seat_number",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "new_trip_id": {
+          "name": "new_trip_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "new_seat_number": {
+          "name": "new_seat_number",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "swap_logs_old_booking_id_bookings_id_fk": {
+          "name": "swap_logs_old_booking_id_bookings_id_fk",
+          "tableFrom": "swap_logs",
+          "tableTo": "bookings",
+          "columnsFrom": [
+            "old_booking_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "swap_logs_new_booking_id_bookings_id_fk": {
+          "name": "swap_logs_new_booking_id_bookings_id_fk",
+          "tableFrom": "swap_logs",
+          "tableTo": "bookings",
+          "columnsFrom": [
+            "new_booking_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "swap_logs_performed_by_users_id_fk": {
+          "name": "swap_logs_performed_by_users_id_fk",
+          "tableFrom": "swap_logs",
+          "tableTo": "users",
+          "columnsFrom": [
+            "performed_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
+    },
+    "public.system_settings": {
+      "name": "system_settings",
+      "schema": "",
+      "columns": {
+        "key": {
+          "name": "key",
+          "type": "varchar(100)",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "value": {
+          "name": "value",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "system_settings_updated_by_users_id_fk": {
+          "name": "system_settings_updated_by_users_id_fk",
+          "tableFrom": "system_settings",
+          "tableTo": "users",
+          "columnsFrom": [
+            "updated_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
+    },
+    "public.trips": {
+      "name": "trips",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "route_id": {
+          "name": "route_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "bus_id": {
+          "name": "bus_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "trip_date": {
+          "name": "trip_date",
+          "type": "varchar(10)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "departure_time": {
+          "name": "departure_time",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "return_time": {
+          "name": "return_time",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "direction": {
+          "name": "direction",
+          "type": "varchar(15)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'to_campus'"
+        },
+        "time_slot": {
+          "name": "time_slot",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'morning_1'"
+        },
+        "total_seats": {
+          "name": "total_seats",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "price_egp": {
+          "name": "price_egp",
+          "type": "numeric(10, 2)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'160.00'"
+        },
+        "status": {
+          "name": "status",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'scheduled'"
+        },
+        "cancellation_lock_hours": {
+          "name": "cancellation_lock_hours",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 3
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "trips_route_id_routes_id_fk": {
+          "name": "trips_route_id_routes_id_fk",
+          "tableFrom": "trips",
+          "tableTo": "routes",
+          "columnsFrom": [
+            "route_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "trips_bus_id_buses_id_fk": {
+          "name": "trips_bus_id_buses_id_fk",
+          "tableFrom": "trips",
+          "tableTo": "buses",
+          "columnsFrom": [
+            "bus_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
+    },
+    "public.users": {
+      "name": "users",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "erp_uid": {
+          "name": "erp_uid",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "erp_partner_id": {
+          "name": "erp_partner_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "email": {
+          "name": "email",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "full_name": {
+          "name": "full_name",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "full_name_ar": {
+          "name": "full_name_ar",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "phone": {
+          "name": "phone",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "role": {
+          "name": "role",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'rider'"
+        },
+        "password": {
+          "name": "password",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "users_erp_uid_unique": {
+          "name": "users_erp_uid_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "erp_uid"
+          ]
+        },
+        "users_erp_partner_id_unique": {
+          "name": "users_erp_partner_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "erp_partner_id"
+          ]
+        },
+        "users_email_unique": {
+          "name": "users_email_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "email"
+          ]
+        }
+      }
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

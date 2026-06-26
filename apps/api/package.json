@@ -1,0 +1,36 @@
+{
+  "name": "@bus-aesh/api",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx src/db/migrate.ts",
+    "db:seed": "tsx src/db/seed.ts"
+  },
+  "dependencies": {
+    "@bus-aesh/shared": "*",
+    "@fastify/autoload": "^5.8.2",
+    "@fastify/cors": "^11.2.0",
+    "@fastify/jwt": "^10.1.0",
+    "@fastify/websocket": "^11.2.0",
+    "axios": "^1.7.2",
+    "dotenv": "^16.4.5",
+    "drizzle-orm": "^0.31.2",
+    "fastify": "^5.0.0",
+    "ioredis": "^5.4.1",
+    "pg": "^8.12.0",
+    "resend": "^3.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.9",
+    "@types/pg": "^8.11.6",
+    "drizzle-kit": "^0.22.7",
+    "tsx": "^4.16.0",
+    "typescript": "^5.4.5"
+  }
+}

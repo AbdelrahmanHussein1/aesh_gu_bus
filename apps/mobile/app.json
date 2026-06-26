@@ -1,0 +1,26 @@
+{
+  "expo": {
+    "name": "Bus Aesh",
+    "slug": "bus-aesh",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.bus.aesh"
+    },
+    "android": {
+      "package": "com.bus.aesh"
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Bus Aesh to access your camera to scan tickets."
+        }
+      ],
+      "expo-router"
+    ],
+    "scheme": "busaesh"
+  }
+}

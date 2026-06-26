@@ -1,0 +1,383 @@
+{
+  "timestamp": "2026-06-25T20:11:08.848806",
+  "search_results": {
+    "1_2_2026-06-25_116": {
+      "test": {
+        "start": "1",
+        "end": "2",
+        "name": "العبور -> الجلالة"
+      },
+      "date": "2026-06-25",
+      "bus": {
+        "id": 116,
+        "name": "العبور/وصول/9:00"
+      },
+      "result": [
+        {
+          "routes_line": 2081135,
+          "route": "RO18725",
+          "m2o_fleet_vehicle_id": "العبور/وصول/9:00",
+          "m2o_bus_point_pickup_id": "العبور - وصول 9:00- عودة 4:45",
+          "m2o_bus_point_dropoff_id": "جامعة الجلالة",
+          "m2o_bus_types_id": "اتوبيس 50 كرسى",
+          "date": "2026-06-25",
+          "total_seats": 50,
+          "remaining_seat": 48,
+          "start_time": "2026-06-25 07:00:37",
+          "end_time": "2026-06-25 23:57:37"
+        }
+      ]
+    },
+    "1_2_2026-06-26_116": {
+      "test": {
+        "start": "1",
+        "end": "2",
+        "name": "العبور -> الجلالة"
+      },
+      "date": "2026-06-26",
+      "bus": {
+        "id": 116,
+        "name": "العبور/وصول/9:00"
+      },
+      "result": [
+        {
+          "routes_line": 2081158,
+          "route": "RO18726",
+          "m2o_fleet_vehicle_id": "العبور/وصول/9:00",
+          "m2o_bus_point_pickup_id": "العبور - وصول 9:00- عودة 4:45",
+          "m2o_bus_point_dropoff_id": "جامعة الجلالة",
+          "m2o_bus_types_id": "اتوبيس 50 كرسى",
+          "date": "2026-06-26",
+          "total_seats": 50,
+          "remaining_seat": 50,
+          "start_time": "2026-06-26 07:00:37",
+          "end_time": "2026-06-26 23:57:37"
+        }
+      ]
+    },
+    "2_29_2026-06-25_215": {
+      "test": {
+        "start": "2",
+        "end": "29",
+        "name": "الجلالة -> بورتوفيق"
+      },
+      "date": "2026-06-25",
+      "bus": {
+        "id": 215,
+        "name": "السويس/بوتوفيق/4"
+      },
+      "result": [
+        {
+          "routes_line": 2082084,
+          "route": "RO18785",
+          "m2o_fleet_vehicle_id": "السويس/بوتوفيق/4",
+          "m2o_bus_point_pickup_id": "جامعة الجلالة",
+          "m2o_bus_point_dropoff_id": "بورتوفيق- قصر الشوق - وصول 9:00 -  عودة 4:45",
+          "m2o_bus_types_id": "اتوبيس 50 كرسى",
+          "date": "2026-06-25",
+          "total_seats": 50,
+          "remaining_seat": 46,
+          "start_time": "2026-06-25 07:07:53",
+          "end_time": "2026-06-25 23:07:53"
+        }
+      ]
+    },
+    "2_29_2026-06-25_216": {
+      "test": {
+        "start": "2",
+        "end": "29",
+        "name": "الجلالة -> بورتوفيق"
+      },
+      "date": "2026-06-25",
+      "bus": {
+        "id": 216,
+        "name": "السويس/بورتوفيق/5"
+      },
+      "result": [
+        {
+          "routes_line": 2082084,
+          "route": "RO18785",
+          "m2o_fleet_vehicle_id": "السويس/بورتوفيق/5",
+          "m2o_bus_point_pickup_id": "جامعة الجلالة",
+          "m2o_bus_point_dropoff_id": "بورتوفيق- قصر الشوق - وصول 9:00 -  عودة 4:45",
+          "m2o_bus_types_id": "اتوبيس 50 كرسى",
+          "date": "2026-06-25",
+          "total_seats": 50,
+          "remaining_seat": 50,
+          "start_time": "2026-06-25 07:07:53",
+          "end_time": "2026-06-25 23:07:53"
+        }
+      ]
+    },
+    "2_29_2026-06-25_217": {
+      "test": {
+        "start": "2",
+        "end": "29",
+        "name": "الجلالة -> بورتوفيق"
+      },
+      "date": "2026-06-25",
+      "bus": {
+        "id": 217,
+        "name": "السويس/بورتوفيق/6"
+      },
+      "result": [
+        {
+          "routes_line": 2082084,
+          "route": "RO18785",
+          "m2o_fleet_vehicle_id": "السويس/بورتوفيق/6",
+          "m2o_bus_point_pickup_id": "جامعة الجلالة",
+          "m2o_bus_point_dropoff_id": "بورتوفيق- قصر الشوق - وصول 9:00 -  عودة 4:45",
+          "m2o_bus_types_id": "اتوبيس 50 كرسى",
+          "date": "2026-06-25",
+          "total_seats": 50,
+          "remaining_seat": 50,
+          "start_time": "2026-06-25 07:07:53",
+          "end_time": "2026-06-25 23:07:53"
+        }
+      ]
+    },
+    "2_29_2026-06-26_215": {
+      "test": {
+        "start": "2",
+        "end": "29",
+        "name": "الجلالة -> بورتوفيق"
+      },
+      "date": "2026-06-26",
+      "bus": {
+        "id": 215,
+        "name": "السويس/بوتوفيق/4"
+      },
+      "result": [
+        {
+          "routes_line": 2082089,
+          "route": "RO18786",
+          "m2o_fleet_vehicle_id": "السويس/بوتوفيق/4",
+          "m2o_bus_point_pickup_id": "جامعة الجلالة",
+          "m2o_bus_point_dropoff_id": "بورتوفيق- قصر الشوق - وصول 9:00 -  عودة 4:45",
+          "m2o_bus_types_id": "اتوبيس 50 كرسى",
+          "date": "2026-06-26",
+          "total_seats": 50,
+          "remaining_seat": 50,
+          "start_time": "2026-06-26 07:07:53",
+          "end_time": "2026-06-26 23:07:53"
+        }
+      ]
+    },
+    "2_29_2026-06-26_216": {
+      "test": {
+        "start": "2",
+        "end": "29",
+        "name": "الجلالة -> بورتوفيق"
+      },
+      "date": "2026-06-26",
+      "bus": {
+        "id": 216,
+        "name": "السويس/بورتوفيق/5"
+      },
+      "result": [
+        {
+          "routes_line": 2082089,
+          "route": "RO18786",
+          "m2o_fleet_vehicle_id": "السويس/بورتوفيق/5",
+          "m2o_bus_point_pickup_id": "جامعة الجلالة",
+          "m2o_bus_point_dropoff_id": "بورتوفيق- قصر الشوق - وصول 9:00 -  عودة 4:45",
+          "m2o_bus_types_id": "اتوبيس 50 كرسى",
+          "date": "2026-06-26",
+          "total_seats": 50,
+          "remaining_seat": 50,
+          "start_time": "2026-06-26 07:07:53",
+          "end_time": "2026-06-26 23:07:53"
+        }
+      ]
+    },
+    "2_29_2026-06-26_217": {
+      "test": {
+        "start": "2",
+        "end": "29",
+        "name": "الجلالة -> بورتوفيق"
+      },
+      "date": "2026-06-26",
+      "bus": {
+        "id": 217,
+        "name": "السويس/بورتوفيق/6"
+      },
+      "result": [
+        {
+          "routes_line": 2082089,
+          "route": "RO18786",
+          "m2o_fleet_vehicle_id": "السويس/بورتوفيق/6",
+          "m2o_bus_point_pickup_id": "جامعة الجلالة",
+          "m2o_bus_point_dropoff_id": "بورتوفيق- قصر الشوق - وصول 9:00 -  عودة 4:45",
+          "m2o_bus_types_id": "اتوبيس 50 كرسى",
+          "date": "2026-06-26",
+          "total_seats": 50,
+          "remaining_seat": 50,
+          "start_time": "2026-06-26 07:07:53",
+          "end_time": "2026-06-26 23:07:53"
+        }
+      ]
+    },
+    "2_30_2026-06-25_212": {
+      "test": {
+        "start": "2",
+        "end": "30",
+        "name": "الجلالة -> السلام"
+      },
+      "date": "2026-06-25",
+      "bus": {
+        "id": 212,
+        "name": "السويس/السلام/1"
+      },
+      "result": [
+        {
+          "routes_line": 2082083,
+          "route": "RO18785",
+          "m2o_fleet_vehicle_id": "السويس/السلام/1",
+          "m2o_bus_point_pickup_id": "جامعة الجلالة",
+          "m2o_bus_point_dropoff_id": "السلام - المستقبل - وصول 9:00 - عودة 4:45",
+          "m2o_bus_types_id": "اتوبيس 50 كرسى",
+          "date": "2026-06-25",
+          "total_seats": 50,
+          "remaining_seat": 49,
+          "start_time": "2026-06-25 07:07:53",
+          "end_time": "2026-06-25 23:07:53"
+        }
+      ]
+    },
+    "2_30_2026-06-25_213": {
+      "test": {
+        "start": "2",
+        "end": "30",
+        "name": "الجلالة -> السلام"
+      },
+      "date": "2026-06-25",
+      "bus": {
+        "id": 213,
+        "name": "السويس/السلام/2"
+      },
+      "result": [
+        {
+          "routes_line": 2082083,
+          "route": "RO18785",
+          "m2o_fleet_vehicle_id": "السويس/السلام/2",
+          "m2o_bus_point_pickup_id": "جامعة الجلالة",
+          "m2o_bus_point_dropoff_id": "السلام - المستقبل - وصول 9:00 - عودة 4:45",
+          "m2o_bus_types_id": "اتوبيس 50 كرسى",
+          "date": "2026-06-25",
+          "total_seats": 50,
+          "remaining_seat": 50,
+          "start_time": "2026-06-25 07:07:53",
+          "end_time": "2026-06-25 23:07:53"
+        }
+      ]
+    },
+    "2_30_2026-06-25_214": {
+      "test": {
+        "start": "2",
+        "end": "30",
+        "name": "الجلالة -> السلام"
+      },
+      "date": "2026-06-25",
+      "bus": {
+        "id": 214,
+        "name": "السويس/السلام/3"
+      },
+      "result": [
+        {
+          "routes_line": 2082083,
+          "route": "RO18785",
+          "m2o_fleet_vehicle_id": "السويس/السلام/3",
+          "m2o_bus_point_pickup_id": "جامعة الجلالة",
+          "m2o_bus_point_dropoff_id": "السلام - المستقبل - وصول 9:00 - عودة 4:45",
+          "m2o_bus_types_id": "اتوبيس 50 كرسى",
+          "date": "2026-06-25",
+          "total_seats": 50,
+          "remaining_seat": 50,
+          "start_time": "2026-06-25 07:07:53",
+          "end_time": "2026-06-25 23:07:53"
+        }
+      ]
+    },
+    "2_30_2026-06-26_212": {
+      "test": {
+        "start": "2",
+        "end": "30",
+        "name": "الجلالة -> السلام"
+      },
+      "date": "2026-06-26",
+      "bus": {
+        "id": 212,
+        "name": "السويس/السلام/1"
+      },
+      "result": [
+        {
+          "routes_line": 2082088,
+          "route": "RO18786",
+          "m2o_fleet_vehicle_id": "السويس/السلام/1",
+          "m2o_bus_point_pickup_id": "جامعة الجلالة",
+          "m2o_bus_point_dropoff_id": "السلام - المستقبل - وصول 9:00 - عودة 4:45",
+          "m2o_bus_types_id": "اتوبيس 50 كرسى",
+          "date": "2026-06-26",
+          "total_seats": 50,
+          "remaining_seat": 50,
+          "start_time": "2026-06-26 07:07:53",
+          "end_time": "2026-06-26 23:07:53"
+        }
+      ]
+    },
+    "2_30_2026-06-26_213": {
+      "test": {
+        "start": "2",
+        "end": "30",
+        "name": "الجلالة -> السلام"
+      },
+      "date": "2026-06-26",
+      "bus": {
+        "id": 213,
+        "name": "السويس/السلام/2"
+      },
+      "result": [
+        {
+          "routes_line": 2082088,
+          "route": "RO18786",
+          "m2o_fleet_vehicle_id": "السويس/السلام/2",
+          "m2o_bus_point_pickup_id": "جامعة الجلالة",
+          "m2o_bus_point_dropoff_id": "السلام - المستقبل - وصول 9:00 - عودة 4:45",
+          "m2o_bus_types_id": "اتوبيس 50 كرسى",
+          "date": "2026-06-26",
+          "total_seats": 50,
+          "remaining_seat": 50,
+          "start_time": "2026-06-26 07:07:53",
+          "end_time": "2026-06-26 23:07:53"
+        }
+      ]
+    },
+    "2_30_2026-06-26_214": {
+      "test": {
+        "start": "2",
+        "end": "30",
+        "name": "الجلالة -> السلام"
+      },
+      "date": "2026-06-26",
+      "bus": {
+        "id": 214,
+        "name": "السويس/السلام/3"
+      },
+      "result": [
+        {
+          "routes_line": 2082088,
+          "route": "RO18786",
+          "m2o_fleet_vehicle_id": "السويس/السلام/3",
+          "m2o_bus_point_pickup_id": "جامعة الجلالة",
+          "m2o_bus_point_dropoff_id": "السلام - المستقبل - وصول 9:00 - عودة 4:45",
+          "m2o_bus_types_id": "اتوبيس 50 كرسى",
+          "date": "2026-06-26",
+          "total_seats": 50,
+          "remaining_seat": 50,
+          "start_time": "2026-06-26 07:07:53",
+          "end_time": "2026-06-26 23:07:53"
+        }
+      ]
+    }
+  }
+}
