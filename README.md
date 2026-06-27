@@ -19,6 +19,14 @@ This project is organized as an **npm workspaces monorepo**:
 * **Caching/Syncing**: Redis
 * **Frameworks**: Fastify (API), Next.js (Web), Expo (Mobile App)
 
+### Web App Design System
+The web console at `apps/web` was redesigned with a premium light-theme interface using:
+- **Typography**: Outfit (headings/body) + JetBrains Mono (mono/metadata)
+- **Icons**: Material Symbols Outlined (variable font axis)
+- **Color**: Canvas-based palette with `#14259B` primary, `#F8FAFC` background
+- **Components**: 20+ custom React components organized by feature (auth, booking, layout, supervisor, admin)
+- **Offline Engine**: Complete local simulation via localStorage with mock users, trips, and seat management
+
 ---
 
 ## ⚙️ Requirements & Environment Setup
@@ -125,6 +133,21 @@ If the Fastify backend is not running or unreachable:
 * The web console and mobile scanner gracefully fail-over to an **Offline Simulation Engine**.
 * Credentials and bookings are saved locally to `localStorage` (or memory on mobile).
 * Live seats are simulated, allowing you to test seat locks, checkout validations, and scans in a zero-network environment.
+
+### 5. Web App Route Structure (Next.js App Router)
+The web console uses route groups to separate auth and dashboard views:
+
+| Route | View | Description |
+| :--- | :--- | :--- |
+| `/` | Auth Portal | Login / Register / Forgot Password (auto-redirects if authenticated) |
+| `/rider` | Rider Dashboard | Book trips, select seats, checkout, view QR passes |
+| `/supervisor` | Supervisor Panel | Passenger manifest, QR scanner (camera + manual), seat swaps |
+| `/admin` | Admin Console | Fleet status, audit log, policy settings |
+
+### 6. Sidebar Navigation & Mobile Responsiveness
+- **Desktop**: Fixed sidebar (collapsible via chevron, `w-64` / `w-16` icon-only mode)
+- **Mobile**: Overlay drawer triggered by hamburger menu, backdrop dismiss
+- **TopBar**: Desktop shows role switcher + status badge; mobile shows compact header with menu toggle
 
 ---
 
