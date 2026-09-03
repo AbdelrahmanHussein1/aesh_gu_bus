@@ -14,14 +14,27 @@ if ! command -v docker &> /dev/null; then
     exit 1
 fi
 
+# Check if sudo is required for docker
+DOCKER_COMPOSE="docker compose"
+if ! docker info > /dev/null 2>&1; then
+    if sudo docker info > /dev/null 2>&1; then
+        echo "ℹ️  Docker requires elevated privileges. Using sudo..."
+        DOCKER_COMPOSE="sudo docker compose"
+    else
+        echo "❌ Cannot connect to the Docker daemon."
+        echo "👉 Ensure Docker service is running: sudo systemctl start docker"
+        exit 1
+    fi
+fi
+
 echo "🚀 Building and starting Docker services..."
-docker compose up -d --build
+$DOCKER_COMPOSE up -d --build
 
 echo "⏳ Waiting for services to initialize..."
 sleep 5
 
 echo "📋 Checking container status:"
-docker compose ps
+$DOCKER_COMPOSE ps
 
 echo ""
 echo "================================================================"
