@@ -563,7 +563,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setIsScanning, setIsSwapping, getGroupedBookings, toggleSidebar, setMobileSidebarOpen, setIsOffline,
   };
 
-  return <AppContext.Provider value={value}>{children as ReactNode}</AppContext.Provider>;
+  const AppContextProvider = AppContext.Provider as any;
+  return <AppContextProvider value={value}>{children as any}</AppContextProvider>;
 }
 
 export function useApp() {
