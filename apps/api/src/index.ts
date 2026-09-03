@@ -263,24 +263,24 @@ fastify.get('/api/trips', async (request, reply) => {
     direction?: string;
     timeSlot?: string;
   };
-  if (!date || !routeId) {
-    return reply.status(400).send({ error: 'Missing date or routeId query parameters' });
-  }
-
-  const rid = parseInt(routeId);
-  if (isNaN(rid)) {
-    return reply.status(400).send({ error: 'Invalid routeId' });
+  if (!date) {
+    return reply.status(400).send({ error: 'Missing date query parameter' });
   }
 
   // Build dynamic filters
   const conditions = [
     eq(schema.trips.tripDate, date),
-    eq(schema.trips.routeId, rid),
   ];
+  if (routeId && routeId !== 'all') {
+    const rid = parseInt(routeId);
+    if (!isNaN(rid)) {
+      conditions.push(eq(schema.trips.routeId, rid));
+    }
+  }
   if (direction && (direction === 'to_campus' || direction === 'from_campus')) {
     conditions.push(eq(schema.trips.direction, direction));
   }
-  if (timeSlot) {
+  if (timeSlot && timeSlot !== 'all') {
     conditions.push(eq(schema.trips.timeSlot, timeSlot));
   }
 

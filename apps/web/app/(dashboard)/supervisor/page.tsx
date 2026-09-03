@@ -1,13 +1,14 @@
-'use client';
+﻿'use client';
 import { useEffect } from 'react';
 import { useApp } from '@/hooks/useAppStore';
+import TripSelector from '@/components/supervisor/TripSelector';
 import ManifestTable from '@/components/supervisor/ManifestTable';
 import QRScanner from '@/components/supervisor/QRScanner';
 import SwapModal from '@/components/supervisor/SwapModal';
 
 export default function SupervisorDashboardPage() {
   const { user, role, switchRole } = useApp();
-  useEffect(() => { document.title = 'Supervisor Panel — Bus Aesh'; }, []);
+  useEffect(() => { document.title = 'Supervisor Operations — Bus Aesh'; }, []);
 
   if (role !== 'supervisor' && role !== 'admin') {
     return (
@@ -26,8 +27,9 @@ export default function SupervisorDashboardPage() {
     <div className="space-y-6 max-w-7xl">
       <div>
         <h1 className="text-2xl font-bold text-text-primary">Supervisor Operations</h1>
-        <p className="text-sm text-text-secondary mt-1">Manage live rosters, verify boarding passes, and reassign seats.</p>
+        <p className="text-sm text-text-secondary mt-1">Select a bus trip to scan boarding passes, monitor rosters, and handle seat reassignments.</p>
       </div>
+      <TripSelector />
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         <ManifestTable />
         <QRScanner />
