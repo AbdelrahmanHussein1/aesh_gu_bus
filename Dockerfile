@@ -11,7 +11,8 @@ COPY apps/web/package*.json ./apps/web/
 
 RUN npm ci
 
-# Copy source files
+# Copy source files & data
+COPY erp_bus_data.json ./erp_bus_data.json
 COPY packages/shared ./packages/shared
 COPY apps/api ./apps/api
 COPY apps/web ./apps/web
@@ -35,6 +36,11 @@ COPY apps/web/package*.json ./apps/web/
 
 RUN npm ci --omit=dev
 
+# Copy ERP data and scripts
+COPY erp_bus_data.json ./erp_bus_data.json
+COPY scripts/docker-entrypoint.sh ./scripts/docker-entrypoint.sh
+RUN chmod +x ./scripts/docker-entrypoint.sh
+
 # Copy compiled outputs
 COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
@@ -44,4 +50,4 @@ COPY --from=builder /app/apps/web/public ./apps/web/public
 
 EXPOSE 3000 3001
 
-CMD ["sh", "-c", "node apps/api/dist/index.js & node apps/web/node_modules/next/dist/bin/next start -p 3001 -H 0.0.0.0 apps/web"]
+ENTRYPOINT ["/bin/sh", "/app/scripts/docker-entrypoint.sh"]

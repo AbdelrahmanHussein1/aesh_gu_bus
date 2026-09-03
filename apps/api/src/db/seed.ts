@@ -21,7 +21,20 @@ async function seed() {
   console.log('--- STARTING SEEDING PROCESS ---');
 
   try {
-    const dataPath = path.resolve(__dirname, '../../../../erp_bus_data.json');
+    const possiblePaths = [
+      path.resolve(process.cwd(), 'erp_bus_data.json'),
+      path.resolve(__dirname, '../../../erp_bus_data.json'),
+      path.resolve(__dirname, '../../../../erp_bus_data.json'),
+      path.resolve(__dirname, '../../erp_bus_data.json'),
+    ];
+    let dataPath = possiblePaths[0];
+    for (const p of possiblePaths) {
+      try {
+        await fs.access(p);
+        dataPath = p;
+        break;
+      } catch {}
+    }
     console.log('Reading ERP data from:', dataPath);
     const fileContent = await fs.readFile(dataPath, 'utf-8');
     const erpData = JSON.parse(fileContent);
