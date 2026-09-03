@@ -12,11 +12,10 @@
   },
   "dependencies": {
     "@bus-aesh/shared": "*",
-    "@types/react": "~18.2.79",
     "expo": "~51.0.0",
     "expo-camera": "~15.0.13",
     "expo-haptics": "~13.0.1",
-    "expo-linking": "^56.0.14",
+    "expo-linking": "~6.3.1",
     "expo-router": "~3.5.0",
     "expo-status-bar": "~1.12.1",
     "lucide-react-native": "^0.395.0",

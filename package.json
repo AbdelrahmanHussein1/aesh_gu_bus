@@ -19,5 +19,8 @@
   },
   "devDependencies": {
     "typescript": "^5.4.5"
+  },
+  "overrides": {
+    "expo-linking": "~6.3.1"
   }
 }
