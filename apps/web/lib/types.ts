@@ -1,11 +1,17 @@
 export type Role = 'rider' | 'supervisor' | 'admin';
 export type Direction = 'to_campus' | 'from_campus';
 export type BookingType = 'to_campus' | 'from_campus' | 'round_trip' | 'one_way';
-export type TimeSlot = 'morning_1' | 'morning_2' | 'return';
+export type TimeSlot = 'morning_1' | 'morning_2' | 'return_1' | 'return_2' | 'return_3' | 'return';
 export type PaymentMethod = 'visa_mock' | 'instapay' | 'telda';
 export type SeatStatus = 'free' | 'held' | 'booked';
 export type TripStatus = 'scheduled' | 'active' | 'completed' | 'cancelled';
 export type BookingStatus = 'confirmed' | 'cancelled' | 'swapped';
+
+export interface PersonnelContact {
+  nameAr: string;
+  nameEn: string;
+  phone: string;
+}
 
 export interface User {
   id: string;
@@ -34,8 +40,35 @@ export interface Trip {
   timeSlot: TimeSlot;
   priceEgp: number;
   departureTime: string;
+  returnTime?: string;
   status: TripStatus;
   bus: Bus;
+  route?: Route;
+  totalSeats?: number;
+  bookedSeats?: number;
+  driver?: PersonnelContact | null;
+  supervisors?: PersonnelContact[];
+}
+
+export interface PersonnelItem {
+  id: string;
+  nameAr: string;
+  nameEn: string;
+  phone: string;
+}
+
+export interface TripFormData {
+  routeId: number;
+  direction: Direction;
+  timeSlot: TimeSlot;
+  tripDate: string;
+  departureTime: string;
+  returnTime?: string;
+  driverName?: string;
+  driverPhone?: string;
+  supervisorNames?: string[];
+  totalSeats: number;
+  priceEgp: number;
 }
 
 export interface Seat {
@@ -65,6 +98,8 @@ export interface Booking {
   isBoarded: boolean;
   boardedAt: string | null;
   qrUsedAt?: string;
+  driver?: PersonnelContact | null;
+  supervisors?: PersonnelContact[];
 }
 
 export interface ManifestEntry {

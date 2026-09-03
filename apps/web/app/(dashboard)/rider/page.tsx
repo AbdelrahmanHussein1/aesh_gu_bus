@@ -1,6 +1,6 @@
 'use client';
 import { useEffect } from 'react';
-import { useAuth } from '@/hooks/useAuth';
+import { useApp } from '@/hooks/useAppStore';
 import RouteSelector from '@/components/booking/RouteSelector';
 import TripList from '@/components/booking/TripList';
 import SeatGrid from '@/components/booking/SeatGrid';
@@ -8,7 +8,7 @@ import CheckoutModal from '@/components/booking/CheckoutModal';
 import BookingPassCard from '@/components/booking/BookingPassCard';
 
 export default function RiderDashboardPage() {
-  const { user } = useAuth();
+  const { user, role } = useApp();
   useEffect(() => { document.title = 'Rider Dashboard — Bus Aesh'; }, []);
 
   if (!user || user.role !== 'rider') {

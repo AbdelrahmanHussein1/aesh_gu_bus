@@ -2,7 +2,7 @@
 import { useApp } from '@/hooks/useAppStore';
 
 export default function TopBar() {
-  const { role, switchRole, logout, user, isOffline } = useApp();
+  const { role, switchRole, logout, user, isOffline, setIsOffline } = useApp();
 
   return (
     <header className="sticky top-0 bg-canvas-bg/90 backdrop-blur-md z-40 px-margin-desktop py-5 border-b border-border-whisper justify-between items-end hidden md:flex">
@@ -16,10 +16,14 @@ export default function TopBar() {
       </div>
 
       <div className="flex items-center gap-3">
-        <div className="font-label-mono text-label-mono text-text-secondary bg-surface-container-low border border-border-whisper px-3 py-1.5 rounded-lg flex items-center gap-2 max-lg:hidden">
+        <button
+          onClick={() => setIsOffline(!isOffline)}
+          className="font-label-mono text-label-mono text-text-secondary bg-surface-container-low hover:bg-surface-container-high border border-border-whisper px-3 py-1.5 rounded-lg flex items-center gap-2 max-lg:hidden transition-colors cursor-pointer"
+          title="Click to toggle Online / Offline Mode"
+        >
           <div className={`w-2 h-2 rounded-full ${isOffline ? 'bg-amber-400 animate-pulse' : 'bg-success-galala'}`}></div>
-          {isOffline ? 'Offline' : 'System Healthy'}
-        </div>
+          {isOffline ? 'Offline (Click for Online)' : 'Online (System Healthy)'}
+        </button>
 
         <div className="bg-surface-container-low p-0.5 rounded-lg border border-border-whisper flex gap-0.5">
           <button onClick={() => switchRole('rider')} className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${role === 'rider' ? 'bg-primary-container text-on-primary-container shadow-sm' : 'text-text-secondary hover:text-text-primary'}`}>Rider</button>
@@ -44,7 +48,7 @@ export default function TopBar() {
 }
 
 export function MobileTopBar() {
-  const { user, logout, isOffline, setMobileSidebarOpen } = useApp();
+  const { user, logout, isOffline, setIsOffline, setMobileSidebarOpen } = useApp();
 
   return (
     <nav className="md:hidden bg-surface-container flex justify-between items-center w-full px-margin-mobile h-16 border-b border-border-whisper fixed top-0 z-40">
@@ -56,7 +60,10 @@ export function MobileTopBar() {
         <span className="font-headline-md text-headline-md text-primary-container">Galala Transit</span>
       </div>
       <div className="flex items-center gap-3">
-        <span className={`w-2 h-2 rounded-full ${isOffline ? 'bg-amber-400 animate-pulse' : 'bg-success-galala'}`}></span>
+        <button onClick={() => setIsOffline(!isOffline)} className="flex items-center gap-1.5 p-1 rounded hover:bg-surface-container-high" title="Click to toggle Online Mode">
+          <span className={`w-2.5 h-2.5 rounded-full ${isOffline ? 'bg-amber-400 animate-pulse' : 'bg-success-galala'}`}></span>
+          <span className="text-[10px] font-bold text-text-secondary">{isOffline ? 'Offline' : 'Online'}</span>
+        </button>
         <button onClick={logout} className="p-2 text-text-secondary hover:text-destructive-alt">
           <span className="material-symbols-outlined text-xl">logout</span>
         </button>

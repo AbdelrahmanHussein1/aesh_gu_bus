@@ -52,3 +52,7 @@ tmp/
 temp/
 .temp/
 .tmp/
+dist-release/
+stitch.zip
+stitch/
+*.zip

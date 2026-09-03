@@ -1,0 +1,759 @@
+'use client';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useApp } from '@/hooks/useAppStore';
+import type { Trip, Route, TimeSlot, Direction, PersonnelContact } from '@/lib/types';
+import { getOfflineAllTrips, cloneOfflineSchedule, getAllPersonnel, saveCustomOfflineTrips, getCustomOfflineTrips, addMockAuditLog } from '@/lib/offline';
+
+const JUNE_DATES = [
+  '2026-06-04',
+  '2026-06-06',
+  '2026-06-07',
+  '2026-06-08',
+  '2026-06-09',
+  '2026-06-10',
+  '2026-06-11',
+  '2026-06-13',
+  '2026-06-14',
+];
+
+const SHIFT_OPTIONS: { id: TimeSlot | 'all'; labelAr: string; labelEn: string; time: string }[] = [
+  { id: 'all', labelAr: 'جميع الشفتات', labelEn: 'All Shifts', time: 'Full Day' },
+  { id: 'morning_1', labelAr: 'شفت 1 (وصول 9:00)', labelEn: 'Arrival 1', time: '09:00 AM Arrival' },
+  { id: 'morning_2', labelAr: 'شفت 2 (وصول 11:30)', labelEn: 'Arrival 2', time: '11:30 AM Arrival' },
+  { id: 'return_1', labelAr: 'عودة 1 (12:30 م)', labelEn: 'Return 1', time: '12:30 PM Departure' },
+  { id: 'return_2', labelAr: 'عودة 2 (2:30 م)', labelEn: 'Return 2', time: '02:30 PM Departure' },
+  { id: 'return_3', labelAr: 'عودة 3 (5:30 م)', labelEn: 'Return 3', time: '05:30 PM Departure' },
+];
+
+export default function ScheduleManager() {
+  const { isOffline, routes, token } = useApp();
+  const [selectedDate, setSelectedDate] = useState('2026-06-04');
+  const [selectedShift, setSelectedShift] = useState<TimeSlot | 'all'>('all');
+  const [selectedRouteId, setSelectedRouteId] = useState<number | 'all'>('all');
+  const [allSchedules, setAllSchedules] = useState<Trip[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [personnel, setPersonnel] = useState<{ drivers: PersonnelContact[]; supervisors: PersonnelContact[] }>({ drivers: [], supervisors: [] });
+
+  // Modals state
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showCloneModal, setShowCloneModal] = useState(false);
+  const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  // New Trip Form state
+  const [newRouteId, setNewRouteId] = useState<number>(29);
+  const [newDirection, setNewDirection] = useState<Direction>('to_campus');
+  const [newTimeSlot, setNewTimeSlot] = useState<TimeSlot>('morning_1');
+  const [newTripDate, setNewTripDate] = useState('2026-06-04');
+  const [newDepartureTime, setNewDepartureTime] = useState('07:00 AM');
+  const [newDriverPhone, setNewDriverPhone] = useState('');
+  const [newSupervisorPhone, setNewSupervisorPhone] = useState('');
+  const [newTotalSeats, setNewTotalSeats] = useState(50);
+  const [newPrice, setNewPrice] = useState(160);
+
+  // Clone Form state
+  const [cloneSourceDate, setCloneSourceDate] = useState('2026-06-04');
+  const [cloneTargetDate, setCloneTargetDate] = useState('2026-06-15');
+
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+
+  // Fetch schedules
+  const loadSchedules = useCallback(async () => {
+    setLoading(true);
+    if (!isOffline) {
+      try {
+        const res = await fetch(`${API_URL}/api/admin/schedules?date=${selectedDate}${selectedRouteId !== 'all' ? `&routeId=${selectedRouteId}` : ''}`, {
+          headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setAllSchedules(data);
+          setLoading(false);
+          return;
+        }
+      } catch (err) {
+        console.warn('Live API fetch failed, using offline fallback', err);
+      }
+    }
+    // Fallback offline trips
+    const offlineTrips = getOfflineAllTrips(selectedDate, selectedRouteId === 'all' ? undefined : selectedRouteId);
+    setAllSchedules(offlineTrips);
+    setLoading(false);
+  }, [API_URL, isOffline, selectedDate, selectedRouteId, token]);
+
+  // Load personnel directory
+  useEffect(() => {
+    const p = getAllPersonnel();
+    setPersonnel(p);
+    if (p.drivers.length > 0) setNewDriverPhone(p.drivers[0].phone);
+    if (p.supervisors.length > 0) setNewSupervisorPhone(p.supervisors[0].phone);
+  }, []);
+
+  useEffect(() => {
+    loadSchedules();
+  }, [loadSchedules]);
+
+  // Filtered schedules
+  const filteredTrips = useMemo(() => {
+    return allSchedules.filter(t => {
+      if (selectedShift !== 'all' && t.timeSlot !== selectedShift) return false;
+      return true;
+    });
+  }, [allSchedules, selectedShift]);
+
+  // Stats
+  const stats = useMemo(() => {
+    const total = filteredTrips.length;
+    const totalCap = filteredTrips.reduce((acc, t) => acc + (t.totalSeats || 50), 0);
+    const booked = filteredTrips.reduce((acc, t) => acc + (t.bookedSeats || 0), 0);
+    const driversCount = new Set(filteredTrips.map(t => t.driver?.phone).filter(Boolean)).size;
+    return { total, totalCap, booked, driversCount };
+  }, [filteredTrips]);
+
+  // Show notification banner
+  const triggerNotice = (type: 'success' | 'error', message: string) => {
+    setNotification({ type, message });
+    setTimeout(() => setNotification(null), 4000);
+  };
+
+  // Handle create new shift/trip
+  const handleCreateTrip = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const driver = personnel.drivers.find(d => d.phone === newDriverPhone) || null;
+    const supervisor = personnel.supervisors.find(s => s.phone === newSupervisorPhone);
+    const supervisors = supervisor ? [supervisor] : [];
+    const matchedRoute = routes.find(r => r.id === newRouteId);
+
+    const newTripObj: Trip = {
+      id: Date.now(),
+      routeId: newRouteId,
+      tripDate: newTripDate,
+      direction: newDirection,
+      timeSlot: newTimeSlot,
+      priceEgp: newPrice,
+      departureTime: newDepartureTime,
+      status: 'scheduled',
+      totalSeats: newTotalSeats,
+      bookedSeats: 0,
+      bus: {
+        name: `${matchedRoute?.nameEn || 'Line'}/${newDirection === 'to_campus' ? 'Arrival' : 'Return'}`,
+        licensePlate: `أ ب ج ${100 + newRouteId}`,
+        totalSeats: newTotalSeats,
+      },
+      route: matchedRoute,
+      driver,
+      supervisors,
+    };
+
+    if (!isOffline) {
+      try {
+        const res = await fetch(`${API_URL}/api/admin/trips`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({
+            routeId: newRouteId,
+            driverId: driver ? driver.phone : null,
+            tripDate: newTripDate,
+            departureTime: new Date(`${newTripDate} ${newDepartureTime}`).toISOString(),
+            direction: newDirection,
+            timeSlot: newTimeSlot,
+            totalSeats: newTotalSeats,
+            priceEgp: newPrice,
+          }),
+        });
+        if (res.ok) {
+          triggerNotice('success', `Shift created successfully for ${newTripDate}!`);
+          setShowCreateModal(false);
+          loadSchedules();
+          return;
+        }
+      } catch {}
+    }
+
+    // Save offline
+    const custom = getCustomOfflineTrips();
+    saveCustomOfflineTrips([...custom, newTripObj]);
+    addMockAuditLog('TRIP_CREATED', `Created new shift for ${newTripDate} (${matchedRoute?.nameEn})`);
+    triggerNotice('success', `Shift created successfully for ${newTripDate}!`);
+    setShowCreateModal(false);
+    loadSchedules();
+  };
+
+  // Handle clone schedule
+  const handleCloneSchedule = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!cloneSourceDate || !cloneTargetDate) return;
+    if (cloneSourceDate === cloneTargetDate) {
+      triggerNotice('error', 'Source and target dates must be different.');
+      return;
+    }
+
+    if (!isOffline) {
+      try {
+        const res = await fetch(`${API_URL}/api/admin/schedules/clone`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({
+            sourceDate: cloneSourceDate,
+            targetDate: cloneTargetDate,
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          triggerNotice('success', `Successfully cloned ${data.clonedCount} shifts to ${cloneTargetDate}!`);
+          setShowCloneModal(false);
+          setSelectedDate(cloneTargetDate);
+          loadSchedules();
+          return;
+        }
+      } catch {}
+    }
+
+    // Offline clone
+    const result = cloneOfflineSchedule(cloneSourceDate, cloneTargetDate);
+    if (result.success) {
+      triggerNotice('success', `Successfully cloned ${result.count} shifts to ${cloneTargetDate}!`);
+      setShowCloneModal(false);
+      setSelectedDate(cloneTargetDate);
+      loadSchedules();
+    } else {
+      triggerNotice('error', `No shifts found on source date ${cloneSourceDate}`);
+    }
+  };
+
+  // Handle delete trip
+  const handleDeleteTrip = async (tripId: number) => {
+    if (!confirm('Are you sure you want to remove this trip from the schedule?')) return;
+
+    if (!isOffline) {
+      try {
+        const res = await fetch(`${API_URL}/api/admin/trips/${tripId}`, {
+          method: 'DELETE',
+          headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+        });
+        if (res.ok) {
+          triggerNotice('success', 'Trip removed successfully.');
+          loadSchedules();
+          return;
+        }
+      } catch {}
+    }
+
+    // Offline delete
+    const custom = getCustomOfflineTrips();
+    saveCustomOfflineTrips(custom.filter(t => t.id !== tripId));
+    setAllSchedules(prev => prev.filter(t => t.id !== tripId));
+    addMockAuditLog('TRIP_REMOVED', `Admin deleted trip ID #${tripId}`);
+    triggerNotice('success', 'Trip removed from schedule.');
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Top Notification */}
+      {notification && (
+        <div className={`p-4 rounded-xl flex items-center gap-3 text-sm font-semibold transition-all ${notification.type === 'success' ? 'bg-emerald-50 text-emerald-900 border border-emerald-200' : 'bg-rose-50 text-rose-900 border border-rose-200'}`}>
+          <span className="material-symbols-outlined text-lg">{notification.type === 'success' ? 'check_circle' : 'error'}</span>
+          <span>{notification.message}</span>
+        </div>
+      )}
+
+      {/* Control Header & Stats */}
+      <div className="bg-surface-container border border-border-whisper rounded-xl p-5 shadow-[0_2px_8px_-2px_rgba(15,23,42,0.05)] flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2">
+            <h2 className="text-xl font-bold text-text-primary">Shift & Schedule Hub</h2>
+            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-primary-container/15 text-primary-container">
+              {isOffline ? 'Offline Sync' : 'Live Connected'}
+            </span>
+          </div>
+          <p className="text-xs text-text-secondary mt-1">
+            Create, manage, and duplicate operational bus schedules bit-by-bit across dates.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <button
+            onClick={() => setShowCloneModal(true)}
+            className="px-3.5 py-2 rounded-xl bg-surface-container-high hover:bg-surface-container-highest border border-border-whisper text-text-primary font-bold text-xs flex items-center gap-2 transition-all shadow-sm"
+            title="Duplicate an entire date's roster to another day"
+          >
+            <span className="material-symbols-outlined text-base text-primary-container">content_copy</span>
+            <span>Reuse Old Schedule</span>
+          </button>
+
+          <button
+            onClick={() => {
+              setNewTripDate(selectedDate);
+              setShowCreateModal(true);
+            }}
+            className="px-4 py-2 rounded-xl bg-primary-container text-on-primary-container hover:opacity-90 font-bold text-xs flex items-center gap-2 transition-all shadow-sm"
+          >
+            <span className="material-symbols-outlined text-base">add</span>
+            <span>Create Shift</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Stats Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="bg-surface-container border border-border-whisper p-4 rounded-xl">
+          <p className="text-[11px] font-bold text-text-secondary uppercase tracking-wider">Shifts Listed</p>
+          <p className="text-2xl font-black text-text-primary mt-1">{stats.total}</p>
+          <p className="text-[10px] text-text-secondary mt-0.5">On {selectedDate}</p>
+        </div>
+        <div className="bg-surface-container border border-border-whisper p-4 rounded-xl">
+          <p className="text-[11px] font-bold text-text-secondary uppercase tracking-wider">Total Seats</p>
+          <p className="text-2xl font-black text-primary-container mt-1">{stats.totalCap}</p>
+          <p className="text-[10px] text-text-secondary mt-0.5">Campus fleet capacity</p>
+        </div>
+        <div className="bg-surface-container border border-border-whisper p-4 rounded-xl">
+          <p className="text-[11px] font-bold text-text-secondary uppercase tracking-wider">Reserved Seats</p>
+          <p className="text-2xl font-black text-success-galala mt-1">{stats.booked}</p>
+          <p className="text-[10px] text-text-secondary mt-0.5">{stats.totalCap > 0 ? Math.round((stats.booked / stats.totalCap) * 100) : 0}% occupancy</p>
+        </div>
+        <div className="bg-surface-container border border-border-whisper p-4 rounded-xl">
+          <p className="text-[11px] font-bold text-text-secondary uppercase tracking-wider">Assigned Drivers</p>
+          <p className="text-2xl font-black text-text-primary mt-1">{stats.driversCount}</p>
+          <p className="text-[10px] text-text-secondary mt-0.5">On active routes</p>
+        </div>
+      </div>
+
+      {/* Date & Filter Toolbar */}
+      <div className="bg-surface-container border border-border-whisper rounded-xl p-4 space-y-4">
+        {/* Date Selector */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <label className="text-xs font-bold text-text-primary flex items-center gap-1.5">
+              <span className="material-symbols-outlined text-sm text-primary-container">calendar_month</span>
+              Select Operational Date / التاريخ التشغيلي:
+            </label>
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              className="text-xs px-2.5 py-1 rounded-lg bg-surface-container-low border border-border-whisper text-text-primary font-mono focus:outline-none focus:ring-1 focus:ring-primary-container"
+            />
+          </div>
+
+          <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-thin">
+            {JUNE_DATES.map(date => {
+              const isSelected = selectedDate === date;
+              const dayNum = date.split('-')[2];
+              return (
+                <button
+                  key={date}
+                  onClick={() => setSelectedDate(date)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 ${isSelected ? 'bg-primary-container text-on-primary-container shadow-sm' : 'bg-surface-container-low text-text-secondary hover:text-text-primary border border-border-whisper'}`}
+                >
+                  <span>{dayNum} June</span>
+                  {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping"></span>}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Shift Filter Pills */}
+        <div className="pt-3 border-t border-border-whisper">
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin">
+            {SHIFT_OPTIONS.map(opt => {
+              const isSelected = selectedShift === opt.id;
+              return (
+                <button
+                  key={opt.id}
+                  onClick={() => setSelectedShift(opt.id)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold shrink-0 transition-all ${isSelected ? 'bg-primary-container text-on-primary-container shadow-sm' : 'bg-surface-container-low text-text-secondary hover:text-text-primary border border-border-whisper'}`}
+                >
+                  <span>{opt.labelEn}</span>
+                  <span className="text-[10px] opacity-75 ml-1 font-arabic">({opt.labelAr})</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Route Filter Dropdown */}
+        <div className="flex items-center gap-3 pt-2">
+          <span className="text-xs text-text-secondary font-medium">Filter Line:</span>
+          <select
+            value={selectedRouteId}
+            onChange={(e) => setSelectedRouteId(e.target.value === 'all' ? 'all' : parseInt(e.target.value))}
+            className="text-xs px-3 py-1.5 rounded-lg bg-surface-container-low border border-border-whisper text-text-primary focus:outline-none focus:ring-1 focus:ring-primary-container font-medium"
+          >
+            <option value="all">All Lines (بورتوفيق، نبي الله، السلام...)</option>
+            {routes.map(r => (
+              <option key={r.id} value={r.id}>{r.nameEn} — {r.nameAr}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {/* Trips List / Bit-by-Bit View */}
+      <div>
+        <div className="flex items-center justify-between mb-3 px-1">
+          <h3 className="font-bold text-sm text-text-primary">
+            Scheduled Shifts ({filteredTrips.length})
+          </h3>
+          {loading && <span className="text-xs text-text-secondary animate-pulse">Loading live roster...</span>}
+        </div>
+
+        {filteredTrips.length === 0 ? (
+          <div className="bg-surface-container border border-dashed border-border-whisper rounded-xl p-12 text-center space-y-3">
+            <span className="material-symbols-outlined text-4xl text-outline">event_busy</span>
+            <h4 className="font-bold text-base text-text-primary">No shifts scheduled for this filter</h4>
+            <p className="text-xs text-text-secondary max-w-md mx-auto">
+              No bus trips found for {selectedDate}. You can create a new shift or reuse a complete schedule from a previous date.
+            </p>
+            <div className="flex justify-center gap-3 pt-2">
+              <button
+                onClick={() => setShowCloneModal(true)}
+                className="px-4 py-2 bg-surface-container-high hover:bg-surface-container-highest border border-border-whisper rounded-lg text-xs font-bold text-text-primary"
+              >
+                Reuse June 4 Schedule
+              </button>
+              <button
+                onClick={() => {
+                  setNewTripDate(selectedDate);
+                  setShowCreateModal(true);
+                }}
+                className="px-4 py-2 bg-primary-container text-on-primary-container rounded-lg text-xs font-bold hover:opacity-90"
+              >
+                Create Shift
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filteredTrips.map(trip => {
+              const booked = trip.bookedSeats || 0;
+              const total = trip.totalSeats || trip.bus.totalSeats || 50;
+              const percent = Math.min(100, Math.round((booked / total) * 100));
+
+              return (
+                <div
+                  key={trip.id}
+                  className="bg-surface-container border border-border-whisper rounded-xl p-4 shadow-[0_2px_8px_-2px_rgba(15,23,42,0.05)] hover:border-primary-container/40 transition-all flex flex-col justify-between space-y-3"
+                >
+                  {/* Top line badge */}
+                  <div>
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${trip.direction === 'to_campus' ? 'bg-primary-container/10 text-primary-container' : 'bg-secondary-fixed/30 text-amber-800'}`}>
+                          {trip.direction === 'to_campus' ? 'To University / ذهاب' : 'Return Home / عودة'}
+                        </span>
+                        <h4 className="font-bold text-sm text-text-primary mt-1.5 font-arabic">
+                          {trip.route?.nameAr || trip.bus.name.split('/')[0]}
+                        </h4>
+                        <p className="text-[11px] text-text-secondary">{trip.route?.nameEn || 'Galala Route'}</p>
+                      </div>
+
+                      <div className="text-right">
+                        <span className="font-mono font-bold text-xs text-text-primary block">{trip.departureTime}</span>
+                        <span className="text-[10px] text-text-secondary uppercase">{trip.timeSlot}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Driver & Supervisor Contact Card */}
+                  <div className="bg-surface-container-low rounded-lg p-2.5 border border-border-whisper space-y-1.5 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="text-text-secondary text-[11px] flex items-center gap-1">
+                        <span className="material-symbols-outlined text-xs text-primary-container">airline_seat_recline_normal</span>
+                        Driver:
+                      </span>
+                      {trip.driver ? (
+                        <a
+                          href={`tel:${trip.driver.phone}`}
+                          className="font-bold text-primary-container hover:underline flex items-center gap-1 font-arabic"
+                          title="Call driver"
+                        >
+                          <span>{trip.driver.nameAr}</span>
+                          <span className="text-[10px] font-mono">({trip.driver.phone})</span>
+                        </a>
+                      ) : (
+                        <span className="text-text-secondary italic">Not assigned</span>
+                      )}
+                    </div>
+
+                    {trip.supervisors && trip.supervisors.length > 0 && (
+                      <div className="flex items-center justify-between pt-1 border-t border-border-whisper/50">
+                        <span className="text-text-secondary text-[11px] flex items-center gap-1">
+                          <span className="material-symbols-outlined text-xs text-amber-600">badge</span>
+                          Supervisor:
+                        </span>
+                        <a
+                          href={`tel:${trip.supervisors[0].phone}`}
+                          className="font-bold text-amber-700 hover:underline flex items-center gap-1 font-arabic truncate max-w-[170px]"
+                          title="Call line supervisor"
+                        >
+                          <span>{trip.supervisors[0].nameAr}</span>
+                          <span className="text-[10px] font-mono">({trip.supervisors[0].phone})</span>
+                        </a>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Seat occupancy bar */}
+                  <div>
+                    <div className="flex items-center justify-between text-[11px] mb-1">
+                      <span className="text-text-secondary font-medium">Occupancy</span>
+                      <span className="font-mono font-bold text-text-primary">{booked} / {total} seats ({percent}%)</span>
+                    </div>
+                    <div className="w-full h-2 bg-surface-container-high rounded-full overflow-hidden">
+                      <div
+                        className={`h-full transition-all ${percent > 85 ? 'bg-destructive-asu' : percent > 50 ? 'bg-amber-500' : 'bg-primary-container'}`}
+                        style={{ width: `${percent}%` }}
+                      ></div>
+                    </div>
+                  </div>
+
+                  {/* Footer actions */}
+                  <div className="pt-2 border-t border-border-whisper flex items-center justify-between">
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${trip.status === 'scheduled' ? 'bg-emerald-50 text-emerald-800' : trip.status === 'cancelled' ? 'bg-rose-50 text-rose-800' : 'bg-surface-variant text-text-secondary'}`}>
+                      {trip.status}
+                    </span>
+
+                    <button
+                      onClick={() => handleDeleteTrip(trip.id)}
+                      className="p-1.5 rounded-lg text-text-secondary hover:text-destructive-asu hover:bg-destructive-asu/10 transition-colors"
+                      title="Delete / Cancel shift"
+                    >
+                      <span className="material-symbols-outlined text-base">delete</span>
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* --- CREATE SHIFT MODAL --- */}
+      {showCreateModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-surface-container border border-border-whisper rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+            <div className="p-5 border-b border-border-whisper bg-surface-container-low flex justify-between items-center">
+              <div>
+                <h3 className="font-bold text-base text-text-primary">Create New Shift / إضافة رحلة</h3>
+                <p className="text-xs text-text-secondary">Configure bus route, timing, and assign personnel.</p>
+              </div>
+              <button onClick={() => setShowCreateModal(false)} className="p-1 rounded-lg hover:bg-surface-container text-text-secondary">
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateTrip} className="p-5 space-y-4 text-xs">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-bold text-text-primary block mb-1">Route / الخط</label>
+                  <select
+                    value={newRouteId}
+                    onChange={(e) => setNewRouteId(parseInt(e.target.value))}
+                    className="w-full px-3 py-2 rounded-lg bg-surface-container-low border border-border-whisper text-text-primary font-medium focus:ring-1 focus:ring-primary-container"
+                  >
+                    {routes.map(r => (
+                      <option key={r.id} value={r.id}>{r.nameAr} ({r.nameEn})</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="font-bold text-text-primary block mb-1">Date / التاريخ</label>
+                  <input
+                    type="date"
+                    value={newTripDate}
+                    onChange={(e) => setNewTripDate(e.target.value)}
+                    required
+                    className="w-full px-3 py-2 rounded-lg bg-surface-container-low border border-border-whisper text-text-primary font-mono focus:ring-1 focus:ring-primary-container"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-bold text-text-primary block mb-1">Direction / الاتجاه</label>
+                  <select
+                    value={newDirection}
+                    onChange={(e) => setNewDirection(e.target.value as Direction)}
+                    className="w-full px-3 py-2 rounded-lg bg-surface-container-low border border-border-whisper text-text-primary font-medium focus:ring-1 focus:ring-primary-container"
+                  >
+                    <option value="to_campus">To Campus (ذهاب للجامعة)</option>
+                    <option value="from_campus">From Campus (عودة للمنزل)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="font-bold text-text-primary block mb-1">Shift / الشفت</label>
+                  <select
+                    value={newTimeSlot}
+                    onChange={(e) => setNewTimeSlot(e.target.value as TimeSlot)}
+                    className="w-full px-3 py-2 rounded-lg bg-surface-container-low border border-border-whisper text-text-primary font-medium focus:ring-1 focus:ring-primary-container"
+                  >
+                    <option value="morning_1">Morning 1 (09:00 AM Arrival)</option>
+                    <option value="morning_2">Morning 2 (11:30 AM Arrival)</option>
+                    <option value="return_1">Return 1 (12:30 PM)</option>
+                    <option value="return_2">Return 2 (02:30 PM)</option>
+                    <option value="return_3">Return 3 (05:30 PM)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-bold text-text-primary block mb-1">Departure Time / وقت التحرك</label>
+                  <input
+                    type="text"
+                    value={newDepartureTime}
+                    onChange={(e) => setNewDepartureTime(e.target.value)}
+                    placeholder="e.g. 07:00 AM"
+                    required
+                    className="w-full px-3 py-2 rounded-lg bg-surface-container-low border border-border-whisper text-text-primary font-mono focus:ring-1 focus:ring-primary-container"
+                  />
+                </div>
+
+                <div>
+                  <label className="font-bold text-text-primary block mb-1">Seats / عدد المقاعد</label>
+                  <input
+                    type="number"
+                    value={newTotalSeats}
+                    onChange={(e) => setNewTotalSeats(parseInt(e.target.value))}
+                    min={1}
+                    max={100}
+                    className="w-full px-3 py-2 rounded-lg bg-surface-container-low border border-border-whisper text-text-primary font-mono focus:ring-1 focus:ring-primary-container"
+                  />
+                </div>
+              </div>
+
+              {/* Assign Driver */}
+              <div>
+                <label className="font-bold text-text-primary block mb-1">Assign Driver / تعيين السائق</label>
+                <select
+                  value={newDriverPhone}
+                  onChange={(e) => setNewDriverPhone(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg bg-surface-container-low border border-border-whisper text-text-primary font-arabic font-medium focus:ring-1 focus:ring-primary-container"
+                >
+                  <option value="">No Driver Assigned</option>
+                  {personnel.drivers.map(d => (
+                    <option key={d.phone} value={d.phone}>
+                      {d.nameAr} ({d.nameEn}) — {d.phone}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Assign Line Supervisor */}
+              <div>
+                <label className="font-bold text-text-primary block mb-1">Assign Line Supervisor / مرافق الخط</label>
+                <select
+                  value={newSupervisorPhone}
+                  onChange={(e) => setNewSupervisorPhone(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg bg-surface-container-low border border-border-whisper text-text-primary font-arabic font-medium focus:ring-1 focus:ring-primary-container"
+                >
+                  <option value="">No Supervisor Assigned</option>
+                  {personnel.supervisors.map(s => (
+                    <option key={s.phone} value={s.phone}>
+                      {s.nameAr} ({s.nameEn}) — {s.phone}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="p-4 bg-surface-container-low rounded-xl border border-border-whisper flex justify-end gap-2 pt-3">
+                <button
+                  type="button"
+                  onClick={() => setShowCreateModal(false)}
+                  className="px-4 py-2 rounded-lg text-text-secondary hover:bg-surface-container font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-lg bg-primary-container text-on-primary-container font-bold hover:opacity-90 shadow-sm"
+                >
+                  Confirm & Schedule Shift
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* --- REUSE / CLONE OLD SCHEDULE MODAL --- */}
+      {showCloneModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-surface-container border border-border-whisper rounded-2xl w-full max-w-md overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+            <div className="p-5 border-b border-border-whisper bg-surface-container-low flex justify-between items-center">
+              <div className="flex items-center gap-2.5">
+                <span className="material-symbols-outlined text-xl text-primary-container">content_copy</span>
+                <div>
+                  <h3 className="font-bold text-base text-text-primary">Reuse Old Schedule</h3>
+                  <p className="text-[11px] text-text-secondary">Duplicate all shifts and personnel to a new date.</p>
+                </div>
+              </div>
+              <button onClick={() => setShowCloneModal(false)} className="p-1 rounded-lg hover:bg-surface-container text-text-secondary">
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+
+            <form onSubmit={handleCloneSchedule} className="p-5 space-y-4 text-xs">
+              <div className="p-3.5 bg-primary-container/10 border border-primary-container/20 rounded-xl space-y-1 text-text-primary">
+                <p className="font-bold">⚡ 1-Click Operational Replication</p>
+                <p className="text-[11px] text-text-secondary leading-relaxed">
+                  This will copy all 5 shifts across all routes (Port Tawfik, Nabi Allah, El Salam) along with assigned drivers and line supervisors from the source date.
+                </p>
+              </div>
+
+              <div>
+                <label className="font-bold text-text-primary block mb-1">
+                  Source Date (Copy From) / تاريخ الجدول السابق
+                </label>
+                <input
+                  type="date"
+                  value={cloneSourceDate}
+                  onChange={(e) => setCloneSourceDate(e.target.value)}
+                  required
+                  className="w-full px-3 py-2 rounded-lg bg-surface-container-low border border-border-whisper text-text-primary font-mono focus:ring-1 focus:ring-primary-container"
+                />
+              </div>
+
+              <div>
+                <label className="font-bold text-text-primary block mb-1">
+                  Target Date (Deploy To) / التاريخ الجديد
+                </label>
+                <input
+                  type="date"
+                  value={cloneTargetDate}
+                  onChange={(e) => setCloneTargetDate(e.target.value)}
+                  required
+                  className="w-full px-3 py-2 rounded-lg bg-surface-container-low border border-border-whisper text-text-primary font-mono focus:ring-1 focus:ring-primary-container"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-border-whisper">
+                <button
+                  type="button"
+                  onClick={() => setShowCloneModal(false)}
+                  className="px-4 py-2 rounded-lg text-text-secondary hover:bg-surface-container font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-lg bg-primary-container text-on-primary-container font-bold hover:opacity-90 shadow-sm flex items-center gap-1.5"
+                >
+                  <span className="material-symbols-outlined text-base">file_copy</span>
+                  <span>Duplicate & Deploy Roster</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

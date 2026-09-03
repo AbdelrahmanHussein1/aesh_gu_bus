@@ -22,6 +22,13 @@
       "when": 1782509583810,
       "tag": "0002_sparkling_misty_knight",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1788465453939,
+      "tag": "0003_ambitious_ma_gnuci",
+      "breakpoints": true
     }
   ]
 }

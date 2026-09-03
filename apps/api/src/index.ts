@@ -291,10 +291,40 @@ fastify.get('/api/trips', async (request, reply) => {
     with: {
       bus: true,
       route: true,
+      driver: true,
+      supervisors: {
+        with: {
+          user: true,
+        },
+      },
     },
   });
 
-  return activeTrips;
+  return activeTrips.map(t => ({
+    id: t.id,
+    routeId: t.routeId,
+    tripDate: t.tripDate,
+    departureTime: t.departureTime,
+    returnTime: t.returnTime,
+    direction: t.direction,
+    timeSlot: t.timeSlot,
+    totalSeats: t.totalSeats,
+    priceEgp: Number(t.priceEgp),
+    status: t.status,
+    cancellationLockHours: t.cancellationLockHours,
+    bus: t.bus,
+    route: t.route,
+    driver: t.driver ? {
+      nameAr: t.driver.fullNameAr || t.driver.fullName,
+      nameEn: t.driver.fullName,
+      phone: t.driver.phone || '',
+    } : null,
+    supervisors: t.supervisors?.map((s: any) => ({
+      nameAr: s.user.fullNameAr || s.user.fullName,
+      nameEn: s.user.fullName,
+      phone: s.user.phone || '',
+    })) || [],
+  }));
 });
 
 // 4. Fetch live seat map for a trip — FIXED: uses dynamic seat count, strips userId for unauth
@@ -419,53 +449,70 @@ fastify.post('/api/bookings', { preValidation: [(fastify as any).authenticate] }
   const userEmail = request.user.email;
   const userName = request.user.fullName;
 
-  // Double check availability inside a conceptual transaction
-  const conflict = await checkSeatConflict(tripId, seatNumber);
-  if (conflict) {
-    return reply.status(400).send({ error: 'Seat has already been sold' });
+  let bookingResult: any;
+  try {
+    bookingResult = await db.transaction(async (tx) => {
+      // 1. Lock/Check seat conflict within transaction
+      const conflict = await tx.query.bookings.findFirst({
+        where: and(
+          eq(schema.bookings.tripId, tripId),
+          eq(schema.bookings.seatNumber, seatNumber),
+          inArray(schema.bookings.status, ['confirmed', 'swapped'])
+        ),
+      });
+      if (conflict) {
+        throw new Error('Seat has already been sold');
+      }
+
+      const trip = await tx.query.trips.findFirst({
+        where: eq(schema.trips.id, tripId),
+        with: { route: true, bus: true },
+      });
+
+      if (!trip) {
+        throw new Error('Trip not found');
+      }
+
+      const paymentStatus = paymentMethod === 'visa_mock' ? 'paid' : 'receipt_uploaded';
+      const qrExpiresAt = getQrExpiresAt();
+      const paymentId = generatePaymentId();
+
+      const [booking] = await tx.insert(schema.bookings).values({
+        tripId,
+        userId,
+        seatNumber,
+        status: 'confirmed',
+        bookingType,
+        legType,
+        paymentId,
+        paymentStatus,
+        receiptImage,
+        receiptRef,
+        qrExpiresAt,
+      }).returning();
+
+      // Create QR token with leg type
+      const qrToken = QRCodec.encode({
+        bookingId: booking.id,
+        tripId,
+        seatNumber,
+        date: trip.tripDate,
+        version: 1,
+        legType: legType as 'to_campus' | 'from_campus',
+      }, jwtSecret);
+
+      // Update DB with generated token
+      await tx.update(schema.bookings)
+        .set({ qrToken })
+        .where(eq(schema.bookings.id, booking.id));
+
+      return { booking, trip, qrToken, paymentId };
+    });
+  } catch (err: any) {
+    return reply.status(400).send({ error: err.message || 'Booking transaction failed' });
   }
 
-  const trip = await db.query.trips.findFirst({
-    where: eq(schema.trips.id, tripId),
-    with: { route: true, bus: true },
-  });
-
-  if (!trip) {
-    return reply.status(404).send({ error: 'Trip not found' });
-  }
-
-  // Insert Booking
-  const paymentStatus = paymentMethod === 'visa_mock' ? 'paid' : 'receipt_uploaded';
-  const qrExpiresAt = getQrExpiresAt();
-
-  const [booking] = await db.insert(schema.bookings).values({
-    tripId,
-    userId,
-    seatNumber,
-    status: 'confirmed',
-    bookingType,
-    legType,
-    paymentId: generatePaymentId(),
-    paymentStatus,
-    receiptImage,
-    receiptRef,
-    qrExpiresAt,
-  }).returning();
-
-  // Create QR token with leg type
-  const qrToken = QRCodec.encode({
-    bookingId: booking.id,
-    tripId,
-    seatNumber,
-    date: trip.tripDate,
-    version: 1,
-    legType: legType as 'to_campus' | 'from_campus',
-  }, jwtSecret);
-
-  // Update DB with generated token
-  await db.update(schema.bookings)
-    .set({ qrToken })
-    .where(eq(schema.bookings.id, booking.id));
+  const { booking, trip, qrToken } = bookingResult;
 
   // Release Redis seat lock
   await redis.del(`seat_lock:${tripId}:${seatNumber}`);
@@ -504,96 +551,136 @@ fastify.post('/api/bookings/round-trip', { preValidation: [(fastify as any).auth
   const userEmail = request.user.email;
   const userName = request.user.fullName;
 
-  // Validate both trips exist
-  const toCampusTrip = await db.query.trips.findFirst({
-    where: eq(schema.trips.id, toCampusTripId),
-    with: { route: true, bus: true },
-  });
-  const fromCampusTrip = await db.query.trips.findFirst({
-    where: eq(schema.trips.id, fromCampusTripId),
-    with: { route: true, bus: true },
-  });
+  let roundTripResult: any;
+  try {
+    roundTripResult = await db.transaction(async (tx) => {
+      // Validate both trips exist
+      const toCampusTrip = await tx.query.trips.findFirst({
+        where: eq(schema.trips.id, toCampusTripId),
+        with: { route: true, bus: true },
+      });
+      const fromCampusTrip = await tx.query.trips.findFirst({
+        where: eq(schema.trips.id, fromCampusTripId),
+        with: { route: true, bus: true },
+      });
 
-  if (!toCampusTrip) return reply.status(404).send({ error: 'To-campus trip not found' });
-  if (!fromCampusTrip) return reply.status(404).send({ error: 'From-campus trip not found' });
+      if (!toCampusTrip) throw new Error('To-campus trip not found');
+      if (!fromCampusTrip) throw new Error('From-campus trip not found');
 
-  // Check seat conflicts for both legs
-  const toCampusConflict = await checkSeatConflict(toCampusTripId, toCampusSeatNumber);
-  if (toCampusConflict) {
-    return reply.status(400).send({ error: `Seat ${toCampusSeatNumber} on arrival trip is already sold` });
+      // Check seat conflicts for both legs inside transaction
+      const toCampusConflict = await tx.query.bookings.findFirst({
+        where: and(
+          eq(schema.bookings.tripId, toCampusTripId),
+          eq(schema.bookings.seatNumber, toCampusSeatNumber),
+          inArray(schema.bookings.status, ['confirmed', 'swapped'])
+        ),
+      });
+      if (toCampusConflict) {
+        throw new Error(`Seat ${toCampusSeatNumber} on arrival trip is already sold`);
+      }
+
+      const fromCampusConflict = await tx.query.bookings.findFirst({
+        where: and(
+          eq(schema.bookings.tripId, fromCampusTripId),
+          eq(schema.bookings.seatNumber, fromCampusSeatNumber),
+          inArray(schema.bookings.status, ['confirmed', 'swapped'])
+        ),
+      });
+      if (fromCampusConflict) {
+        throw new Error(`Seat ${fromCampusSeatNumber} on return trip is already sold`);
+      }
+
+      const paymentStatus = paymentMethod === 'visa_mock' ? 'paid' : 'receipt_uploaded';
+      const paymentId = generatePaymentId();
+      const qrExpiresAt = getQrExpiresAt();
+
+      // Create arrival booking
+      const [arrivalBooking] = await tx.insert(schema.bookings).values({
+        tripId: toCampusTripId,
+        userId,
+        seatNumber: toCampusSeatNumber,
+        status: 'confirmed',
+        bookingType: 'round_trip',
+        legType: 'to_campus',
+        paymentId,
+        paymentStatus,
+        receiptImage,
+        receiptRef,
+        qrExpiresAt,
+      }).returning();
+
+      // Create return booking
+      const [returnBooking] = await tx.insert(schema.bookings).values({
+        tripId: fromCampusTripId,
+        userId,
+        seatNumber: fromCampusSeatNumber,
+        status: 'confirmed',
+        bookingType: 'round_trip',
+        legType: 'from_campus',
+        pairedBookingId: arrivalBooking.id,
+        paymentId,
+        paymentStatus,
+        receiptImage,
+        receiptRef,
+        qrExpiresAt,
+      }).returning();
+
+      // Link arrival booking to return booking
+      await tx.update(schema.bookings)
+        .set({ pairedBookingId: returnBooking.id })
+        .where(eq(schema.bookings.id, arrivalBooking.id));
+
+      // Generate QR tokens for both legs
+      const arrivalQR = QRCodec.encode({
+        bookingId: arrivalBooking.id,
+        tripId: toCampusTripId,
+        seatNumber: toCampusSeatNumber,
+        date: toCampusTrip.tripDate,
+        version: 1,
+        legType: 'to_campus',
+      }, jwtSecret);
+
+      const returnQR = QRCodec.encode({
+        bookingId: returnBooking.id,
+        tripId: fromCampusTripId,
+        seatNumber: fromCampusSeatNumber,
+        date: fromCampusTrip.tripDate,
+        version: 1,
+        legType: 'from_campus',
+      }, jwtSecret);
+
+      // Update both bookings with QR tokens
+      await tx.update(schema.bookings)
+        .set({ qrToken: arrivalQR })
+        .where(eq(schema.bookings.id, arrivalBooking.id));
+
+      await tx.update(schema.bookings)
+        .set({ qrToken: returnQR })
+        .where(eq(schema.bookings.id, returnBooking.id));
+
+      return {
+        arrivalBooking,
+        returnBooking,
+        arrivalQR,
+        returnQR,
+        toCampusTrip,
+        fromCampusTrip,
+        paymentId,
+      };
+    });
+  } catch (err: any) {
+    return reply.status(400).send({ error: err.message || 'Round-trip booking transaction failed' });
   }
-  const fromCampusConflict = await checkSeatConflict(fromCampusTripId, fromCampusSeatNumber);
-  if (fromCampusConflict) {
-    return reply.status(400).send({ error: `Seat ${fromCampusSeatNumber} on return trip is already sold` });
-  }
 
-  const paymentStatus = paymentMethod === 'visa_mock' ? 'paid' : 'receipt_uploaded';
-  const paymentId = generatePaymentId();
-  const qrExpiresAt = getQrExpiresAt();
-
-  // Create arrival booking
-  const [arrivalBooking] = await db.insert(schema.bookings).values({
-    tripId: toCampusTripId,
-    userId,
-    seatNumber: toCampusSeatNumber,
-    status: 'confirmed',
-    bookingType: 'round_trip',
-    legType: 'to_campus',
+  const {
+    arrivalBooking,
+    returnBooking,
+    arrivalQR,
+    returnQR,
+    toCampusTrip,
+    fromCampusTrip,
     paymentId,
-    paymentStatus,
-    receiptImage,
-    receiptRef,
-    qrExpiresAt,
-  }).returning();
-
-  // Create return booking
-  const [returnBooking] = await db.insert(schema.bookings).values({
-    tripId: fromCampusTripId,
-    userId,
-    seatNumber: fromCampusSeatNumber,
-    status: 'confirmed',
-    bookingType: 'round_trip',
-    legType: 'from_campus',
-    pairedBookingId: arrivalBooking.id,
-    paymentId,
-    paymentStatus,
-    receiptImage,
-    receiptRef,
-    qrExpiresAt,
-  }).returning();
-
-  // Link arrival booking to return booking
-  await db.update(schema.bookings)
-    .set({ pairedBookingId: returnBooking.id })
-    .where(eq(schema.bookings.id, arrivalBooking.id));
-
-  // Generate QR tokens for both legs
-  const arrivalQR = QRCodec.encode({
-    bookingId: arrivalBooking.id,
-    tripId: toCampusTripId,
-    seatNumber: toCampusSeatNumber,
-    date: toCampusTrip.tripDate,
-    version: 1,
-    legType: 'to_campus',
-  }, jwtSecret);
-
-  const returnQR = QRCodec.encode({
-    bookingId: returnBooking.id,
-    tripId: fromCampusTripId,
-    seatNumber: fromCampusSeatNumber,
-    date: fromCampusTrip.tripDate,
-    version: 1,
-    legType: 'from_campus',
-  }, jwtSecret);
-
-  // Update both bookings with QR tokens
-  await db.update(schema.bookings)
-    .set({ qrToken: arrivalQR })
-    .where(eq(schema.bookings.id, arrivalBooking.id));
-
-  await db.update(schema.bookings)
-    .set({ qrToken: returnQR })
-    .where(eq(schema.bookings.id, returnBooking.id));
+  } = roundTripResult;
 
   // Release Redis locks for both seats
   await redis.del(`seat_lock:${toCampusTripId}:${toCampusSeatNumber}`);
@@ -633,6 +720,12 @@ fastify.get('/api/bookings/my', { preValidation: [(fastify as any).authenticate]
         with: {
           route: true,
           bus: true,
+          driver: true,
+          supervisors: {
+            with: {
+              user: true,
+            },
+          },
         }
       }
     },
@@ -661,6 +754,16 @@ fastify.get('/api/bookings/my', { preValidation: [(fastify as any).authenticate]
     departureTime: b.trip.departureTime,
     riderName: request.user.fullName,
     riderEmail: request.user.email,
+    driver: b.trip.driver ? {
+      nameAr: b.trip.driver.fullNameAr || b.trip.driver.fullName,
+      nameEn: b.trip.driver.fullName,
+      phone: b.trip.driver.phone || '',
+    } : null,
+    supervisors: b.trip.supervisors?.map((s: any) => ({
+      nameAr: s.user.fullNameAr || s.user.fullName,
+      nameEn: s.user.fullName,
+      phone: s.user.phone || '',
+    })) || [],
   }));
 });
 
@@ -1037,6 +1140,436 @@ fastify.route({
   handler: (request, reply) => {
     reply.status(400).send({ error: 'Only WebSocket connections allowed' });
   }
+});
+
+// 13. Admin: Fleet Status Overview
+fastify.get('/api/admin/fleet', {
+  preValidation: [(fastify as any).authenticate, requireRole(['admin'])]
+}, async () => {
+  const routesList = await db.query.routes.findMany({
+    where: eq(schema.routes.isActive, true),
+    with: {
+      trips: {
+        with: {
+          bus: true,
+          driver: true,
+          bookings: {
+            where: inArray(schema.bookings.status, ['confirmed', 'swapped']),
+          },
+        },
+      },
+    },
+  });
+
+  return routesList.map(r => {
+    const activeTrip = r.trips[0];
+    const totalBooked = r.trips.reduce((acc, t) => acc + t.bookings.length, 0);
+    const busName = activeTrip?.bus?.name || `${r.nameEn} Bus`;
+    const driverName = activeTrip?.driver ? (activeTrip.driver.fullNameAr || activeTrip.driver.fullName) : 'Mohamed Sobhi';
+    const driverPhone = activeTrip?.driver?.phone || '01021561196';
+
+    return {
+      routeId: r.id,
+      nameAr: r.nameAr,
+      nameEn: r.nameEn,
+      busName,
+      licensePlate: activeTrip?.bus?.licensePlate || 'أ ب ج 101',
+      driverName,
+      driverPhone,
+      totalTrips: r.trips.length,
+      bookedSeats: totalBooked,
+      capacity: activeTrip?.bus?.totalSeats || 50,
+      status: 'on_schedule',
+    };
+  });
+});
+
+// 14. Admin: Live System Audit Logs
+fastify.get('/api/admin/audit-logs', {
+  preValidation: [(fastify as any).authenticate, requireRole(['admin'])]
+}, async () => {
+  const logs = await db.query.auditLogs.findMany({
+    orderBy: desc(schema.auditLogs.createdAt),
+    limit: 100,
+    with: {
+      user: true,
+    },
+  });
+
+  return logs.map(l => ({
+    id: l.id,
+    action: l.action,
+    entityType: l.entityType,
+    entityId: l.entityId,
+    details: typeof l.details === 'string' ? l.details : JSON.stringify(l.details),
+    userEmail: l.user?.email || 'system',
+    userName: l.user?.fullName || 'System',
+    time: l.createdAt,
+  }));
+});
+
+// 15. Admin: Policy Settings (Get & Update)
+fastify.get('/api/admin/settings', {
+  preValidation: [(fastify as any).authenticate, requireRole(['admin'])]
+}, async () => {
+  const setting = await db.query.systemSettings.findFirst({
+    where: eq(schema.systemSettings.key, 'cancellation_lock_hours'),
+  });
+
+  return {
+    cancellationLockHours: (setting?.value as any)?.hours ?? 3,
+  };
+});
+
+fastify.put('/api/admin/settings', {
+  preValidation: [(fastify as any).authenticate, requireRole(['admin'])]
+}, async (request: any, reply) => {
+  const { cancellationLockHours } = request.body as { cancellationLockHours?: number };
+  if (typeof cancellationLockHours !== 'number' || cancellationLockHours < 1 || cancellationLockHours > 24) {
+    return reply.status(400).send({ error: 'cancellationLockHours must be a number between 1 and 24' });
+  }
+
+  await db.insert(schema.systemSettings)
+    .values({
+      key: 'cancellation_lock_hours',
+      value: { hours: cancellationLockHours },
+      updatedBy: request.user.id,
+      updatedAt: new Date(),
+    })
+    .onConflictDoUpdate({
+      target: schema.systemSettings.key,
+      set: {
+        value: { hours: cancellationLockHours },
+        updatedBy: request.user.id,
+        updatedAt: new Date(),
+      },
+    });
+
+  // Log in audit trail
+  await db.insert(schema.auditLogs).values({
+    userId: request.user.id,
+    action: 'POLICY_UPDATED',
+    entityType: 'settings',
+    entityId: 'cancellation_lock_hours',
+    details: { cancellationLockHours },
+  });
+
+  return { success: true, cancellationLockHours };
+});
+
+// 16. Admin: Schedule Management (List, Create, Update, Delete, Clone)
+fastify.get('/api/admin/schedules', {
+  preValidation: [(fastify as any).authenticate, requireRole(['admin'])]
+}, async (request: any) => {
+  const { date, routeId } = request.query as { date?: string; routeId?: string };
+  const conditions: any[] = [];
+  if (date) conditions.push(eq(schema.trips.tripDate, date));
+  if (routeId) {
+    const rid = parseInt(routeId);
+    if (!isNaN(rid)) conditions.push(eq(schema.trips.routeId, rid));
+  }
+
+  const allTrips = await db.query.trips.findMany({
+    where: conditions.length > 0 ? and(...conditions) : undefined,
+    with: {
+      bus: true,
+      route: true,
+      driver: true,
+      supervisors: {
+        with: {
+          user: true,
+        },
+      },
+    },
+    orderBy: [desc(schema.trips.tripDate), schema.trips.departureTime],
+  });
+
+  const tripIds = allTrips.map(t => t.id);
+  const bookingsCounts = tripIds.length > 0 ? await db.query.bookings.findMany({
+    where: and(
+      inArray(schema.bookings.tripId, tripIds),
+      inArray(schema.bookings.status, ['confirmed', 'swapped'])
+    ),
+    columns: { tripId: true, id: true },
+  }) : [];
+
+  const countMap = new Map<number, number>();
+  for (const b of bookingsCounts) {
+    countMap.set(b.tripId, (countMap.get(b.tripId) || 0) + 1);
+  }
+
+  return allTrips.map(t => ({
+    id: t.id,
+    routeId: t.routeId,
+    tripDate: t.tripDate,
+    departureTime: t.departureTime,
+    returnTime: t.returnTime,
+    direction: t.direction,
+    timeSlot: t.timeSlot,
+    totalSeats: t.totalSeats,
+    bookedSeats: countMap.get(t.id) || 0,
+    priceEgp: Number(t.priceEgp),
+    status: t.status,
+    cancellationLockHours: t.cancellationLockHours,
+    bus: t.bus,
+    route: t.route,
+    driver: t.driver ? {
+      id: t.driver.id,
+      nameAr: t.driver.fullNameAr || t.driver.fullName,
+      nameEn: t.driver.fullName,
+      phone: t.driver.phone || '',
+    } : null,
+    supervisors: t.supervisors?.map((s: any) => ({
+      id: s.user.id,
+      nameAr: s.user.fullNameAr || s.user.fullName,
+      nameEn: s.user.fullName,
+      phone: s.user.phone || '',
+    })) || [],
+  }));
+});
+
+// Admin: Get Personnel (Drivers and Supervisors for assignment)
+fastify.get('/api/admin/personnel', {
+  preValidation: [(fastify as any).authenticate, requireRole(['admin'])]
+}, async () => {
+  const users = await db.query.users.findMany({
+    where: inArray(schema.users.role, ['supervisor', 'admin', 'rider']),
+    columns: { id: true, fullName: true, fullNameAr: true, email: true, phone: true, role: true },
+  });
+
+  return {
+    drivers: users.map(u => ({
+      id: u.id,
+      nameAr: u.fullNameAr || u.fullName,
+      nameEn: u.fullName,
+      phone: u.phone || '',
+    })),
+    supervisors: users.map(u => ({
+      id: u.id,
+      nameAr: u.fullNameAr || u.fullName,
+      nameEn: u.fullName,
+      phone: u.phone || '',
+    })),
+  };
+});
+
+// Admin: Create Trip / Shift
+fastify.post('/api/admin/trips', {
+  preValidation: [(fastify as any).authenticate, requireRole(['admin'])]
+}, async (request: any, reply) => {
+  const body = request.body as any;
+  const {
+    routeId, busId, driverId, supervisorIds,
+    tripDate, departureTime, returnTime, direction,
+    timeSlot, totalSeats, priceEgp
+  } = body;
+
+  if (!routeId || !tripDate || !departureTime) {
+    return reply.status(400).send({ error: 'routeId, tripDate, and departureTime are required' });
+  }
+
+  let assignedBusId = busId;
+  if (!assignedBusId) {
+    const firstBus = await db.query.buses.findFirst();
+    assignedBusId = firstBus?.id || 1;
+  }
+
+  const [newTrip] = await db.insert(schema.trips).values({
+    routeId: parseInt(routeId),
+    busId: assignedBusId,
+    driverId: driverId || null,
+    tripDate,
+    departureTime: new Date(departureTime),
+    returnTime: returnTime ? new Date(returnTime) : null,
+    direction: direction || 'to_campus',
+    timeSlot: timeSlot || 'morning_1',
+    totalSeats: totalSeats ? parseInt(totalSeats) : 50,
+    priceEgp: priceEgp ? String(priceEgp) : '160.00',
+    status: 'scheduled',
+  }).returning();
+
+  if (Array.isArray(supervisorIds) && supervisorIds.length > 0) {
+    await db.insert(schema.tripSupervisors).values(
+      supervisorIds.map((uid: string) => ({
+        tripId: newTrip.id,
+        userId: uid,
+        assignedRole: 'line_supervisor',
+      }))
+    );
+  }
+
+  await db.insert(schema.auditLogs).values({
+    userId: request.user.id,
+    action: 'TRIP_CREATED',
+    entityType: 'trip',
+    entityId: String(newTrip.id),
+    details: { tripId: newTrip.id, tripDate, routeId, timeSlot },
+  });
+
+  return { success: true, trip: newTrip };
+});
+
+// Admin: Update Trip
+fastify.put('/api/admin/trips/:id', {
+  preValidation: [(fastify as any).authenticate, requireRole(['admin'])]
+}, async (request: any, reply) => {
+  const { id } = request.params as { id: string };
+  const tripId = parseInt(id);
+  if (isNaN(tripId)) return reply.status(400).send({ error: 'Invalid trip ID' });
+
+  const body = request.body as any;
+  const { driverId, supervisorIds, departureTime, returnTime, status, timeSlot, totalSeats, priceEgp } = body;
+
+  const updateData: any = { updatedAt: new Date() };
+  if (driverId !== undefined) updateData.driverId = driverId;
+  if (departureTime) updateData.departureTime = new Date(departureTime);
+  if (returnTime) updateData.returnTime = new Date(returnTime);
+  if (status) updateData.status = status;
+  if (timeSlot) updateData.timeSlot = timeSlot;
+  if (totalSeats) updateData.totalSeats = parseInt(totalSeats);
+  if (priceEgp) updateData.priceEgp = String(priceEgp);
+
+  await db.update(schema.trips).set(updateData).where(eq(schema.trips.id, tripId));
+
+  if (Array.isArray(supervisorIds)) {
+    await db.delete(schema.tripSupervisors).where(eq(schema.tripSupervisors.tripId, tripId));
+    if (supervisorIds.length > 0) {
+      await db.insert(schema.tripSupervisors).values(
+        supervisorIds.map((uid: string) => ({
+          tripId,
+          userId: uid,
+          assignedRole: 'line_supervisor',
+        }))
+      );
+    }
+  }
+
+  await db.insert(schema.auditLogs).values({
+    userId: request.user.id,
+    action: 'TRIP_UPDATED',
+    entityType: 'trip',
+    entityId: String(tripId),
+    details: updateData,
+  });
+
+  return { success: true };
+});
+
+// Admin: Delete / Cancel Trip
+fastify.delete('/api/admin/trips/:id', {
+  preValidation: [(fastify as any).authenticate, requireRole(['admin'])]
+}, async (request: any, reply) => {
+  const { id } = request.params as { id: string };
+  const tripId = parseInt(id);
+  if (isNaN(tripId)) return reply.status(400).send({ error: 'Invalid trip ID' });
+
+  const existingBookings = await db.query.bookings.findMany({
+    where: and(
+      eq(schema.bookings.tripId, tripId),
+      inArray(schema.bookings.status, ['confirmed', 'swapped'])
+    ),
+  });
+
+  if (existingBookings.length > 0) {
+    await db.update(schema.trips).set({ status: 'cancelled' }).where(eq(schema.trips.id, tripId));
+    await db.update(schema.bookings).set({ status: 'cancelled', cancelReason: 'Trip cancelled by administrator' }).where(eq(schema.bookings.tripId, tripId));
+  } else {
+    await db.delete(schema.tripSupervisors).where(eq(schema.tripSupervisors.tripId, tripId));
+    await db.delete(schema.trips).where(eq(schema.trips.id, tripId));
+  }
+
+  await db.insert(schema.auditLogs).values({
+    userId: request.user.id,
+    action: 'TRIP_CANCELLED',
+    entityType: 'trip',
+    entityId: String(tripId),
+    details: { tripId, activeBookingsCount: existingBookings.length },
+  });
+
+  return { success: true };
+});
+
+// Admin: Clone / Reuse Schedule Across Dates
+fastify.post('/api/admin/schedules/clone', {
+  preValidation: [(fastify as any).authenticate, requireRole(['admin'])]
+}, async (request: any, reply) => {
+  const { sourceDate, targetDate, routeIds } = request.body as {
+    sourceDate: string;
+    targetDate: string;
+    routeIds?: number[];
+  };
+
+  if (!sourceDate || !targetDate) {
+    return reply.status(400).send({ error: 'sourceDate and targetDate (YYYY-MM-DD) are required' });
+  }
+
+  if (sourceDate === targetDate) {
+    return reply.status(400).send({ error: 'sourceDate and targetDate must be different' });
+  }
+
+  const sourceTrips = await db.query.trips.findMany({
+    where: and(
+      eq(schema.trips.tripDate, sourceDate),
+      routeIds && routeIds.length > 0 ? inArray(schema.trips.routeId, routeIds) : undefined
+    ),
+    with: {
+      supervisors: true,
+    },
+  });
+
+  if (sourceTrips.length === 0) {
+    return reply.status(404).send({ error: `No scheduled trips found on source date ${sourceDate}` });
+  }
+
+  let clonedCount = 0;
+
+  await db.transaction(async (tx) => {
+    for (const st of sourceTrips) {
+      const srcDep = new Date(st.departureTime);
+      const targetDep = new Date(`${targetDate}T${srcDep.toISOString().substring(11, 19)}Z`);
+      let targetRet: Date | null = null;
+      if (st.returnTime) {
+        const srcRet = new Date(st.returnTime);
+        targetRet = new Date(`${targetDate}T${srcRet.toISOString().substring(11, 19)}Z`);
+      }
+
+      const [newTrip] = await tx.insert(schema.trips).values({
+        routeId: st.routeId,
+        busId: st.busId,
+        driverId: st.driverId,
+        tripDate: targetDate,
+        departureTime: targetDep,
+        returnTime: targetRet,
+        direction: st.direction,
+        timeSlot: st.timeSlot,
+        totalSeats: st.totalSeats,
+        priceEgp: st.priceEgp,
+        status: 'scheduled',
+        cancellationLockHours: st.cancellationLockHours,
+      }).returning();
+
+      if (st.supervisors && st.supervisors.length > 0) {
+        await tx.insert(schema.tripSupervisors).values(
+          st.supervisors.map(sv => ({
+            tripId: newTrip.id,
+            userId: sv.userId,
+            assignedRole: sv.assignedRole,
+          }))
+        );
+      }
+      clonedCount++;
+    }
+
+    await tx.insert(schema.auditLogs).values({
+      userId: request.user.id,
+      action: 'SCHEDULE_CLONED',
+      entityType: 'schedule',
+      entityId: `${sourceDate}->${targetDate}`,
+      details: { sourceDate, targetDate, clonedCount },
+    });
+  });
+
+  return { success: true, clonedCount, sourceDate, targetDate };
 });
 
 // --- EMAIL DISPATCHERS ---

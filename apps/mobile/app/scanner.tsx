@@ -21,7 +21,7 @@ const API_URL = getApiUrl();
 
 export default function QRScanner() {
   const router = useRouter();
-  const { legType } = useLocalSearchParams();
+  const { legType, token: supervisorToken } = useLocalSearchParams<{ legType?: string; token?: string }>();
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
@@ -60,12 +60,16 @@ export default function QRScanner() {
 
     try {
       // 1. Try Live API verification first
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (supervisorToken) {
+        headers['Authorization'] = `Bearer ${supervisorToken}`;
+      }
+
       const response = await fetch(`${API_URL}/api/scan/verify`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          // In real deployment, include Supervisor auth token here
-        },
+        headers,
         body: JSON.stringify({ token: data, expectedLegType: legType }),
       });
 

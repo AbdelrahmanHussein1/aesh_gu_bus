@@ -68,6 +68,40 @@ function RoundTripCard({ group }: { group: GroupedBooking }) {
               )}
             </div>
           </div>
+          {/* Driver & Line Supervisor Contacts */}
+          {(arr.driver || (arr.supervisors && arr.supervisors.length > 0) || ret.driver || (ret.supervisors && ret.supervisors.length > 0)) && (
+            <div className="bg-surface-container-low border border-border-whisper rounded-lg p-3 text-xs space-y-2 text-left">
+              <div className="text-[10px] font-bold text-text-secondary uppercase tracking-wider flex items-center gap-1">
+                <span className="material-symbols-outlined text-sm text-primary-container">contact_phone</span>
+                <span>مسؤولو الرحلة / Trip Staff</span>
+              </div>
+              {arr.driver && (
+                <div className="flex items-center justify-between text-text-primary">
+                  <span className="flex items-center gap-1.5 font-medium">
+                    <span className="material-symbols-outlined text-sm text-text-secondary">directions_bus</span>
+                    <span>سائق الذهاب: {arr.driver.nameAr}</span>
+                  </span>
+                  <a href={`tel:${arr.driver.phone}`} className="inline-flex items-center gap-1 px-2 py-0.5 bg-primary-container/10 text-primary-container hover:bg-primary-container/20 rounded font-mono font-semibold text-[11px]">
+                    <span className="material-symbols-outlined text-[12px]">call</span>
+                    <span>{arr.driver.phone}</span>
+                  </a>
+                </div>
+              )}
+              {arr.supervisors && arr.supervisors.map((s, idx) => (
+                <div key={idx} className="flex items-center justify-between text-text-primary">
+                  <span className="flex items-center gap-1.5 font-medium">
+                    <span className="material-symbols-outlined text-sm text-text-secondary">badge</span>
+                    <span>المشرف: {s.nameAr}</span>
+                  </span>
+                  <a href={`tel:${s.phone}`} className="inline-flex items-center gap-1 px-2 py-0.5 bg-secondary-container/30 text-text-primary hover:bg-secondary-container/50 rounded font-mono font-semibold text-[11px]">
+                    <span className="material-symbols-outlined text-[12px]">call</span>
+                    <span>{s.phone}</span>
+                  </a>
+                </div>
+              ))}
+            </div>
+          )}
+
           <div className="text-center pt-2">
             <button onClick={() => handleCancelBooking(arr.id)} className="text-[10px] text-destructive-alt hover:underline font-semibold">Cancel Sibling Bookings</button>
           </div>
@@ -116,6 +150,41 @@ function OneWayCard({ group }: { group: GroupedBooking }) {
               <button onClick={() => { setScanInputToken(b.qrToken); alert('Token copied to scanner!'); }} className="text-[9px] text-primary-container hover:underline">Simulate Scan</button>
             </div>
           )}
+
+          {/* Driver & Line Supervisor Contacts */}
+          {(b.driver || (b.supervisors && b.supervisors.length > 0)) && (
+            <div className="bg-surface-container-low border border-border-whisper rounded-lg p-3 text-xs space-y-2 text-left">
+              <div className="text-[10px] font-bold text-text-secondary uppercase tracking-wider flex items-center gap-1">
+                <span className="material-symbols-outlined text-sm text-primary-container">contact_phone</span>
+                <span>مسؤولو الرحلة / Trip Staff</span>
+              </div>
+              {b.driver && (
+                <div className="flex items-center justify-between text-text-primary">
+                  <span className="flex items-center gap-1.5 font-medium">
+                    <span className="material-symbols-outlined text-sm text-text-secondary">directions_bus</span>
+                    <span>السائق: {b.driver.nameAr}</span>
+                  </span>
+                  <a href={`tel:${b.driver.phone}`} className="inline-flex items-center gap-1 px-2 py-0.5 bg-primary-container/10 text-primary-container hover:bg-primary-container/20 rounded font-mono font-semibold text-[11px]">
+                    <span className="material-symbols-outlined text-[12px]">call</span>
+                    <span>{b.driver.phone}</span>
+                  </a>
+                </div>
+              )}
+              {b.supervisors && b.supervisors.map((s, idx) => (
+                <div key={idx} className="flex items-center justify-between text-text-primary">
+                  <span className="flex items-center gap-1.5 font-medium">
+                    <span className="material-symbols-outlined text-sm text-text-secondary">badge</span>
+                    <span>المشرف: {s.nameAr}</span>
+                  </span>
+                  <a href={`tel:${s.phone}`} className="inline-flex items-center gap-1 px-2 py-0.5 bg-secondary-container/30 text-text-primary hover:bg-secondary-container/50 rounded font-mono font-semibold text-[11px]">
+                    <span className="material-symbols-outlined text-[12px]">call</span>
+                    <span>{s.phone}</span>
+                  </a>
+                </div>
+              ))}
+            </div>
+          )}
+
           {!isBoarded && (
             <div className="text-center pt-2">
               <button onClick={() => handleCancelBooking(b.id)} className="text-[10px] text-destructive-alt hover:underline">Cancel Seat</button>

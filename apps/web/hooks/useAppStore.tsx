@@ -3,7 +3,6 @@ import { createContext, useContext, useState, useEffect, useCallback, type React
 import type { Route, Trip, Seat, Booking, AuditLog, GroupedBooking, ManifestEntry, BookingType, Direction, TimeSlot, PaymentMethod, Role, User } from '@/lib/types';
 import { getMockRoutes, generateMockTrips, generateMockSeats, generateRoundTripSeats, generateMockManifest, generateOfflineBooking, addMockAuditLog, getAuditLogs } from '@/lib/offline';
 import { API_URL } from '@/lib/api';
-import confetti from 'canvas-confetti';
 
 interface AppState {
   token: string;
@@ -20,6 +19,7 @@ interface AppState {
   activeReturnTrip: Trip | null;
   bookingType: BookingType;
   timeSlot: TimeSlot;
+  returnTimeSlot: TimeSlot;
   seats: Seat[];
   selectedSeat: number | null;
   heldExpiresAt: number | null;
@@ -60,6 +60,7 @@ interface AppActions {
   setSelectedDate: (d: string) => void;
   setBookingType: (t: BookingType) => void;
   setTimeSlot: (s: TimeSlot) => void;
+  setReturnTimeSlot: (s: TimeSlot) => void;
   setActiveTrip: (t: Trip | null) => void;
   setActiveArrivalTrip: (t: Trip | null) => void;
   setActiveReturnTrip: (t: Trip | null) => void;
@@ -91,6 +92,7 @@ interface AppActions {
   getGroupedBookings: () => GroupedBooking[];
   toggleSidebar: () => void;
   setMobileSidebarOpen: (v: boolean) => void;
+  setIsOffline: (v: boolean) => void;
 }
 
 const AppContext = createContext<(AppState & AppActions) | null>(null);
@@ -107,15 +109,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [role, setRole] = useState<Role>('rider');
   const [isOffline, setIsOffline] = useState(true);
   const [routes, setRoutes] = useState<Route[]>([]);
-  const [selectedRouteId, setSelectedRouteId] = useState(1);
+  const [selectedRouteId, setSelectedRouteId] = useState(29);
   const [selectedDirection, setSelectedDirection] = useState<Direction>('to_campus');
-  const [selectedDate, setSelectedDate] = useState('2026-06-27');
+  const [selectedDate, setSelectedDate] = useState('2026-06-04');
   const [trips, setTrips] = useState<Trip[]>([]);
   const [activeTrip, setActiveTrip] = useState<Trip | null>(null);
   const [activeArrivalTrip, setActiveArrivalTrip] = useState<Trip | null>(null);
   const [activeReturnTrip, setActiveReturnTrip] = useState<Trip | null>(null);
   const [bookingType, setBookingType] = useState<BookingType>('to_campus');
   const [timeSlot, setTimeSlot] = useState<TimeSlot>('morning_1');
+  const [returnTimeSlot, setReturnTimeSlot] = useState<TimeSlot>('return_1');
   const [seats, setSeats] = useState<Seat[]>([]);
   const [selectedSeat, setSelectedSeat] = useState<number | null>(null);
   const [heldExpiresAt, setHeldExpiresAt] = useState<number | null>(null);
@@ -147,16 +150,55 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const toggleSidebar = useCallback(() => setSidebarCollapsed(v => !v), []);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+
   useEffect(() => {
     const savedToken = localStorage.getItem('aesh_web_token');
     const savedUser = localStorage.getItem('aesh_web_user');
     if (savedToken && savedUser) {
-      const parsed = JSON.parse(savedUser);
-      setToken(savedToken);
-      setUser(parsed);
-      setRole(parsed.role);
+      try {
+        const parsed = JSON.parse(savedUser);
+        setToken(savedToken);
+        setUser(parsed);
+        setRole(parsed.role);
+      } catch {
+        const defaultUser = MOCK_USERS['aes400196@gu.edu.eg'];
+        setToken('mock-rider-token');
+        setUser(defaultUser);
+        setRole('rider');
+        localStorage.setItem('aesh_web_token', 'mock-rider-token');
+        localStorage.setItem('aesh_web_user', JSON.stringify(defaultUser));
+      }
+    } else {
+      const defaultUser = MOCK_USERS['aes400196@gu.edu.eg'];
+      setToken('mock-rider-token');
+      setUser(defaultUser);
+      setRole('rider');
+      localStorage.setItem('aesh_web_token', 'mock-rider-token');
+      localStorage.setItem('aesh_web_user', JSON.stringify(defaultUser));
     }
-    loadOfflineData();
+
+    const init = async () => {
+      try {
+        const res = await fetch(`${API_URL}/health`, { signal: AbortSignal.timeout(1500) });
+        if (res.ok) {
+          setIsOffline(false);
+          const routesRes = await fetch(`${API_URL}/api/routes`);
+          if (routesRes.ok) {
+            const data = await routesRes.json();
+            if (data && data.length > 0) {
+              setRoutes(data);
+              setSelectedRouteId(data[0].id);
+              return;
+            }
+          }
+        }
+      } catch {}
+      // When standalone, set online mode with rich simulation
+      setIsOffline(false);
+      loadOfflineData();
+    };
+    init();
   }, []);
 
   const loadOfflineData = () => {
@@ -176,23 +218,36 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (isOffline) {
       const mockTrips = generateMockTrips(selectedRouteId, selectedDate, routes);
       setTrips(mockTrips);
+    } else if (selectedRouteId && selectedDate) {
+      const fetchLiveTrips = async () => {
+        try {
+          const res = await fetch(`${API_URL}/api/trips?date=${selectedDate}&routeId=${selectedRouteId}`);
+          if (res.ok) {
+            const data = await res.json();
+            setTrips(data);
+          }
+        } catch (e) {
+          console.error('Failed to fetch live trips:', e);
+        }
+      };
+      fetchLiveTrips();
     }
   }, [selectedRouteId, selectedDate, isOffline, routes]);
 
   useEffect(() => {
     if (trips.length === 0) { setActiveTrip(null); setActiveArrivalTrip(null); setActiveReturnTrip(null); return; }
     if (bookingType === 'round_trip') {
-      const arrTrips = trips.filter(t => t.direction === 'to_campus' && t.timeSlot === timeSlot);
-      const retTrips = trips.filter(t => t.direction === 'from_campus' && t.timeSlot === 'return');
-      setActiveArrivalTrip(arrTrips[0] || null);
-      setActiveReturnTrip(retTrips[0] || null);
+      const arrTrips = trips.filter(t => t.direction === 'to_campus');
+      const retTrips = trips.filter(t => t.direction === 'from_campus');
+      setActiveArrivalTrip(arrTrips.find(t => t.timeSlot === timeSlot) || arrTrips[0] || null);
+      setActiveReturnTrip(retTrips.find(t => t.timeSlot === returnTimeSlot) || retTrips[0] || null);
     } else {
       const dir = bookingType === 'to_campus' ? 'to_campus' : 'from_campus';
-      const slot = bookingType === 'to_campus' ? timeSlot : 'return';
-      const matched = trips.filter(t => t.direction === dir && t.timeSlot === slot);
-      setActiveTrip(matched[0] || null);
+      const slot = bookingType === 'to_campus' ? timeSlot : returnTimeSlot;
+      const matched = trips.filter(t => t.direction === dir);
+      setActiveTrip(matched.find(t => t.timeSlot === slot) || matched[0] || null);
     }
-  }, [trips, bookingType, timeSlot]);
+  }, [trips, bookingType, timeSlot, returnTimeSlot]);
 
   useEffect(() => {
     setSelectedSeat(null);
@@ -301,7 +356,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setIsPaying(false);
     setShowCheckout(false);
     setSelectedSeat(null);
-    confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
+    if (typeof window !== 'undefined') {
+      import('canvas-confetti').then(module => {
+        const confetti = module.default;
+        confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
+      }).catch(() => {});
+    }
   }, [selectedSeat, user, bookingType, activeTrip, activeArrivalTrip, activeReturnTrip, paymentMethod, receiptRef]);
 
   const handleCancelBooking = useCallback((bookingId: string) => {
@@ -331,8 +391,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(() => {
-    localStorage.removeItem('aesh_web_token');
-    localStorage.removeItem('aesh_web_user');
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('aesh_web_token');
+      localStorage.removeItem('aesh_web_user');
+      window.location.href = '/';
+    }
     setToken('');
     setUser(null);
     setRole('rider');
@@ -341,9 +404,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const switchRole = useCallback((newRole: Role) => {
-    setRole(newRole);
     const mockUser = MOCK_USERS[newRole === 'rider' ? 'aes400196@gu.edu.eg' : newRole === 'supervisor' ? 'supervisor@gu.edu.eg' : 'admin@gu.edu.eg'];
+    const mockToken = `mock-${newRole}-token`;
+    setRole(newRole);
     setUser(mockUser);
+    setToken(mockToken);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('aesh_web_token', mockToken);
+      localStorage.setItem('aesh_web_user', JSON.stringify(mockUser));
+      window.location.href = `/${newRole}`;
+    }
   }, []);
 
   const handleSimulatedScan = useCallback(async () => {
@@ -478,19 +548,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const value = {
     token, user, role, isOffline, routes, selectedRouteId, selectedDirection, selectedDate, trips,
-    activeTrip, activeArrivalTrip, activeReturnTrip, bookingType, timeSlot, seats, selectedSeat,
+    activeTrip, activeArrivalTrip, activeReturnTrip, bookingType, timeSlot, returnTimeSlot, seats, selectedSeat,
     heldExpiresAt, lockingSeatNumber, myBookings, expandedTicketId, justBoardedBookingIds, auditLogs,
     supervisorManifest, showCheckout, paymentMethod, checkoutError, isPaying, cardNumber, receiptRef,
     cancelLockHours, swapBookingTarget, swapTripId, swapSeatNumber, isSwapping, scanInputToken, scanResult, sidebarCollapsed, mobileSidebarOpen,
     isScanning, isCameraActive, cameraError, cameraStream, showCameraPermissionGuide,
     login, logout, switchRole, setSelectedRouteId, setSelectedDirection, setSelectedDate,
-    setBookingType, setTimeSlot, setActiveTrip, setActiveArrivalTrip, setActiveReturnTrip,
+    setBookingType, setTimeSlot, setReturnTimeSlot, setActiveTrip, setActiveArrivalTrip, setActiveReturnTrip,
     handleSeatClick, setShowCheckout, setPaymentMethod, setCardNumber, setReceiptRef,
     handleCheckoutSubmit, handleCancelBooking, setExpandedTicketId, setSwapBookingTarget, setSwapBookingTargetOpen,
     setSwapTripId, setSwapSeatNumber, handleSupervisorSwapSubmit, handleSupervisorCancel,
     setScanInputToken, setScanResult, setIsCameraActive, setCameraError, setShowCameraPermissionGuide,
     handleSimulatedScan, startCameraScan, stopCameraScan, setCancelLockHours,
-    setIsScanning, setIsSwapping, getGroupedBookings, toggleSidebar, setMobileSidebarOpen,
+    setIsScanning, setIsSwapping, getGroupedBookings, toggleSidebar, setMobileSidebarOpen, setIsOffline,
   };
 
   return <AppContext.Provider value={value}>{children as ReactNode}</AppContext.Provider>;

@@ -1,13 +1,16 @@
 import { z } from 'zod';
+import crypto from 'node:crypto';
 
-// Conditional crypto import — only available in Node.js, not React Native
-let crypto: any = null;
-import('crypto').then(m => {
-  crypto = m.default || m;
-}).catch(() => {
-  // Running in React Native or browser — crypto not available
-  // encode() and verify() will throw if called without crypto
-});
+// Time Slot Schema & Types
+export const TimeSlotSchema = z.enum([
+  'morning_1', // Shift 1: ~09:00 AM Arrival
+  'morning_2', // Shift 2: 11:30 AM Arrival
+  'return_1',  // Return 1: 12:30 PM Departure
+  'return_2',  // Return 2: 02:30 PM Departure
+  'return_3',  // Return 3: 05:30 PM Departure
+  'return',    // Backwards compatibility legacy alias
+]);
+export type TimeSlot = z.infer<typeof TimeSlotSchema>;
 
 // Types
 export interface QRPayload {

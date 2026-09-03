@@ -4,14 +4,17 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { eq } from 'drizzle-orm';
 import { fileURLToPath } from 'url';
+import { REAL_PERSONNEL, REAL_SCHEDULES } from './real_schedule_data.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Time slot configuration for schedule
 const TIME_SLOTS = {
-  morning_1: { direction: 'to_campus', depHour: 5, depMin: 0, arriveHour: 10, arriveMin: 0, label: 'Morning Shift 1 (05:00-10:00)' },
-  morning_2: { direction: 'to_campus', depHour: 10, depMin: 0, arriveHour: 11, arriveMin: 30, label: 'Morning Shift 2 (10:00-11:30)' },
-  return: { direction: 'from_campus', depHour: 12, depMin: 0, arriveHour: 17, arriveMin: 10, label: 'Return (12:00-17:10)' },
+  morning_1: { direction: 'to_campus', depHour: 7, depMin: 0, arriveHour: 9, arriveMin: 0, label: 'Morning Shift 1 (07:00-09:00)' },
+  morning_2: { direction: 'to_campus', depHour: 9, depMin: 30, arriveHour: 11, arriveMin: 30, label: 'Morning Shift 2 (09:30-11:30)' },
+  return_1: { direction: 'from_campus', depHour: 12, depMin: 30, arriveHour: 14, arriveMin: 0, label: 'Return Shift 1 (12:30 PM)' },
+  return_2: { direction: 'from_campus', depHour: 14, depMin: 30, arriveHour: 16, arriveMin: 0, label: 'Return Shift 2 (02:30 PM)' },
+  return_3: { direction: 'from_campus', depHour: 17, depMin: 30, arriveHour: 19, arriveMin: 30, label: 'Return Shift 3 (05:30 PM)' },
 } as const;
 
 async function seed() {
@@ -28,24 +31,45 @@ async function seed() {
     // Track unique routes and buses to prevent duplicate database inserts
     const insertedRoutes = new Map<number, number>(); // erpPointId -> dbId
     const insertedBuses = new Map<number, number>();  // erpVehicleId -> dbId
+    const personnelByPhone = new Map<string, string>(); // phone -> userId
 
-    // Insert Default System Admin and Supervisor accounts for testing
+    // Insert Default System Admin and Rider accounts for testing
     console.log('Inserting default user roles...');
     await db.insert(schema.users).values({
       email: 'admin@gu.edu.eg',
       fullName: 'System Administrator',
       fullNameAr: 'مدير النظام',
+      phone: '01000000000',
       role: 'admin',
     }).onConflictDoNothing();
 
     await db.insert(schema.users).values({
-      email: 'supervisor@gu.edu.eg',
-      fullName: 'Supervisor Aesh',
-      fullNameAr: 'مشرف عيش',
-      role: 'supervisor',
+      email: 'aes400196@gu.edu.eg',
+      fullName: 'Abdelrahman Ehab (Student)',
+      fullNameAr: 'عبدالرحمن إيهاب',
+      phone: '01012345678',
+      role: 'rider',
     }).onConflictDoNothing();
 
-    console.log('Users seeded.');
+    // Insert Real Drivers and Supervisors
+    console.log(`Seeding ${REAL_PERSONNEL.length} drivers and line supervisors...`);
+    for (const p of REAL_PERSONNEL) {
+      const [inserted] = await db.insert(schema.users).values({
+        email: p.email,
+        fullName: p.nameEn,
+        fullNameAr: p.nameAr,
+        phone: p.phone,
+        role: p.role,
+      }).onConflictDoNothing().returning();
+
+      if (inserted) {
+        personnelByPhone.set(p.phone, inserted.id);
+      } else {
+        const [existing] = await db.select().from(schema.users).where(eq(schema.users.email, p.email)).limit(1);
+        if (existing) personnelByPhone.set(p.phone, existing.id);
+      }
+    }
+    console.log('Real drivers and supervisors seeded.');
 
     // English translations for routes
     const englishNames: { [key: number]: string } = {
@@ -192,6 +216,122 @@ async function seed() {
               }).onConflictDoNothing();
 
               console.log(`  → Trip: ${slotConfig.label} for bus ${bus.name}`);
+            }
+          }
+        }
+      }
+    }
+
+    // 4. Seed Real Operational Schedules with Drivers & Supervisors
+    console.log('Seeding Real Operational Schedules for June 4-14...');
+    for (const day of REAL_SCHEDULES) {
+      for (const routeAssign of day.routes) {
+        const dbRouteId = insertedRoutes.get(routeAssign.routeErpId);
+        if (!dbRouteId) continue;
+        const driverId = personnelByPhone.get(routeAssign.driverPhone);
+
+        const [bus] = await db.select().from(schema.buses).limit(1);
+        if (!bus) continue;
+
+        // Morning Trip (07:00 AM -> 09:00 AM arrival)
+        const depMorning = new Date(`${day.date}T07:00:00+02:00`);
+        const arrMorning = new Date(`${day.date}T09:00:00+02:00`);
+
+        const [morningTrip] = await db.insert(schema.trips).values({
+          routeId: dbRouteId,
+          busId: bus.id,
+          driverId: driverId || null,
+          tripDate: day.date,
+          departureTime: depMorning,
+          returnTime: arrMorning,
+          direction: 'to_campus',
+          timeSlot: 'morning_1',
+          totalSeats: 50,
+          status: 'scheduled',
+          cancellationLockHours: 3,
+        }).returning();
+
+        if (morningTrip) {
+          for (const sPhone of routeAssign.supervisorPhones) {
+            const superId = personnelByPhone.get(sPhone);
+            if (superId) {
+              await db.insert(schema.tripSupervisors).values({
+                tripId: morningTrip.id,
+                userId: superId,
+                assignedRole: 'line_supervisor',
+              }).onConflictDoNothing();
+            }
+          }
+        }
+
+        // Return Trips (12:30, 14:30, 17:30)
+        for (const ret of day.returns) {
+          const [retH, retM] = ret.departureTime.startsWith('12') ? [12, 30] : ret.departureTime.startsWith('02') ? [14, 30] : [17, 30];
+          const depRet = new Date(`${day.date}T${String(retH).padStart(2, '0')}:${String(retM).padStart(2, '0')}:00+02:00`);
+          const arrRet = new Date(depRet.getTime() + 2 * 60 * 60 * 1000);
+
+          const [returnTrip] = await db.insert(schema.trips).values({
+            routeId: dbRouteId,
+            busId: bus.id,
+            driverId: driverId || null,
+            tripDate: day.date,
+            departureTime: depRet,
+            returnTime: arrRet,
+            direction: 'from_campus',
+            timeSlot: ret.timeSlot,
+            totalSeats: 50,
+            status: 'scheduled',
+            cancellationLockHours: 3,
+          }).returning();
+
+          if (returnTrip) {
+            for (const sPhone of routeAssign.supervisorPhones) {
+              const superId = personnelByPhone.get(sPhone);
+              if (superId) {
+                await db.insert(schema.tripSupervisors).values({
+                  tripId: returnTrip.id,
+                  userId: superId,
+                  assignedRole: 'line_supervisor',
+                }).onConflictDoNothing();
+              }
+            }
+          }
+        }
+      }
+
+      // Late Shift Arrival (11:30 AM arrival)
+      if (day.lateShiftArrival) {
+        const lateDriverId = personnelByPhone.get(day.lateShiftArrival.driverPhone);
+        const [bus] = await db.select().from(schema.buses).limit(1);
+        const [route] = await db.select().from(schema.routes).limit(1);
+        if (bus && route) {
+          const depLate = new Date(`${day.date}T09:30:00+02:00`);
+          const arrLate = new Date(`${day.date}T11:30:00+02:00`);
+
+          const [lateTrip] = await db.insert(schema.trips).values({
+            routeId: route.id,
+            busId: bus.id,
+            driverId: lateDriverId || null,
+            tripDate: day.date,
+            departureTime: depLate,
+            returnTime: arrLate,
+            direction: 'to_campus',
+            timeSlot: 'morning_2',
+            totalSeats: 50,
+            status: 'scheduled',
+            cancellationLockHours: 3,
+          }).returning();
+
+          if (lateTrip) {
+            for (const sPhone of day.lateShiftArrival.supervisorPhones) {
+              const sId = personnelByPhone.get(sPhone);
+              if (sId) {
+                await db.insert(schema.tripSupervisors).values({
+                  tripId: lateTrip.id,
+                  userId: sId,
+                  assignedRole: 'line_supervisor',
+                }).onConflictDoNothing();
+              }
             }
           }
         }

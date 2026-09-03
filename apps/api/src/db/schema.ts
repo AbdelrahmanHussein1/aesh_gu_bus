@@ -55,21 +55,31 @@ export const buses = pgTable('buses', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 });
 
-// Trips — now with time slot support
+// Trips — now with time slot and driver support
 export const trips = pgTable('trips', {
   id: serial('id').primaryKey(),
   routeId: integer('route_id').references(() => routes.id).notNull(),
   busId: integer('bus_id').references(() => buses.id).notNull(),
+  driverId: uuid('driver_id').references(() => users.id),
   tripDate: varchar('trip_date', { length: 10 }).notNull(), // YYYY-MM-DD
   departureTime: timestamp('departure_time', { withTimezone: true }).notNull(),
   returnTime: timestamp('return_time', { withTimezone: true }),
   direction: varchar('direction', { length: 15 }).default('to_campus').notNull(), // 'to_campus', 'from_campus'
   timeSlot: varchar('time_slot', { length: 20 }).default('morning_1').notNull(),
-    // 'morning_1' (05:00-10:00), 'morning_2' (10:00-11:30), 'return' (12:00-17:10)
+    // 'morning_1' (09:00), 'morning_2' (11:30), 'return_1' (12:30), 'return_2' (14:30), 'return_3' (17:30), 'return'
   totalSeats: integer('total_seats').notNull(),
   priceEgp: numeric('price_egp', { precision: 10, scale: 2 }).default('160.00').notNull(),
   status: varchar('status', { length: 20 }).default('scheduled').notNull(), // 'scheduled', 'boarding', 'departed', 'completed', 'cancelled'
   cancellationLockHours: integer('cancellation_lock_hours').default(3).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+});
+
+// Trip Supervisors (مرافقي الخطوط) — Multiple supervisors per line/trip
+export const tripSupervisors = pgTable('trip_supervisors', {
+  id: serial('id').primaryKey(),
+  tripId: integer('trip_id').references(() => trips.id, { onDelete: 'cascade' }).notNull(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  assignedRole: varchar('assigned_role', { length: 50 }).default('line_supervisor').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 });
 
@@ -155,6 +165,8 @@ export const systemSettings = pgTable('system_settings', {
 // Relationships
 export const usersRelations = relations(users, ({ many }) => ({
   bookings: many(bookings),
+  drivenTrips: many(trips),
+  supervisedTrips: many(tripSupervisors),
 }));
 
 export const routesRelations = relations(routes, ({ many }) => ({
@@ -173,7 +185,14 @@ export const busesRelations = relations(buses, ({ many }) => ({
 export const tripsRelations = relations(trips, ({ one, many }) => ({
   route: one(routes, { fields: [trips.routeId], references: [routes.id] }),
   bus: one(buses, { fields: [trips.busId], references: [buses.id] }),
+  driver: one(users, { fields: [trips.driverId], references: [users.id] }),
+  supervisors: many(tripSupervisors),
   bookings: many(bookings),
+}));
+
+export const tripSupervisorsRelations = relations(tripSupervisors, ({ one }) => ({
+  trip: one(trips, { fields: [tripSupervisors.tripId], references: [trips.id] }),
+  user: one(users, { fields: [tripSupervisors.userId], references: [users.id] }),
 }));
 
 export const bookingsRelations = relations(bookings, ({ one, many }) => ({
@@ -186,4 +205,8 @@ export const bookingsRelations = relations(bookings, ({ one, many }) => ({
 export const boardingLogsRelations = relations(boardingLogs, ({ one }) => ({
   booking: one(bookings, { fields: [boardingLogs.bookingId], references: [bookings.id] }),
   scanner: one(users, { fields: [boardingLogs.scannedBy], references: [users.id] }),
+}));
+
+export const auditLogsRelations = relations(auditLogs, ({ one }) => ({
+  user: one(users, { fields: [auditLogs.userId], references: [users.id] }),
 }));
