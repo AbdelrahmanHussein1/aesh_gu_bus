@@ -5,12 +5,18 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
+    "icon": "./assets/icon.png",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.bus.aesh"
+      "bundleIdentifier": "com.bus.aesh",
+      "icon": "./assets/icon.png"
     },
     "android": {
-      "package": "com.bus.aesh"
+      "package": "com.bus.aesh",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0b0f19"
+      }
     },
     "plugins": [
       [

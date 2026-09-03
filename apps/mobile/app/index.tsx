@@ -8,7 +8,8 @@ import {
   ScrollView, 
   ActivityIndicator, 
   Modal, 
-  Alert 
+  Alert,
+  Image 
 } from 'react-native';
 import { useRouter } from 'expo-router';
 
@@ -140,9 +141,11 @@ export default function AppHome() {
     // Login Screen
     return (
       <ScrollView contentContainerStyle={styles.loginContainer}>
-        <View style={styles.logoBadge}>
-          <Text style={styles.logoBadgeText}>🚌</Text>
-        </View>
+        <Image 
+          source={require('../assets/icon.png')} 
+          style={styles.logoImage} 
+          resizeMode="contain"
+        />
         <Text style={styles.title}>bus<Text style={{color: '#38bdf8'}}>.aesh</Text></Text>
         <Text style={styles.subtitle}>Galala University Transit</Text>
 
@@ -478,18 +481,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: 24,
   },
-  logoBadge: {
-    width: 64,
-    height: 64,
-    borderRadius: 16,
-    backgroundColor: '#1e293b',
-    alignItems: 'center',
-    justifyContent: 'center',
+  logoImage: {
+    width: 88,
+    height: 88,
+    borderRadius: 22,
     alignSelf: 'center',
     marginBottom: 16,
-  },
-  logoBadgeText: {
-    fontSize: 32,
   },
   title: {
     fontSize: 32,
