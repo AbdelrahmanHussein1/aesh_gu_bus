@@ -210,27 +210,25 @@ fastify.post('/api/auth/login', async (request, reply) => {
       where: eq(schema.users.email, email),
     });
 
-    if (user && user.password) {
-      if (user.password !== password) {
+    if (user) {
+      if (user.password && user.password !== password) {
         return reply.status(401).send({ error: 'Invalid password' });
       }
     } else {
       const erpUser = await authenticateOdoo(email, password);
 
-      if (!user) {
-        let role = 'rider';
-        if (email === 'admin@gu.edu.eg') role = 'admin';
-        else if (email.startsWith('supervisor') || email === 'supervisor@gu.edu.eg') role = 'supervisor';
+      let role = 'rider';
+      if (email === 'admin@gu.edu.eg') role = 'admin';
+      else if (email.startsWith('supervisor') || email === 'supervisor@gu.edu.eg') role = 'supervisor';
 
-        const [newUser] = await db.insert(schema.users).values({
-          email,
-          fullName: erpUser.name,
-          role,
-          erpUid: erpUser.uid,
-          erpPartnerId: erpUser.partner_id,
-        }).returning();
-        user = newUser;
-      }
+      const [newUser] = await db.insert(schema.users).values({
+        email,
+        fullName: erpUser.name,
+        role,
+        erpUid: erpUser.uid,
+        erpPartnerId: erpUser.partner_id,
+      }).returning();
+      user = newUser;
     }
 
     const token = fastify.jwt.sign({

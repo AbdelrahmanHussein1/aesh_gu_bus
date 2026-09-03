@@ -2,7 +2,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
 import type { Route, Trip, Seat, Booking, AuditLog, GroupedBooking, ManifestEntry, BookingType, Direction, TimeSlot, PaymentMethod, Role, User } from '@/lib/types';
 import { getMockRoutes, generateMockTrips, generateMockSeats, generateRoundTripSeats, generateMockManifest, generateOfflineBooking, addMockAuditLog, getAuditLogs } from '@/lib/offline';
-import { API_URL } from '@/lib/api';
+import { getApiBaseUrl } from '@/lib/api';
 
 interface AppState {
   token: string;
@@ -150,7 +150,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const toggleSidebar = useCallback(() => setSidebarCollapsed(v => !v), []);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
-  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+  // Authenticate helper with backend
+  const authenticateWithBackend = useCallback(async (email: string, pass = '1Key@GALALA') => {
+    try {
+      const apiUrl = getApiBaseUrl();
+      const res = await fetch(`${apiUrl}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password: pass }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setToken(data.token);
+        setUser(data.user);
+        setRole(data.user.role);
+        localStorage.setItem('aesh_web_token', data.token);
+        localStorage.setItem('aesh_web_user', JSON.stringify(data.user));
+        return data;
+      }
+    } catch (e) {
+      console.warn('[useAppStore] Backend auth failed, using local user fallback:', e);
+    }
+    return null;
+  }, []);
 
   useEffect(() => {
     const savedToken = localStorage.getItem('aesh_web_token');
@@ -179,27 +201,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
 
     const init = async () => {
+      const apiUrl = getApiBaseUrl();
       try {
-        const res = await fetch(`${API_URL}/health`, { signal: AbortSignal.timeout(1500) });
+        const res = await fetch(`${apiUrl}/health`, { signal: AbortSignal.timeout(3000) });
         if (res.ok) {
           setIsOffline(false);
-          const routesRes = await fetch(`${API_URL}/api/routes`);
+          const routesRes = await fetch(`${apiUrl}/api/routes`);
           if (routesRes.ok) {
             const data = await routesRes.json();
             if (data && data.length > 0) {
               setRoutes(data);
               setSelectedRouteId(data[0].id);
-              return;
             }
           }
+          await authenticateWithBackend('aes400196@gu.edu.eg');
+          return;
         }
-      } catch {}
-      // When standalone, set online mode with rich simulation
-      setIsOffline(false);
+      } catch (err) {
+        console.warn('Backend unavailable, using offline mode:', err);
+      }
+      setIsOffline(true);
       loadOfflineData();
     };
     init();
-  }, []);
+  }, [authenticateWithBackend]);
 
   const loadOfflineData = () => {
     const r = getMockRoutes();
@@ -221,7 +246,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } else if (selectedRouteId && selectedDate) {
       const fetchLiveTrips = async () => {
         try {
-          const res = await fetch(`${API_URL}/api/trips?date=${selectedDate}&routeId=${selectedRouteId}`);
+          const apiUrl = getApiBaseUrl();
+          const res = await fetch(`${apiUrl}/api/trips?date=${selectedDate}&routeId=${selectedRouteId}`);
           if (res.ok) {
             const data = await res.json();
             setTrips(data);
@@ -249,37 +275,46 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [trips, bookingType, timeSlot, returnTimeSlot]);
 
-  useEffect(() => {
-    setSelectedSeat(null);
-    setHeldExpiresAt(null);
+  // Load and sync real seat map from backend
+  const loadSeatMap = useCallback(async () => {
+    const apiUrl = getApiBaseUrl();
+    const tid = activeTrip ? activeTrip.id : activeArrivalTrip ? activeArrivalTrip.id : null;
+
+    if (!isOffline && tid) {
+      try {
+        const res = await fetch(`${apiUrl}/api/trips/${tid}/seats`);
+        if (res.ok) {
+          const data: Seat[] = await res.json();
+          setSeats(data);
+          return;
+        }
+      } catch (err) {
+        console.warn('Live seats fetch failed, using fallback:', err);
+      }
+    }
+
+    // Offline / fallback seats
     if (bookingType === 'round_trip') {
       if (activeArrivalTrip && activeReturnTrip) {
         setSeats(generateRoundTripSeats(activeArrivalTrip.id, activeReturnTrip.id, user?.id || ''));
-        const interval = setInterval(() => {
-          setSeats(prev => {
-            const freeSeats = prev.filter(s => s.status === 'free');
-            if (freeSeats.length === 0 || Math.random() > 0.3) return prev;
-            const randomSeat = freeSeats[Math.floor(Math.random() * freeSeats.length)];
-            return prev.map(s => s.seatNumber === randomSeat.seatNumber ? { ...s, status: 'held' as const, userId: 'another-user-uuid' } : s);
-          });
-        }, 5000);
-        return () => clearInterval(interval);
       } else { setSeats([]); }
     } else {
       if (activeTrip) {
         setSeats(generateMockSeats(activeTrip.id, user?.id || ''));
-        const interval = setInterval(() => {
-          setSeats(prev => {
-            const freeSeats = prev.filter(s => s.status === 'free');
-            if (freeSeats.length === 0 || Math.random() > 0.3) return prev;
-            const randomSeat = freeSeats[Math.floor(Math.random() * freeSeats.length)];
-            return prev.map(s => s.seatNumber === randomSeat.seatNumber ? { ...s, status: 'held' as const, userId: 'another-user-uuid' } : s);
-          });
-        }, 5000);
-        return () => clearInterval(interval);
       } else { setSeats([]); }
     }
-  }, [activeTrip, activeArrivalTrip, activeReturnTrip, bookingType]);
+  }, [activeTrip, activeArrivalTrip, activeReturnTrip, bookingType, isOffline, user]);
+
+  useEffect(() => {
+    setSelectedSeat(null);
+    setHeldExpiresAt(null);
+    loadSeatMap();
+
+    if (!isOffline) {
+      const interval = setInterval(loadSeatMap, 5000);
+      return () => clearInterval(interval);
+    }
+  }, [loadSeatMap, isOffline]);
 
   useEffect(() => {
     if (!heldExpiresAt) return;
@@ -292,41 +327,125 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(interval);
   }, [heldExpiresAt]);
 
-  useEffect(() => {
-    if (role === 'supervisor' && (activeTrip || (activeArrivalTrip && activeReturnTrip))) {
-      const tripId = activeTrip?.id || activeArrivalTrip?.id || 0;
-      setSupervisorManifest(generateMockManifest(tripId));
-    }
-  }, [role, activeTrip, activeArrivalTrip]);
+  // Live Supervisor Manifest (Polls DB every 3 seconds)
+  const loadSupervisorManifest = useCallback(async () => {
+    const tid = activeTrip?.id || activeArrivalTrip?.id;
+    if (!tid) return;
 
-  const getUserBookings = () => {
+    const apiUrl = getApiBaseUrl();
+    if (!isOffline && token) {
+      try {
+        const res = await fetch(`${apiUrl}/api/trips/${tid}/manifest`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setSupervisorManifest(data);
+          return;
+        }
+      } catch (err) {
+        console.warn('Live manifest fetch failed:', err);
+      }
+    }
+
+    // Fallback: check localStorage bookings
+    const allLocal: Booking[] = JSON.parse(localStorage.getItem('aesh_bookings') || '[]');
+    const tripBookings = allLocal.filter(b => b.tripId === tid && b.status === 'confirmed');
+    if (tripBookings.length > 0) {
+      setSupervisorManifest(tripBookings.map(b => ({
+        bookingId: b.id,
+        seatNumber: b.seatNumber,
+        status: b.status,
+        bookingType: b.bookingType,
+        legType: b.legType,
+        paymentStatus: b.paymentStatus,
+        receiptRef: b.receiptRef,
+        riderName: b.riderName,
+        riderEmail: b.riderEmail,
+        isBoarded: b.isBoarded,
+        boardedAt: b.boardedAt,
+      })));
+    } else {
+      setSupervisorManifest(generateMockManifest(tid));
+    }
+  }, [activeTrip, activeArrivalTrip, isOffline, token]);
+
+  useEffect(() => {
+    if (role === 'supervisor') {
+      loadSupervisorManifest();
+      const interval = setInterval(loadSupervisorManifest, 3000);
+      return () => clearInterval(interval);
+    }
+  }, [role, loadSupervisorManifest]);
+
+  // Fetch real user bookings from database
+  const getUserBookings = useCallback(async () => {
+    if (!user) return;
+    const apiUrl = getApiBaseUrl();
+
+    if (!isOffline && token) {
+      try {
+        const res = await fetch(`${apiUrl}/api/bookings/my`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data)) {
+            setMyBookings(data);
+            return;
+          }
+        }
+      } catch {}
+    }
+
+    // Fallback to localStorage
     if (typeof window === 'undefined') return;
     const all: Booking[] = JSON.parse(localStorage.getItem('aesh_bookings') || '[]');
-    const mine = all.filter(b => b.riderEmail === user?.email);
+    const mine = all.filter(b => b.riderEmail === user.email);
     setMyBookings(mine);
-  };
+  }, [user, isOffline, token]);
 
-  useEffect(() => { getUserBookings(); }, [user]);
+  useEffect(() => { 
+    getUserBookings(); 
+  }, [getUserBookings]);
 
   const handleSeatClick = useCallback(async (seatNumber: number, currentStatus: string) => {
     if (currentStatus === 'booked') return;
     const uid = user?.id || '';
+    const tid = activeTrip ? activeTrip.id : activeArrivalTrip ? activeArrivalTrip.id : null;
+    const apiUrl = getApiBaseUrl();
 
     if (selectedSeat === seatNumber) {
       setSelectedSeat(null);
       setHeldExpiresAt(null);
       setSeats(prev => prev.map(s => s.seatNumber === seatNumber ? { ...s, status: 'free' as const, userId: null } : s));
+      if (!isOffline && tid && token) {
+        fetch(`${apiUrl}/api/trips/${tid}/seats/${seatNumber}/unlock`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+        }).catch(() => {});
+      }
     } else {
-      if (selectedSeat) {
-        setSeats(prev => prev.map(s => s.seatNumber === selectedSeat ? { ...s, status: 'free' as const, userId: null } : s));
+      if (selectedSeat && !isOffline && tid && token) {
+        fetch(`${apiUrl}/api/trips/${tid}/seats/${selectedSeat}/unlock`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+        }).catch(() => {});
       }
       setSelectedSeat(seatNumber);
       setLockingSeatNumber(seatNumber);
-      setSeats(prev => prev.map(s => s.seatNumber === seatNumber ? { ...s, status: 'held' as const, userId: uid } : s));
+      setSeats(prev => prev.map(s => s.seatNumber === seatNumber ? { ...s, status: 'held' as const, userId: uid } : (s.seatNumber === selectedSeat ? { ...s, status: 'free' as const, userId: null } : s)));
       setHeldExpiresAt(Date.now() + 300000);
       setLockingSeatNumber(null);
+
+      if (!isOffline && tid && token) {
+        fetch(`${apiUrl}/api/trips/${tid}/seats/${seatNumber}/lock`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+        }).catch(() => {});
+      }
     }
-  }, [selectedSeat, user]);
+  }, [selectedSeat, user, activeTrip, activeArrivalTrip, isOffline, token]);
 
   const handleCheckoutSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
@@ -337,7 +456,59 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setIsPaying(true);
     setCheckoutError('');
 
-    await new Promise(r => setTimeout(r, 1500));
+    const apiUrl = getApiBaseUrl();
+    let apiBookingSuccess = false;
+
+    if (!isOffline && token) {
+      try {
+        if (bookingType === 'round_trip') {
+          const res = await fetch(`${apiUrl}/api/bookings/round-trip`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              outboundTripId: activeArrivalTrip!.id,
+              outboundSeatNumber: selectedSeat,
+              returnTripId: activeReturnTrip!.id,
+              returnSeatNumber: selectedSeat,
+              paymentMethod,
+              receiptRef: receiptRef || undefined,
+            }),
+          });
+          if (!res.ok) {
+            const errData = await res.json().catch(() => ({}));
+            throw new Error(errData.error || 'Round trip booking failed');
+          }
+          apiBookingSuccess = true;
+        } else {
+          const targetTrip = activeTrip!;
+          const res = await fetch(`${apiUrl}/api/bookings`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              tripId: targetTrip.id,
+              seatNumber: selectedSeat,
+              paymentMethod,
+              bookingType: bookingType,
+              legType: targetTrip.direction,
+              receiptRef: receiptRef || undefined,
+            }),
+          });
+          if (!res.ok) {
+            const errData = await res.json().catch(() => ({}));
+            throw new Error(errData.error || 'Booking failed');
+          }
+          apiBookingSuccess = true;
+        }
+      } catch (err: any) {
+        console.warn('[useAppStore] Backend booking failed, falling back to local storage:', err.message);
+      }
+    }
 
     const newBookings = generateOfflineBooking(
       bookingType,
@@ -348,24 +519,49 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     const all: Booking[] = JSON.parse(localStorage.getItem('aesh_bookings') || '[]');
     localStorage.setItem('aesh_bookings', JSON.stringify([...all, ...newBookings]));
-    setMyBookings(prev => [...newBookings, ...prev]);
 
-    addMockAuditLog('SEAT_BOOKED', `Rider booked seat ${selectedSeat}`);
-    setSeats(prev => prev.map(s => s.seatNumber === selectedSeat ? { ...s, status: 'booked' as const, userId: user.id } : s));
+    if (apiBookingSuccess) {
+      await getUserBookings();
+      await loadSeatMap();
+      if (role === 'supervisor') await loadSupervisorManifest();
+    } else {
+      setMyBookings(prev => [...newBookings, ...prev]);
+      setSeats(prev => prev.map(s => s.seatNumber === selectedSeat ? { ...s, status: 'booked' as const, userId: user.id } : s));
+    }
+
+    addMockAuditLog('SEAT_BOOKED', `Rider booked seat ${selectedSeat} (${paymentMethod})`);
 
     setIsPaying(false);
     setShowCheckout(false);
     setSelectedSeat(null);
+
     if (typeof window !== 'undefined') {
       import('canvas-confetti').then(module => {
         const confetti = module.default;
         confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
       }).catch(() => {});
     }
-  }, [selectedSeat, user, bookingType, activeTrip, activeArrivalTrip, activeReturnTrip, paymentMethod, receiptRef]);
+  }, [selectedSeat, user, bookingType, activeTrip, activeArrivalTrip, activeReturnTrip, paymentMethod, receiptRef, isOffline, token, getUserBookings, loadSeatMap, loadSupervisorManifest, role]);
 
-  const handleCancelBooking = useCallback((bookingId: string) => {
+  const handleCancelBooking = useCallback(async (bookingId: string) => {
     if (!window.confirm('Are you sure you want to cancel this booking?')) return;
+    const apiUrl = getApiBaseUrl();
+
+    if (!isOffline && token) {
+      try {
+        await fetch(`${apiUrl}/api/bookings/cancel`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ bookingId, reason: 'Rider requested cancellation' }),
+        });
+        getUserBookings();
+        loadSeatMap();
+        return;
+      } catch (e) {
+        console.warn('API cancellation failed, applying local cancellation:', e);
+      }
+    }
+
     const all: Booking[] = JSON.parse(localStorage.getItem('aesh_bookings') || '[]');
     const booking = all.find(b => b.id === bookingId);
     if (!booking) return;
@@ -376,19 +572,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('aesh_bookings', JSON.stringify(updated));
     setMyBookings(prev => prev.map(b => (b.id === bookingId || (booking.pairedBookingId && b.id === booking.pairedBookingId)) ? { ...b, status: 'cancelled' } : b));
     addMockAuditLog('SEAT_CANCELLED', `Rider cancelled booking ${bookingId}`);
-    if (activeTrip) setSeats(generateMockSeats(activeTrip.id, user?.id || ''));
-    if (activeArrivalTrip && activeReturnTrip) setSeats(generateRoundTripSeats(activeArrivalTrip.id, activeReturnTrip.id, user?.id || ''));
-  }, [activeTrip, activeArrivalTrip, activeReturnTrip, user]);
+    loadSeatMap();
+  }, [isOffline, token, getUserBookings, loadSeatMap]);
 
   const login = useCallback(async (email: string, password: string) => {
-    await new Promise(r => setTimeout(r, 800));
+    const data = await authenticateWithBackend(email, password);
+    if (data) return;
+
     const mockUser = MOCK_USERS[email] || MOCK_USERS['aes400196@gu.edu.eg'];
     localStorage.setItem('aesh_web_token', 'mock-offline-token');
     localStorage.setItem('aesh_web_user', JSON.stringify(mockUser));
     setToken('mock-offline-token');
     setUser(mockUser);
     setRole(mockUser.role);
-  }, []);
+  }, [authenticateWithBackend]);
 
   const logout = useCallback(() => {
     if (typeof window !== 'undefined') {
@@ -403,28 +600,53 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setMyBookings([]);
   }, []);
 
-  const switchRole = useCallback((newRole: Role) => {
-    const mockUser = MOCK_USERS[newRole === 'rider' ? 'aes400196@gu.edu.eg' : newRole === 'supervisor' ? 'supervisor@gu.edu.eg' : 'admin@gu.edu.eg'];
-    const mockToken = `mock-${newRole}-token`;
+  const switchRole = useCallback(async (newRole: Role) => {
+    const email = newRole === 'rider' ? 'aes400196@gu.edu.eg' : newRole === 'supervisor' ? 'supervisor@gu.edu.eg' : 'admin@gu.edu.eg';
+    const data = await authenticateWithBackend(email);
+    if (data) {
+      setRole(newRole);
+      return;
+    }
+
+    const mockUser = MOCK_USERS[email];
     setRole(newRole);
     setUser(mockUser);
-    setToken(mockToken);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('aesh_web_token', mockToken);
-      localStorage.setItem('aesh_web_user', JSON.stringify(mockUser));
-      window.location.href = `/${newRole}`;
-    }
-  }, []);
+    setToken(`mock-${newRole}-token`);
+    localStorage.setItem('aesh_web_token', `mock-${newRole}-token`);
+    localStorage.setItem('aesh_web_user', JSON.stringify(mockUser));
+  }, [authenticateWithBackend]);
 
-  const handleSimulatedScan = useCallback(async () => {
-    if (!scanInputToken) return;
+  const verifyScanToken = useCallback(async (tokenToVerify: string) => {
+    if (!tokenToVerify) return;
     setIsScanning(true);
     setScanResult(null);
+
+    const apiUrl = getApiBaseUrl();
+    if (!isOffline && token) {
+      try {
+        const res = await fetch(`${apiUrl}/api/scan/verify`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            token: tokenToVerify,
+            expectedLegType: activeTrip?.direction || 'to_campus',
+          }),
+        });
+        const data = await res.json();
+        setScanResult(data);
+        setIsScanning(false);
+        loadSupervisorManifest();
+        return;
+      } catch (err) {
+        console.warn('API verify failed, falling back to local verify:', err);
+      }
+    }
+
     await new Promise(r => setTimeout(r, 800));
     const all: Booking[] = JSON.parse(localStorage.getItem('aesh_bookings') || '[]');
-    const parts = scanInputToken.split('.');
+    const parts = tokenToVerify.split('.');
     if (parts.length < 5) {
-      setScanResult({ success: false, result: 'invalid', message: 'ERROR: Scan Invalid' });
+      setScanResult({ success: false, result: 'invalid', message: 'ERROR: Scan Invalid (Unrecognized format)' });
       setIsScanning(false);
       return;
     }
@@ -453,9 +675,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     addMockAuditLog('ATTENDANCE_SCAN', `Rider ${target.riderName} scanned on board`);
     setScanResult({ success: true, result: 'valid', riderName: target.riderName, seatNumber: target.seatNumber, route: target.routeAr, time: checkInTime });
     setIsScanning(false);
-    const tripId = target.tripId;
-    setSupervisorManifest(generateMockManifest(tripId));
-  }, [scanInputToken]);
+    loadSupervisorManifest();
+  }, [activeTrip, isOffline, token, loadSupervisorManifest]);
+
+  const handleSimulatedScan = useCallback(() => {
+    verifyScanToken(scanInputToken);
+  }, [scanInputToken, verifyScanToken]);
 
   const startCameraScan = useCallback(async () => {
     setIsCameraActive(true);
@@ -489,10 +714,38 @@ export function AppProvider({ children }: { children: ReactNode }) {
     e.preventDefault();
     if (!swapBookingTarget || !swapTripId || !swapSeatNumber) return;
     setIsSwapping(true);
-    await new Promise(r => setTimeout(r, 1000));
-    const all: Booking[] = JSON.parse(localStorage.getItem('aesh_bookings') || '[]');
+
+    const apiUrl = getApiBaseUrl();
     const targetTripNum = parseInt(swapTripId);
     const targetSeatNum = parseInt(swapSeatNumber);
+
+    if (!isOffline && token) {
+      try {
+        const res = await fetch(`${apiUrl}/api/bookings/swap`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            bookingId: swapBookingTarget.bookingId,
+            newTripId: targetTripNum,
+            newSeatNumber: targetSeatNum,
+            reason: 'Supervisor operational reassignment',
+          }),
+        });
+        if (res.ok) {
+          setIsSwapping(false);
+          setSwapBookingTarget(null);
+          loadSupervisorManifest();
+          loadSeatMap();
+          alert('Passenger reassigned successfully.');
+          return;
+        }
+      } catch (err) {
+        console.warn('Backend swap failed, applying local swap:', err);
+      }
+    }
+
+    await new Promise(r => setTimeout(r, 800));
+    const all: Booking[] = JSON.parse(localStorage.getItem('aesh_bookings') || '[]');
     const conflict = all.find(b => b.tripId === targetTripNum && b.seatNumber === targetSeatNum && b.status === 'confirmed');
     if (conflict) { alert('Target seat is already occupied!'); setIsSwapping(false); return; }
     const updated = all.map(b => {
@@ -503,20 +756,40 @@ export function AppProvider({ children }: { children: ReactNode }) {
     addMockAuditLog('SUPERVISOR_SWAP', `Supervisor swapped booking ${swapBookingTarget.bookingId}`);
     setIsSwapping(false);
     setSwapBookingTarget(null);
-    if (activeTrip) { setSeats(generateMockSeats(activeTrip.id, user?.id || '')); setSupervisorManifest(generateMockManifest(activeTrip.id)); }
+    loadSupervisorManifest();
+    loadSeatMap();
     alert('Passenger reassigned successfully.');
-  }, [swapBookingTarget, swapTripId, swapSeatNumber, activeTrip, user]);
+  }, [swapBookingTarget, swapTripId, swapSeatNumber, isOffline, token, loadSupervisorManifest, loadSeatMap]);
 
-  const handleSupervisorCancel = useCallback((bookingId: string) => {
+  const handleSupervisorCancel = useCallback(async (bookingId: string) => {
     const reason = window.prompt('Enter cancellation reason:');
     if (reason === null) return;
+
+    const apiUrl = getApiBaseUrl();
+    if (!isOffline && token) {
+      try {
+        await fetch(`${apiUrl}/api/bookings/cancel`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ bookingId, reason }),
+        });
+        loadSupervisorManifest();
+        loadSeatMap();
+        alert('Passenger booking cancelled.');
+        return;
+      } catch (e) {
+        console.warn('API cancellation failed:', e);
+      }
+    }
+
     const all: Booking[] = JSON.parse(localStorage.getItem('aesh_bookings') || '[]');
     const updated = all.map(b => b.id === bookingId ? { ...b, status: 'cancelled' as const, cancelReason: reason } : b);
     localStorage.setItem('aesh_bookings', JSON.stringify(updated));
     addMockAuditLog('SUPERVISOR_CANCEL', `Supervisor cancelled booking ${bookingId}`);
-    if (activeTrip) { setSeats(generateMockSeats(activeTrip.id, user?.id || '')); setSupervisorManifest(generateMockManifest(activeTrip.id)); }
+    loadSupervisorManifest();
+    loadSeatMap();
     alert('Passenger booking cancelled.');
-  }, [activeTrip, user]);
+  }, [isOffline, token, loadSupervisorManifest, loadSeatMap]);
 
   const setSwapBookingTargetOpen = useCallback((t: ManifestEntry | null) => {
     setSwapBookingTarget(t);

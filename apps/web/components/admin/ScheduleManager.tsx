@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useApp } from '@/hooks/useAppStore';
 import type { Trip, Route, TimeSlot, Direction, PersonnelContact } from '@/lib/types';
 import { getOfflineAllTrips, cloneOfflineSchedule, getAllPersonnel, saveCustomOfflineTrips, getCustomOfflineTrips, addMockAuditLog } from '@/lib/offline';
+import { getApiBaseUrl } from '@/lib/api';
 
 const JUNE_DATES = [
   '2026-06-04',
@@ -54,7 +55,7 @@ export default function ScheduleManager() {
   const [cloneSourceDate, setCloneSourceDate] = useState('2026-06-04');
   const [cloneTargetDate, setCloneTargetDate] = useState('2026-06-15');
 
-  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+  const API_URL = getApiBaseUrl();
 
   // Fetch schedules
   const loadSchedules = useCallback(async () => {

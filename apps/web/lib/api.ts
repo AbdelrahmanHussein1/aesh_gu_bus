@@ -1,15 +1,22 @@
-export const getApiUrls = () => {
-  if (typeof window === 'undefined') return { apiUrl: 'http://localhost:3000', wsUrl: 'ws://localhost:3000' };
+export const getApiBaseUrl = () => {
+  if (typeof window === 'undefined') return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+  const protocol = window.location.protocol;
   const hostname = window.location.hostname;
-  const host = hostname === 'localhost' || hostname === '127.0.0.1' ? 'localhost' : hostname;
-  return { apiUrl: `http://${host}:3000`, wsUrl: `ws://${host}:3000` };
+  const host = (hostname === 'localhost' || hostname === '127.0.0.1') ? 'localhost' : hostname;
+  return `${protocol}//${host}:3000`;
 };
 
-const { apiUrl: API_URL } = getApiUrls();
-export { API_URL };
+export const getApiUrls = () => {
+  const apiUrl = getApiBaseUrl();
+  const wsUrl = apiUrl.replace(/^http/, 'ws');
+  return { apiUrl, wsUrl };
+};
+
+export const API_URL = typeof window !== 'undefined' ? getApiBaseUrl() : (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000');
 
 export async function fetchApi<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, {
+  const base = getApiBaseUrl();
+  const res = await fetch(`${base}${path}`, {
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     ...options,
   });
