@@ -40,7 +40,11 @@ node apps/api/dist/index.js &
 API_PID=$!
 
 # 5. Start Next.js Web App
-node apps/web/node_modules/next/dist/bin/next start -p 3001 -H 0.0.0.0 apps/web &
+if [ -f "node_modules/next/dist/bin/next" ]; then
+  node node_modules/next/dist/bin/next start apps/web -p 3001 -H 0.0.0.0 &
+else
+  npm run start --workspace=apps/web &
+fi
 WEB_PID=$!
 
 # Wait for services
