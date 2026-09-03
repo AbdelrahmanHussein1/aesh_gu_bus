@@ -22,6 +22,7 @@ ENV NODE_ENV=production
 RUN npm run build --workspace=packages/shared
 RUN npm run build --workspace=apps/api
 RUN npm run build --workspace=apps/web
+RUN mkdir -p /app/apps/web/public
 
 # Production runtime stage
 FROM node:20-alpine AS runner
