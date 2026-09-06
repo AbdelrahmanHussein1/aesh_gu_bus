@@ -8,6 +8,24 @@ import { SheerIDService } from '../services/sheerid.service.js';
 import { EmailService } from '../services/email.service.js';
 import { WebSocketHub } from '../websocket/hub.js';
 import { authenticateOdoo } from '../auth/odoo.js';
+import crypto from 'node:crypto';
+
+export function hashPassword(password: string): string {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.scryptSync(password, salt, 64).toString('hex');
+  return `${salt}:${hash}`;
+}
+
+export function verifyPassword(password: string, storedHash: string): boolean {
+  if (!storedHash) return false;
+  if (!storedHash.includes(':')) {
+    return password === storedHash;
+  }
+  const [salt, key] = storedHash.split(':');
+  const keyBuffer = Buffer.from(key, 'hex');
+  const derivedKey = crypto.scryptSync(password, salt, 64);
+  return crypto.timingSafeEqual(keyBuffer, derivedKey);
+}
 
 export async function authRoutes(fastify: FastifyInstance) {
   // 1. Verify Student Status / Academic ID (SheerID & Institutional Token)
@@ -110,12 +128,13 @@ export async function authRoutes(fastify: FastifyInstance) {
 
       const erpUid = getDeterministicId(email, 10000);
       const erpPartnerId = getDeterministicId(email, 20000);
+      const hashedPassword = password ? hashPassword(password) : null;
 
       const [newUser] = await db.insert(schema.users).values({
         email: email.toLowerCase().trim(),
         fullName,
         role: role || 'rider',
-        password,
+        password: hashedPassword,
         academicId: academicId || null,
         faculty: faculty || null,
         phone: phone || null,
@@ -187,25 +206,35 @@ export async function authRoutes(fastify: FastifyInstance) {
       });
 
       if (user) {
-        if (user.password && user.password !== password) {
-          return reply.status(401).send({ error: 'Invalid password' });
+        if (user.password && !verifyPassword(password, user.password)) {
+          return reply.status(401).send({
+            error: 'Invalid email or password',
+            messageAr: 'بيانات الدخول غير صحيحة',
+          });
         }
       } else {
-        // Fallback to Odoo ERP
-        const erpUser = await authenticateOdoo(email, password);
+        // Only allow fallback to Odoo ERP for pre-authorized admin/supervisor/driver personnel
+        if (email === 'admin@gu.edu.eg' || email.startsWith('supervisor') || email.startsWith('driver')) {
+          const erpUser = await authenticateOdoo(email, password);
 
-        let role = 'rider';
-        if (email === 'admin@gu.edu.eg') role = 'admin';
-        else if (email.startsWith('supervisor') || email === 'supervisor@gu.edu.eg') role = 'supervisor';
+          let role = 'supervisor';
+          if (email === 'admin@gu.edu.eg') role = 'admin';
 
-        const [newUser] = await db.insert(schema.users).values({
-          email: email.toLowerCase().trim(),
-          fullName: erpUser.name,
-          role,
-          erpUid: erpUser.uid,
-          erpPartnerId: erpUser.partner_id,
-        }).returning();
-        user = newUser;
+          const [newUser] = await db.insert(schema.users).values({
+            email: email.toLowerCase().trim(),
+            fullName: erpUser.name,
+            role,
+            erpUid: erpUser.uid,
+            erpPartnerId: erpUser.partner_id,
+          }).returning();
+          user = newUser;
+        } else {
+          // Unregistered student account
+          return reply.status(401).send({
+            error: 'Account not registered. Please register first as a student to verify your academic credentials.',
+            messageAr: 'هذا الحساب غير مسجل. يرجى إنشاء حساب طالب أولاً لتأكيد القيد الجامعي.',
+          });
+        }
       }
 
       // Single-Device Concurrency:

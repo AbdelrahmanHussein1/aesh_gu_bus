@@ -5,8 +5,8 @@
   "db_name": "GU-Live",
   "user_info": {
     "uid": 12226,
-    "name": "عبد الرحمن ايهاب صلاح حسين",
-    "username": "aes400196@gu.edu.eg",
+    "name": "Student Sample",
+    "username": "student@gu.edu.eg",
     "partner_id": 92436,
     "company_id": 1,
     "server_version": "15.0+e-20221127",
@@ -148,9 +148,9 @@
     "server_version": "15.0+e-20221127",
     "server_version_info": "[15, 0, 0, 'final', 0, 'e']",
     "support_url": "https://www.odoo.com/help",
-    "name": "عبد الرحمن ايهاب صلاح حسين",
-    "username": "aes400196@gu.edu.eg",
-    "partner_display_name": "عبد الرحمن ايهاب صلاح حسين",
+    "name": "Student Sample",
+    "username": "student@gu.edu.eg",
+    "partner_display_name": "Student Sample",
     "company_id": "1",
     "partner_id": "92436",
     "web.base.url": "https://erp.gu.edu.eg",
@@ -184,14 +184,14 @@
   "found_endpoints": {},
   "user_profile": {
     "id": 12226,
-    "name": "عبد الرحمن ايهاب صلاح حسين",
-    "login": "aes400196@gu.edu.eg",
+    "name": "Student Sample",
+    "login": "student@gu.edu.eg",
     "partner_id": [
       92436,
-      "عبد الرحمن ايهاب صلاح حسين"
+      "Student Sample"
     ],
-    "email": "aes400196@gu.edu.eg",
-    "phone": "01012470663",
+    "email": "student@gu.edu.eg",
+    "phone": "01000000000",
     "groups_id": [
       110,
       77,

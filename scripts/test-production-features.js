@@ -51,8 +51,8 @@ async function runTests() {
   const loginDev1 = await request('/api/auth/login', {
     method: 'POST',
     body: JSON.stringify({
-      email: 'aes400196@gu.edu.eg',
-      password: '1Key@GALALA',
+      email: 'supervisor@gu.edu.eg',
+      password: 'super123',
       deviceInfo: 'Laptop Windows Browser',
     }),
   });
@@ -78,8 +78,8 @@ async function runTests() {
   const loginDev2 = await request('/api/auth/login', {
     method: 'POST',
     body: JSON.stringify({
-      email: 'aes400196@gu.edu.eg',
-      password: '1Key@GALALA',
+      email: 'supervisor@gu.edu.eg',
+      password: 'super123',
       deviceInfo: 'Android Mobile App',
     }),
   });

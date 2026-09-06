@@ -126,7 +126,7 @@ export default function QRScanner() {
       setResult({
         success: true,
         result: 'valid',
-        riderName: 'Student Abdelrahman (Offline)',
+        riderName: 'Student Passenger',
         seatNumber: seatNumber,
         route: 'El Obour Line',
         bus: 'Bus 116'

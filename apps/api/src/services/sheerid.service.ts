@@ -7,7 +7,7 @@ import { Resend } from 'resend';
 
 const resendApiKey = process.env.RESEND_API_KEY || 're_mock_key';
 const emailFrom = process.env.EMAIL_FROM || 'Bus Aesh <onboarding@resend.dev>';
-const sandboxRecipient = process.env.SANDBOX_OVERRIDE_RECIPIENT || 'abdulrahman.ehab.hussein@gmail.com';
+const sandboxRecipient = process.env.SANDBOX_OVERRIDE_RECIPIENT || '';
 const sheerIdApiKey = process.env.SHEERID_API_KEY;
 const sheerIdProgramId = process.env.SHEERID_PROGRAM_ID || 'galala-university-students';
 
@@ -30,19 +30,19 @@ export class SheerIDService {
     return (
       lower.endsWith('@gu.edu.eg') ||
       lower.endsWith('@galala.edu.eg') ||
-      lower === 'abdulrahman.ehab.hussein@gmail.com' ||
       lower.startsWith('aes') ||
+      lower.startsWith('std.') ||
       lower.startsWith('test.')
     );
   }
 
   /**
-   * Validates Academic ID format (Galala standard: e.g. aes400196 or numeric ID).
+   * Validates Academic ID format (Galala standard: e.g. 21010012 or alphanumeric ID).
    */
   static isValidAcademicId(academicId: string): boolean {
     if (!academicId) return false;
     const clean = academicId.trim();
-    // Allow format like 'aes400196' or 5-14 digits
+    // Allow format like 'std123456' or 5-14 digits
     return /^[a-zA-Z]{2,4}\d{4,10}$/.test(clean) || /^\d{5,14}$/.test(clean);
   }
 
@@ -74,8 +74,8 @@ export class SheerIDService {
         success: false,
         verificationId: '',
         status: 'REJECTED',
-        message: 'Invalid Galala University Academic ID format (e.g. aes400196)',
-        messageAr: 'رقم القيد الأكاديمي غير صالح (مثال: aes400196)',
+        message: 'Invalid Galala University Academic ID format (e.g. 21010012 or aes123456)',
+        messageAr: 'رقم القيد الأكاديمي غير صالح (مثال: 21010012 أو aes123456)',
       };
     }
 
@@ -133,30 +133,43 @@ export class SheerIDService {
       expiresAt,
     });
 
+    // Log verification code to server console for testing/audit
+    console.log(`[SheerID Verification] 🔐 Verification OTP for ${email} (Academic ID: ${academicId}) is: ${verificationCode}`);
+
     // Send code via Resend
     try {
-      const recipient = process.env.NODE_ENV === 'production' && !email.includes('resend.dev') 
-        ? email 
-        : sandboxRecipient;
-
-      await resend.emails.send({
-        from: emailFrom,
-        to: recipient,
-        subject: `رمز التحقق الخاص بجامعة الجلالة: ${verificationCode} — Bus Aesh`,
-        html: `
-          <div style="font-family: sans-serif; max-width: 500px; margin: 0 auto; padding: 20px; border: 1px solid #1e293b; border-radius: 12px; background: #0b0f19; color: #f8fafc;">
-            <h2 style="color: #38bdf8; margin-top: 0;">منظومة باصات جامعة الجلالة — Bus Aesh</h2>
-            <p>مرحباً <strong>${fullName}</strong>،</p>
-            <p>رمز تأكيد قيدك الطلابي الأكاديمي (<strong>${academicId}</strong>) هو:</p>
-            <div style="background: #0f172a; border: 1px solid #38bdf8; border-radius: 8px; padding: 16px; text-align: center; font-size: 28px; font-weight: bold; letter-spacing: 4px; color: #38bdf8; margin: 20px 0;">
-              ${verificationCode}
-            </div>
-            <p style="color: #94a3b8; font-size: 13px;">هذا الرمز صالح لمدة 15 دقيقة فقط. إذا لم تقم بطلب هذا الرمز، يمكنك تجاهل هذه الرسالة.</p>
+      // 1. Send directly to student email
+      const emailHtml = `
+        <div style="font-family: sans-serif; max-width: 500px; margin: 0 auto; padding: 20px; border: 1px solid #1e293b; border-radius: 12px; background: #0b0f19; color: #f8fafc;">
+          <h2 style="color: #38bdf8; margin-top: 0;">منظومة باصات جامعة الجلالة — Bus Aesh</h2>
+          <p>مرحباً <strong>${fullName}</strong>،</p>
+          <p>رمز تأكيد قيدك الطلابي الأكاديمي (<strong>${academicId}</strong>) هو:</p>
+          <div style="background: #0f172a; border: 1px solid #38bdf8; border-radius: 8px; padding: 16px; text-align: center; font-size: 28px; font-weight: bold; letter-spacing: 4px; color: #38bdf8; margin: 20px 0;">
+            ${verificationCode}
           </div>
-        `,
+          <p style="color: #94a3b8; font-size: 13px;">هذا الرمز صالح لمدة 15 دقيقة فقط. إذا لم تقم بطلب هذا الرمز، يمكنك تجاهل هذه الرسالة.</p>
+        </div>
+      `;
+
+      const sendResult = await resend.emails.send({
+        from: emailFrom,
+        to: email.toLowerCase().trim(),
+        subject: `رمز التحقق الخاص بجامعة الجلالة: ${verificationCode} — Bus Aesh`,
+        html: emailHtml,
       });
+
+      // 2. If rejected in sandbox mode (free tier Resend can only deliver to account owner), forward to sandbox recipient
+      if (sendResult.error && sandboxRecipient && sandboxRecipient !== email.toLowerCase().trim()) {
+        console.log(`[SheerIDService] Direct student delivery failed (${sendResult.error.message}). Forwarding code to sandbox email: ${sandboxRecipient}`);
+        await resend.emails.send({
+          from: emailFrom,
+          to: sandboxRecipient,
+          subject: `[Bus Aesh Test Forward] كود التحقق لـ ${email}: ${verificationCode}`,
+          html: emailHtml,
+        });
+      }
     } catch (err: any) {
-      console.warn('[SheerIDService] Failed to send verification email, code logged in console for testing:', verificationCode);
+      console.warn('[SheerIDService] Failed to send verification email via Resend:', err?.message);
     }
 
     return {
@@ -164,7 +177,7 @@ export class SheerIDService {
       verificationId: verificationToken,
       status: 'PENDING_CODE',
       message: 'Verification code sent to your university email address.',
-      messageAr: `تم إرسال كود التحقق المكون من 6 أرقام إلى بريدك الجامعي. (كود تجريبي: ${verificationCode})`,
+      messageAr: 'تم إرسال كود التحقق المكون من 6 أرقام إلى بريدك الجامعي بنجاح.',
     };
   }
 

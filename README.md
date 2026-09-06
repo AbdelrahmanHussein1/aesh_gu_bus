@@ -172,6 +172,6 @@ When testing, use these default accounts for auto-login:
 
 | Role | Email | Password | Description |
 | :--- | :--- | :--- | :--- |
-| **Rider (Student)** | `aes400196@gu.edu.eg` | `1Key@GALALA` | Books seats and views scannable QRs. |
+| **Rider (Student)** | *(Register via Student Registration tab)* | *(Your registered password)* | Books seats and views scannable QRs. |
 | **Supervisor** | `supervisor@gu.edu.eg` | `super123` | Scans passengers and manages rosters. |
 | **Admin** | `admin@gu.edu.eg` | `admin123` | Configures lock policies and wipes databases. |

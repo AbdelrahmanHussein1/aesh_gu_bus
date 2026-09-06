@@ -17,7 +17,7 @@ You land on `/`. Choose one of these accounts:
 
 | Role | Email | Password |
 | :--- | :--- | :--- |
-| Rider | `aes400196@gu.edu.eg` | `1Key@GALALA` |
+| Rider (Student) | *(Register via Student Registration tab)* | *(Your registered password)* |
 | Supervisor | `supervisor@gu.edu.eg` | `super123` |
 | Admin | `admin@gu.edu.eg` | `admin123` |
 

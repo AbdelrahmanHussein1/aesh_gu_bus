@@ -7,7 +7,11 @@ export default function SideNavBar() {
     sidebarCollapsed, toggleSidebar, mobileSidebarOpen, setMobileSidebarOpen,
   } = useApp();
 
-  const isDev = user?.email?.toLowerCase().includes('abdulrahman.ehab') || user?.email === process.env.NEXT_PUBLIC_DEV_EMAIL;
+  const isLocalhost = typeof window !== 'undefined' && (
+    window.location.hostname === 'localhost' ||
+    window.location.hostname === '127.0.0.1'
+  );
+  const isDev = isLocalhost || Boolean(process.env.NEXT_PUBLIC_DEV_EMAIL && user?.email === process.env.NEXT_PUBLIC_DEV_EMAIL);
 
   const allNavItems = [
     { label: 'Book Trip (Rider)', icon: 'directions_bus', href: '/rider', active: role === 'rider', roles: ['rider', 'admin'] },

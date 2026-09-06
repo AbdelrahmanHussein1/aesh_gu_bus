@@ -181,8 +181,8 @@ export function generateMockManifest(tripId: number): ManifestEntry[] {
     status: b.status,
     paymentStatus: b.paymentStatus,
     receiptRef: b.receiptRef,
-    riderName: b.riderName || 'Test Student',
-    riderEmail: b.riderEmail || 'aes400196@gu.edu.eg',
+    riderName: b.riderName || 'Student Passenger',
+    riderEmail: b.riderEmail || 'student@gu.edu.eg',
     isBoarded: b.isBoarded || false,
     boardedAt: b.boardedAt || null,
   }));

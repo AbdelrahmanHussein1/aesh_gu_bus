@@ -2,16 +2,20 @@
 import { useState } from 'react';
 import { useApp } from '@/hooks/useAppStore';
 
-const DEV_EMAIL = process.env.NEXT_PUBLIC_DEV_EMAIL || 'abdulrahman.ehab.hussein@gmail.com';
+const devEmailEnv = (process.env.NEXT_PUBLIC_DEV_EMAIL || '').toLowerCase().trim();
 
 export default function DeveloperBar() {
   const { user, role, switchRole, isOffline, setIsOffline } = useApp();
   const [expanded, setExpanded] = useState(true);
 
-  // Strictly enforce: ONLY the authorized developer can see this control bar
-  const isDev = user?.email?.toLowerCase().trim() === DEV_EMAIL.toLowerCase().trim() ||
-                user?.email?.toLowerCase().startsWith('dev.') ||
-                user?.email?.toLowerCase().includes('abdulrahman.ehab');
+  // Strictly enforce: Available on localhost/127.0.0.1 for local developer testing, or configured admin
+  const isLocalhost = typeof window !== 'undefined' && (
+    window.location.hostname === 'localhost' ||
+    window.location.hostname === '127.0.0.1' ||
+    window.location.hostname === '::1'
+  );
+
+  const isDev = isLocalhost || Boolean(devEmailEnv && user?.email?.toLowerCase().trim() === devEmailEnv);
 
   if (!isDev) {
     return null;

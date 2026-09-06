@@ -12,8 +12,8 @@ async function testFlow() {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      email: 'aes400196@gu.edu.eg',
-      password: '1Key@GALALA'
+      email: 'supervisor@gu.edu.eg',
+      password: 'super123'
     })
   });
 

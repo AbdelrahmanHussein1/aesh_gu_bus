@@ -19,8 +19,8 @@ export default function AppHome() {
   const router = useRouter();
 
   // Auth states
-  const [email, setEmail] = useState('aes400196@gu.edu.eg');
-  const [password, setPassword] = useState('1Key@GALALA');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [user, setUser] = useState<any>(null);
 
@@ -86,17 +86,10 @@ export default function AppHome() {
     // Simulate auth check
     setTimeout(() => {
       setIsLoggingIn(false);
-      if (email === 'aes400196@gu.edu.eg' && password === '1Key@GALALA') {
-        setUser({
-          id: 'user-77',
-          email,
-          fullName: 'Abdelrahman Ehab',
-          role: 'rider'
-        });
-      } else if (email.startsWith('supervisor') || email.startsWith('driver')) {
-        setUser({ id: 'user-super', email, fullName: 'Supervisor Aesh (Merged)', role: 'supervisor' });
+      if (email.startsWith('supervisor') || email.startsWith('driver')) {
+        setUser({ id: 'user-super', email, fullName: 'Supervisor Aesh', role: 'supervisor' });
       } else {
-        setUser({ id: 'user-generic', email, fullName: 'Test User', role: 'rider' });
+        setUser({ id: `user-${Date.now()}`, email, fullName: email.split('@')[0] || 'Student Rider', role: 'rider' });
       }
     }, 1200);
   };
@@ -187,9 +180,9 @@ export default function AppHome() {
 
         {/* Demo helpers */}
         <View style={styles.infoBox}>
-          <Text style={styles.infoText}>Demo Accounts:</Text>
-          <Text style={styles.infoTextSub}>Rider: aes400196@gu.edu.eg / 1Key@GALALA</Text>
-          <Text style={styles.infoTextSub}>Supervisor: supervisor@gu.edu.eg / super123</Text>
+          <Text style={styles.infoText}>Galala Transport Portal</Text>
+          <Text style={styles.infoTextSub}>Students: Please use your registered Galala account.</Text>
+          <Text style={styles.infoTextSub}>Supervisors: supervisor@gu.edu.eg</Text>
         </View>
       </ScrollView>
     );

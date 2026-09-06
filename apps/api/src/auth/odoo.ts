@@ -32,14 +32,14 @@ export async function authenticateOdoo(email: string, pass: string): Promise<Odo
     const uid = email === 'supervisor@gu.edu.eg' ? 90001 : getDeterministicId(email, 90001);
     return { uid, partner_id: uid, name: 'Supervisor Aesh', email };
   }
-  if (email === 'aes400196@gu.edu.eg' || isMock) {
-    console.log('[Odoo Auth] Using Mock/Direct Authentication for student:', email);
-    const uid = email === 'aes400196@gu.edu.eg' ? 12226 : getDeterministicId(email, 12226);
-    const partner_id = email === 'aes400196@gu.edu.eg' ? 14002 : getDeterministicId(email, 14002);
+  if (isMock) {
+    console.log('[Odoo Auth] Using Mock/Direct Authentication for account:', email);
+    const uid = getDeterministicId(email, 12226);
+    const partner_id = getDeterministicId(email, 14002);
     return {
       uid,
       partner_id,
-      name: email === 'aes400196@gu.edu.eg' ? 'Abdelrahman Ehab (Student)' : 'Mock User',
+      name: `Student Passenger (${email.split('@')[0]})`,
       email: email,
     };
   }

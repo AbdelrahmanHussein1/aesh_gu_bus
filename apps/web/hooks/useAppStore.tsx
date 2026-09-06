@@ -98,7 +98,6 @@ interface AppActions {
 const AppContext = createContext<(AppState & AppActions) | null>(null);
 
 const MOCK_USERS: Record<string, User> = {
-  'aes400196@gu.edu.eg': { id: 'user-default-id', email: 'aes400196@gu.edu.eg', fullName: 'Abdelrahman Ehab', role: 'rider' },
   'supervisor@gu.edu.eg': { id: 'supervisor-id', email: 'supervisor@gu.edu.eg', fullName: 'Supervisor Aesh', role: 'supervisor' },
   'admin@gu.edu.eg': { id: 'admin-id', email: 'admin@gu.edu.eg', fullName: 'System Administrator', role: 'admin' },
 };
@@ -179,13 +178,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   // Authenticate helper with backend
-  const authenticateWithBackend = useCallback(async (email: string, pass = '1Key@GALALA') => {
+  const authenticateWithBackend = useCallback(async (email: string, pass?: string) => {
     try {
       const apiUrl = getApiBaseUrl();
       const res = await fetch(`${apiUrl}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password: pass, deviceInfo: 'Bus Aesh Web Portal' }),
+        body: JSON.stringify({ email, password: pass || '', deviceInfo: 'Bus Aesh Web Portal' }),
       });
       if (res.ok) {
         const data = await res.json();
@@ -215,9 +214,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (savedToken && savedUser) {
       try {
         const parsed = JSON.parse(savedUser);
-        setToken(savedToken);
-        setUser(parsed);
-        setRole(parsed.role);
+        if (parsed.email === 'aes400196@gu.edu.eg' || parsed.id === 'user-default-id') {
+          localStorage.removeItem('aesh_web_token');
+          localStorage.removeItem('aesh_web_user');
+          setToken('');
+          setUser(null);
+          setRole('rider');
+        } else {
+          setToken(savedToken);
+          setUser(parsed);
+          setRole(parsed.role);
+        }
       } catch {
         setToken('');
         setUser(null);
@@ -732,12 +739,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const data = await authenticateWithBackend(email, password);
     if (data) return;
 
-    const mockUser = MOCK_USERS[email] || MOCK_USERS['aes400196@gu.edu.eg'];
-    localStorage.setItem('aesh_web_token', 'mock-offline-token');
-    localStorage.setItem('aesh_web_user', JSON.stringify(mockUser));
-    setToken('mock-offline-token');
-    setUser(mockUser);
-    setRole(mockUser.role);
+    const mockUser = MOCK_USERS[email];
+    if (mockUser) {
+      localStorage.setItem('aesh_web_token', 'mock-offline-token');
+      localStorage.setItem('aesh_web_user', JSON.stringify(mockUser));
+      setToken('mock-offline-token');
+      setUser(mockUser);
+      setRole(mockUser.role);
+    }
   }, [authenticateWithBackend]);
 
   const logout = useCallback(() => {
@@ -754,14 +763,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const switchRole = useCallback(async (newRole: Role) => {
-    const email = newRole === 'rider' ? 'aes400196@gu.edu.eg' : newRole === 'supervisor' ? 'supervisor@gu.edu.eg' : 'admin@gu.edu.eg';
+    const email = newRole === 'rider' ? 'student@gu.edu.eg' : newRole === 'supervisor' ? 'supervisor@gu.edu.eg' : 'admin@gu.edu.eg';
     const data = await authenticateWithBackend(email);
     if (data) {
       setRole(newRole);
       return;
     }
 
-    const mockUser = MOCK_USERS[email];
+    const mockUser = MOCK_USERS[email] || { id: 'mock-rider', email, fullName: 'Demo Student', role: 'rider' };
     setRole(newRole);
     setUser(mockUser);
     setToken(`mock-${newRole}-token`);

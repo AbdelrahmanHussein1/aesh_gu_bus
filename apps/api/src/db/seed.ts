@@ -48,20 +48,16 @@ async function seed() {
 
     // Insert Default System Admin and Rider accounts for testing
     console.log('Inserting default user roles...');
+    // Ensure any legacy testing student record is cleanly deleted so real registration can be tested
+    await db.delete(schema.users).where(eq(schema.users.email, 'aes400196@gu.edu.eg'));
+    await db.delete(schema.verificationTokens).where(eq(schema.verificationTokens.email, 'aes400196@gu.edu.eg'));
+
     await db.insert(schema.users).values({
       email: 'admin@gu.edu.eg',
       fullName: 'System Administrator',
       fullNameAr: 'مدير النظام',
       phone: '01000000000',
       role: 'admin',
-    }).onConflictDoNothing();
-
-    await db.insert(schema.users).values({
-      email: 'aes400196@gu.edu.eg',
-      fullName: 'Abdelrahman Ehab (Student)',
-      fullNameAr: 'عبدالرحمن إيهاب',
-      phone: '01012345678',
-      role: 'rider',
     }).onConflictDoNothing();
 
     // Insert Real Drivers and Supervisors

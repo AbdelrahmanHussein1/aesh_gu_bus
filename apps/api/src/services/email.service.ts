@@ -5,7 +5,7 @@ dotenv.config();
 
 const resendApiKey = process.env.RESEND_API_KEY || 're_mock_key';
 const emailFrom = process.env.EMAIL_FROM || 'Bus Aesh <onboarding@resend.dev>';
-const sandboxOverrideRecipient = process.env.SANDBOX_OVERRIDE_RECIPIENT || 'abdulrahman.ehab.hussein@gmail.com';
+const sandboxOverrideRecipient = process.env.SANDBOX_OVERRIDE_RECIPIENT || '';
 
 const resend = new Resend(resendApiKey);
 

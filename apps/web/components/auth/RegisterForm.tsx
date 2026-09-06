@@ -44,7 +44,6 @@ export default function RegisterForm({ onSwitchTab }: Props = {}) {
     if (
       !cleanEmail.endsWith('@gu.edu.eg') &&
       !cleanEmail.endsWith('@galala.edu.eg') &&
-      !cleanEmail.includes('abdulrahman.ehab') &&
       !cleanEmail.startsWith('aes') &&
       !cleanEmail.startsWith('test.')
     ) {
@@ -159,7 +158,7 @@ export default function RegisterForm({ onSwitchTab }: Props = {}) {
             <div className="relative">
               <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary text-base">badge</span>
               <input
-                id="reg-name" type="text" required placeholder="Abdelrahman Ehab Hussein"
+                id="reg-name" type="text" required placeholder="Ahmed Mohamed Ali"
                 value={name} onChange={e => setName(e.target.value)}
                 className="w-full h-10 pl-9 pr-3 bg-surface-bright border border-border-whisper rounded-lg text-sm text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:border-primary-container"
               />
@@ -171,7 +170,7 @@ export default function RegisterForm({ onSwitchTab }: Props = {}) {
             <div className="relative">
               <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary text-base">school</span>
               <input
-                id="reg-email" type="email" required placeholder="aes400196@gu.edu.eg"
+                id="reg-email" type="email" required placeholder="student@gu.edu.eg"
                 value={email} onChange={e => setEmail(e.target.value)}
                 className="w-full h-10 pl-9 pr-3 bg-surface-bright border border-border-whisper rounded-lg text-sm text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:border-primary-container"
               />
@@ -182,7 +181,7 @@ export default function RegisterForm({ onSwitchTab }: Props = {}) {
             <div className="flex flex-col gap-1.5">
               <label className="text-xs font-semibold text-text-primary" htmlFor="reg-academic-id">Academic ID (رقم القيد)</label>
               <input
-                id="reg-academic-id" type="text" required placeholder="aes400196"
+                id="reg-academic-id" type="text" required placeholder="21010012"
                 value={academicId} onChange={e => setAcademicId(e.target.value)}
                 className="w-full h-10 px-3 bg-surface-bright border border-border-whisper rounded-lg text-sm text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:border-primary-container"
               />
