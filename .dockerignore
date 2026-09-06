@@ -1,0 +1,16 @@
+﻿apps/mobile
+node_modules
+**/node_modules
+.git
+.github
+.vscode
+.idea
+dist-release
+Images
+*.log
+*.zip
+*.tar.gz
+apps/web/.next
+apps/web/out
+apps/api/dist
+packages/shared/dist

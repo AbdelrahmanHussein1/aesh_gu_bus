@@ -47,6 +47,7 @@ const rootFiles = [
   'DEPLOY.md',
   'DESIGN.md',
   '.gitignore',
+  '.dockerignore',
 ];
 
 for (const file of rootFiles) {
