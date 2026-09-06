@@ -1,13 +1,106 @@
 import { z } from 'zod';
 
-function getNodeCrypto(): any {
-  if (typeof window !== 'undefined') return null;
-  try {
-    // Prevent webpack from statically bundling node crypto for client
-    return eval('require')('crypto');
-  } catch {
-    return null;
+function sha256Hex(ascii: string): string {
+  function rightRotate(value: number, amount: number) {
+    return (value >>> amount) | (value << (32 - amount));
   }
+  const mathPow = Math.pow;
+  const maxWord = mathPow(2, 32);
+  const words: number[] = [];
+  const asciiBitLength = ascii.length * 8;
+  let hash: number[] = [];
+  const k: number[] = [];
+  let primeCounter = 0;
+  const isComposite: Record<number, boolean> = {};
+
+  for (let candidate = 2; primeCounter < 64; candidate++) {
+    if (!isComposite[candidate]) {
+      for (let i = 0; i < 313; i += candidate) {
+        isComposite[i] = true;
+      }
+      hash[primeCounter] = (mathPow(candidate, 0.5) * maxWord) | 0;
+      k[primeCounter++] = (mathPow(candidate, 1 / 3) * maxWord) | 0;
+    }
+  }
+
+  ascii += '\x80';
+  while (ascii.length % 64 - 56) ascii += '\x00';
+  for (let i = 0; i < ascii.length; i++) {
+    const j = ascii.charCodeAt(i);
+    words[i >> 2] |= j << ((3 - i) % 4) * 8;
+  }
+  words[words.length] = ((asciiBitLength / maxWord) | 0);
+  words[words.length] = (asciiBitLength) | 0;
+
+  for (let j = 0; j < words.length;) {
+    const w = words.slice(j, j += 16);
+    const oldHash = hash.slice(0);
+    for (let i = 0; i < 64; i++) {
+      const w15 = w[i - 15], w2 = w[i - 2];
+      const a = hash[0], e = hash[4];
+      const temp1 = hash[7]
+        + (rightRotate(e, 6) ^ rightRotate(e, 11) ^ rightRotate(e, 25))
+        + ((e & hash[5]) ^ ((~e) & hash[6]))
+        + k[i]
+        + (w[i] = (i < 16) ? w[i] : (
+            w[i - 16]
+            + (rightRotate(w15, 7) ^ rightRotate(w15, 18) ^ (w15 >>> 3))
+            + w[i - 7]
+            + (rightRotate(w2, 17) ^ rightRotate(w2, 19) ^ (w2 >>> 10))
+          ) | 0
+        );
+      const temp2 = (rightRotate(a, 2) ^ rightRotate(a, 13) ^ rightRotate(a, 22))
+        + ((a & hash[1]) ^ (a & hash[2]) ^ (hash[1] & hash[2]));
+      hash = [(temp1 + temp2) | 0].concat(hash);
+      hash[4] = (hash[4] + temp1) | 0;
+    }
+    for (let i = 0; i < 8; i++) {
+      hash[i] = (hash[i] + oldHash[i]) | 0;
+    }
+  }
+
+  let result = '';
+  for (let i = 0; i < 8; i++) {
+    for (let b = 3; b >= 0; b--) {
+      const byte = (hash[i] >> (b * 8)) & 255;
+      result += (byte < 16 ? '0' : '') + byte.toString(16);
+    }
+  }
+  return result;
+}
+
+function hexToBytes(hex: string): string {
+  let str = '';
+  for (let c = 0; c < hex.length; c += 2) {
+    str += String.fromCharCode(parseInt(hex.substr(c, 2), 16));
+  }
+  return str;
+}
+
+function universalHmacSha256(message: string, key: string): string {
+  const blockSize = 64;
+  if (key.length > blockSize) {
+    key = hexToBytes(sha256Hex(key));
+  }
+  while (key.length < blockSize) {
+    key += '\x00';
+  }
+  let oKeyPad = '', iKeyPad = '';
+  for (let i = 0; i < blockSize; i++) {
+    oKeyPad += String.fromCharCode(key.charCodeAt(i) ^ 0x5c);
+    iKeyPad += String.fromCharCode(key.charCodeAt(i) ^ 0x36);
+  }
+  const innerHash = hexToBytes(sha256Hex(iKeyPad + message));
+  return sha256Hex(oKeyPad + innerHash);
+}
+
+function constantTimeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let result = 0;
+  for (let i = 0; i < a.length; i++) {
+    result |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return result === 0;
 }
 
 // Time Slot Schema & Types
@@ -118,14 +211,9 @@ export function generateBoardingCode(): string {
 export class QRCodec {
   /**
    * Serializes a QR payload and appends an HMAC signature.
-   * Can only be run in environment with Node crypto support (e.g. Fastify backend).
+   * Universal: works seamlessly across Node.js (ESM & CJS), Next.js, and React Native Expo.
    */
   static encode(payload: QRPayload, secret: string): string {
-    const crypto = getNodeCrypto();
-    if (!crypto) {
-      throw new Error('QRCodec.encode() requires Node.js crypto module — not available in this environment');
-    }
-
     const bookingHex = payload.bookingId.replace(/-/g, '').toLowerCase();
     const tripHex = payload.tripId.toString(16);
     const seatHex = payload.seatNumber.toString(16);
@@ -135,10 +223,8 @@ export class QRCodec {
 
     const message = `${bookingHex}.${tripHex}.${seatHex}.${dateCompact}.${versionHex}.${legCode}`;
     
-    // Create HMAC signature and truncate to 16 hex characters (8 bytes)
-    const hmac = crypto.createHmac('sha256', secret);
-    hmac.update(message);
-    const signature = hmac.digest('hex').substring(0, 16);
+    // Universal HMAC-SHA256 signature truncated to 16 hex characters (8 bytes)
+    const signature = universalHmacSha256(message, secret).substring(0, 16);
 
     return `${message}.${signature}`;
   }
@@ -190,14 +276,9 @@ export class QRCodec {
 
   /**
    * Verifies the HMAC signature of a token string.
-   * Can only be run in environment with Node crypto support.
+   * Universal: works seamlessly across Node.js, Next.js, and React Native Expo.
    */
   static verify(token: string, secret: string): boolean {
-    const crypto = getNodeCrypto();
-    if (!crypto) {
-      throw new Error('QRCodec.verify() requires Node.js crypto module — not available in this environment');
-    }
-
     const parts = token.split('.');
     if (parts.length !== 7) {
       return false;
@@ -206,17 +287,8 @@ export class QRCodec {
     const [bookingHex, tripHex, seatHex, dateCompact, versionHex, legCode, signature] = parts;
     const message = `${bookingHex}.${tripHex}.${seatHex}.${dateCompact}.${versionHex}.${legCode}`;
 
-    const hmac = crypto.createHmac('sha256', secret);
-    hmac.update(message);
-    const expectedSignature = hmac.digest('hex').substring(0, 16);
-
-    // Guard against length mismatch — timingSafeEqual throws RangeError on different lengths
-    const sigBuffer = Buffer.from(signature, 'hex');
-    const expectedBuffer = Buffer.from(expectedSignature, 'hex');
-    if (sigBuffer.length !== expectedBuffer.length) {
-      return false;
-    }
-
-    return crypto.timingSafeEqual(sigBuffer, expectedBuffer);
+    const expectedSignature = universalHmacSha256(message, secret).substring(0, 16);
+    return constantTimeEqual(signature.toLowerCase(), expectedSignature.toLowerCase());
   }
 }
+
