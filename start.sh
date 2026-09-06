@@ -37,8 +37,10 @@ if [ -d ".git" ]; then
     git pull origin main 2>/dev/null || echo "ℹ️  Continuing with local files..."
 fi
 
-echo "🚀 Building and starting Docker services with latest updates..."
-$DOCKER_COMPOSE up -d --build
+echo "🚀 Building fresh Docker image (no cache)..."
+$DOCKER_COMPOSE build --no-cache app
+echo "🚀 Starting all services..."
+$DOCKER_COMPOSE up -d
 
 echo "⏳ Waiting for services to initialize..."
 sleep 5

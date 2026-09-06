@@ -25,14 +25,16 @@ execSync('npm run build --workspace=packages/shared', { stdio: 'inherit', cwd: r
 execSync('npm run build --workspace=apps/api', { stdio: 'inherit', cwd: rootDir });
 execSync('npm run build --workspace=apps/web', { stdio: 'inherit', cwd: rootDir });
 
-// 3. Helper to copy directories
-function copyRecursive(src, dest) {
+// 3. Helper to copy directories while filtering out bloat/caches
+function copyRecursive(src, dest, ignorePatterns = ['node_modules', '.next', '.git', '.turbo']) {
   if (!fs.existsSync(src)) return;
   const stat = fs.statSync(src);
   if (stat.isDirectory()) {
+    const base = path.basename(src);
+    if (ignorePatterns.includes(base)) return;
     fs.mkdirSync(dest, { recursive: true });
     for (const child of fs.readdirSync(src)) {
-      copyRecursive(path.join(src, child), path.join(dest, child));
+      copyRecursive(path.join(src, child), path.join(dest, child), ignorePatterns);
     }
   } else {
     fs.copyFileSync(src, dest);
@@ -41,48 +43,49 @@ function copyRecursive(src, dest) {
 
 console.log('📂 Staging production files...');
 
-// Shared package
-copyRecursive(path.join(rootDir, 'packages/shared/dist'), path.join(stageDir, 'packages/shared/dist'));
-copyRecursive(path.join(rootDir, 'packages/shared/package.json'), path.join(stageDir, 'packages/shared/package.json'));
+// Shared package (source & dist)
+copyRecursive(path.join(rootDir, 'packages/shared'), path.join(stageDir, 'packages/shared'));
 
-// API app
-copyRecursive(path.join(rootDir, 'apps/api/dist'), path.join(stageDir, 'apps/api/dist'));
-copyRecursive(path.join(rootDir, 'apps/api/drizzle'), path.join(stageDir, 'apps/api/drizzle'));
-copyRecursive(path.join(rootDir, 'apps/api/package.json'), path.join(stageDir, 'apps/api/package.json'));
-if (fs.existsSync(path.join(rootDir, 'apps/api/.env.example'))) {
-  copyRecursive(path.join(rootDir, 'apps/api/.env.example'), path.join(stageDir, 'apps/api/.env.example'));
-}
+// API app (source & dist)
+copyRecursive(path.join(rootDir, 'apps/api'), path.join(stageDir, 'apps/api'));
 
-// Web app
-copyRecursive(path.join(rootDir, 'apps/web/.next'), path.join(stageDir, 'apps/web/.next'));
-if (fs.existsSync(path.join(rootDir, 'apps/web/public'))) {
-  copyRecursive(path.join(rootDir, 'apps/web/public'), path.join(stageDir, 'apps/web/public'));
-}
-copyRecursive(path.join(rootDir, 'apps/web/package.json'), path.join(stageDir, 'apps/web/package.json'));
+// Web app (source, components, app, public - no .next cache!)
+copyRecursive(path.join(rootDir, 'apps/web'), path.join(stageDir, 'apps/web'));
 
-// Root config & docs
+// Root configs & entrypoints
+copyRecursive(path.join(rootDir, 'scripts'), path.join(stageDir, 'scripts'));
+copyRecursive(path.join(rootDir, 'erp_bus_data.json'), path.join(stageDir, 'erp_bus_data.json'));
 copyRecursive(path.join(rootDir, 'package.json'), path.join(stageDir, 'package.json'));
-if (fs.existsSync(path.join(rootDir, 'docker-compose.yml'))) {
-  copyRecursive(path.join(rootDir, 'docker-compose.yml'), path.join(stageDir, 'docker-compose.yml'));
+if (fs.existsSync(path.join(rootDir, 'package-lock.json'))) {
+  copyRecursive(path.join(rootDir, 'package-lock.json'), path.join(stageDir, 'package-lock.json'));
 }
-if (fs.existsSync(path.join(rootDir, 'Dockerfile'))) {
-  copyRecursive(path.join(rootDir, 'Dockerfile'), path.join(stageDir, 'Dockerfile'));
-}
+copyRecursive(path.join(rootDir, 'docker-compose.yml'), path.join(stageDir, 'docker-compose.yml'));
+copyRecursive(path.join(rootDir, 'Dockerfile'), path.join(stageDir, 'Dockerfile'));
 if (fs.existsSync(path.join(rootDir, 'DEPLOY.md'))) {
   copyRecursive(path.join(rootDir, 'DEPLOY.md'), path.join(stageDir, 'DEPLOY.md'));
 }
-if (fs.existsSync(path.join(rootDir, 'start.sh'))) {
-  copyRecursive(path.join(rootDir, 'start.sh'), path.join(stageDir, 'start.sh'));
+copyRecursive(path.join(rootDir, 'start.sh'), path.join(stageDir, 'start.sh'));
+
+// Ensure start.sh has Unix LF line endings
+const startShPath = path.join(stageDir, 'start.sh');
+if (fs.existsSync(startShPath)) {
+  const content = fs.readFileSync(startShPath, 'utf8').replace(/\r\n/g, '\n');
+  fs.writeFileSync(startShPath, content);
 }
 
-// 4. Create ZIP archive
+// 4. Create ZIP archive with standard POSIX forward slashes
 console.log('🗜️ Compressing release archive...');
 const zipFile = path.join(distReleaseDir, `${releaseName}.zip`);
 
-if (process.platform === 'win32') {
-  execSync(`powershell -Command "Compress-Archive -Path '${stageDir}\\*' -DestinationPath '${zipFile}' -Force"`, { stdio: 'inherit' });
-} else {
-  execSync(`cd "${distReleaseDir}" && zip -r "${releaseName}.zip" "${releaseName}"`, { stdio: 'inherit' });
+try {
+  // Use bsdtar for cross-platform forward-slash ZIP archive
+  execSync(`tar -a -c -f "${zipFile}" -C "${stageDir}" .`, { stdio: 'inherit' });
+} catch {
+  if (process.platform === 'win32') {
+    execSync(`powershell -Command "Compress-Archive -Path '${stageDir}\\*' -DestinationPath '${zipFile}' -Force"`, { stdio: 'inherit' });
+  } else {
+    execSync(`cd "${stageDir}" && zip -r "${zipFile}" .`, { stdio: 'inherit' });
+  }
 }
 
 const stats = fs.statSync(zipFile);
