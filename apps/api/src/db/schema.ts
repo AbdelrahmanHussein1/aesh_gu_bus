@@ -117,6 +117,7 @@ export const bookings = pgTable('bookings', {
   pairedBookingId: uuid('paired_booking_id'),
     // Links arrival booking <-> return booking for round trips
   qrToken: text('qr_token').unique(),
+  boardingCode: varchar('boarding_code', { length: 20 }),
   qrVersion: integer('qr_version').default(1).notNull(),
   qrExpiresAt: timestamp('qr_expires_at', { withTimezone: true }),
     // 24h after booking creation — QR is invalid after this

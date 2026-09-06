@@ -804,18 +804,34 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    await new Promise(r => setTimeout(r, 800));
+    await new Promise(r => setTimeout(r, 600));
     const all: Booking[] = JSON.parse(localStorage.getItem('aesh_bookings') || '[]');
-    const parts = tokenToVerify.split('.');
-    if (parts.length < 5) {
-      setScanResult({ success: false, result: 'invalid', message: 'ERROR: Scan Invalid (Unrecognized format)' });
-      setIsScanning(false);
-      return;
+    const clean = tokenToVerify.trim().toUpperCase();
+    const isManualCode = !clean.includes('.') || clean.startsWith('GU-');
+    let target: Booking | undefined;
+
+    if (isManualCode) {
+      let formatted = clean;
+      if (!formatted.startsWith('GU-')) {
+        formatted = `GU-${formatted.replace(/^GU/i, '')}`;
+      }
+      target = all.find(b => 
+        (b.boardingCode && (b.boardingCode.toUpperCase() === formatted || b.boardingCode.toUpperCase() === clean)) ||
+        b.id.toUpperCase().startsWith(clean.replace(/^GU-/i, ''))
+      );
+    } else {
+      const parts = tokenToVerify.split('.');
+      if (parts.length < 5) {
+        setScanResult({ success: false, result: 'invalid', message: 'ERROR: Scan Invalid (Unrecognized format)' });
+        setIsScanning(false);
+        return;
+      }
+      const [bookingHex] = parts;
+      target = all.find(b => b.id.replace(/-/g, '') === bookingHex);
     }
-    const [bookingHex] = parts;
-    const target = all.find(b => b.id.replace(/-/g, '') === bookingHex);
+
     if (!target) {
-      setScanResult({ success: false, result: 'invalid', message: 'ERROR: Booking Record Not Found' });
+      setScanResult({ success: false, result: 'invalid', message: isManualCode ? `ERROR: Boarding Code "${clean}" Not Found` : 'ERROR: Booking Record Not Found' });
       setIsScanning(false);
       return;
     }

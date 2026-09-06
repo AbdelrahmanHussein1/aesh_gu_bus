@@ -152,13 +152,14 @@ export default function RegisterForm({ onSwitchTab }: Props = {}) {
       )}
 
       {step === 'details' ? (
-        <form onSubmit={handleSendVerification} className="flex flex-col gap-4">
+        <form onSubmit={handleSendVerification} autoComplete="off" className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
             <label className="text-xs font-semibold text-text-primary" htmlFor="reg-name">Student Full Name (الاسم بالكامل)</label>
             <div className="relative">
               <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary text-base">badge</span>
               <input
                 id="reg-name" type="text" required placeholder="Ahmed Mohamed Ali"
+                autoComplete="off"
                 value={name} onChange={e => setName(e.target.value)}
                 className="w-full h-10 pl-9 pr-3 bg-surface-bright border border-border-whisper rounded-lg text-sm text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:border-primary-container"
               />
@@ -171,6 +172,7 @@ export default function RegisterForm({ onSwitchTab }: Props = {}) {
               <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary text-base">school</span>
               <input
                 id="reg-email" type="email" required placeholder="student@gu.edu.eg"
+                autoComplete="off"
                 value={email} onChange={e => setEmail(e.target.value)}
                 className="w-full h-10 pl-9 pr-3 bg-surface-bright border border-border-whisper rounded-lg text-sm text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:border-primary-container"
               />
@@ -182,6 +184,7 @@ export default function RegisterForm({ onSwitchTab }: Props = {}) {
               <label className="text-xs font-semibold text-text-primary" htmlFor="reg-academic-id">Academic ID (رقم القيد)</label>
               <input
                 id="reg-academic-id" type="text" required placeholder="21010012"
+                autoComplete="off"
                 value={academicId} onChange={e => setAcademicId(e.target.value)}
                 className="w-full h-10 px-3 bg-surface-bright border border-border-whisper rounded-lg text-sm text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:border-primary-container"
               />
@@ -191,6 +194,7 @@ export default function RegisterForm({ onSwitchTab }: Props = {}) {
               <label className="text-xs font-semibold text-text-primary" htmlFor="reg-phone">Phone No. (الموبايل)</label>
               <input
                 id="reg-phone" type="tel" required placeholder="010XXXXXXXX"
+                autoComplete="off"
                 value={phone} onChange={e => setPhone(e.target.value)}
                 className="w-full h-10 px-3 bg-surface-bright border border-border-whisper rounded-lg text-sm text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:border-primary-container"
               />
@@ -215,6 +219,7 @@ export default function RegisterForm({ onSwitchTab }: Props = {}) {
               <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary text-base">lock</span>
               <input
                 id="reg-password" type="password" required placeholder="••••••••" minLength={6}
+                autoComplete="new-password"
                 value={password} onChange={e => setPassword(e.target.value)}
                 className="w-full h-10 pl-9 pr-3 bg-surface-bright border border-border-whisper rounded-lg text-sm text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:border-primary-container"
               />

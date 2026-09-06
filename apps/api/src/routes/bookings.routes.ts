@@ -1,5 +1,5 @@
 import { FastifyInstance } from 'fastify';
-import { CreateBookingSchema, CreateRoundTripBookingSchema, CancelBookingSchema, SwapBookingSchema, QRCodec } from '@bus-aesh/shared';
+import { CreateBookingSchema, CreateRoundTripBookingSchema, CancelBookingSchema, SwapBookingSchema, QRCodec, generateBoardingCode } from '@bus-aesh/shared';
 import { db } from '../db/index.js';
 import * as schema from '../db/schema.js';
 import { redis } from '../redis.js';
@@ -78,6 +78,8 @@ export async function bookingsRoutes(fastify: FastifyInstance) {
         const qrExpiresAt = getQrExpiresAt();
         const paymentId = generatePaymentId();
 
+        const boardingCode = generateBoardingCode();
+
         const [booking] = await tx.insert(schema.bookings).values({
           tripId,
           userId,
@@ -85,6 +87,7 @@ export async function bookingsRoutes(fastify: FastifyInstance) {
           status: 'confirmed',
           bookingType,
           legType,
+          boardingCode,
           paymentId,
           paymentStatus,
           receiptImage,
@@ -219,6 +222,9 @@ export async function bookingsRoutes(fastify: FastifyInstance) {
         const paymentId = generatePaymentId();
         const qrExpiresAt = getQrExpiresAt();
 
+        const arrivalBoardingCode = generateBoardingCode();
+        const returnBoardingCode = generateBoardingCode();
+
         const [arrivalBooking] = await tx.insert(schema.bookings).values({
           tripId: toCampusTripId,
           userId,
@@ -226,6 +232,7 @@ export async function bookingsRoutes(fastify: FastifyInstance) {
           status: 'confirmed',
           bookingType: 'round_trip',
           legType: 'to_campus',
+          boardingCode: arrivalBoardingCode,
           paymentId,
           paymentStatus,
           receiptImage,
@@ -240,6 +247,7 @@ export async function bookingsRoutes(fastify: FastifyInstance) {
           status: 'confirmed',
           bookingType: 'round_trip',
           legType: 'from_campus',
+          boardingCode: returnBoardingCode,
           pairedBookingId: arrivalBooking.id,
           paymentId,
           paymentStatus,

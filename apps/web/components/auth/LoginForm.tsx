@@ -28,7 +28,11 @@ export default function LoginForm({ onSwitchTab }: Props) {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+    <form onSubmit={handleSubmit} autoComplete="off" className="flex flex-col gap-5">
+      {/* Honeypot / dummy fields to deter aggressive browser autofill */}
+      <input type="text" name="prevent_autofill_user" tabIndex={-1} aria-hidden="true" className="hidden opacity-0 absolute -top-9999px -left-9999px h-0 w-0 pointer-events-none" />
+      <input type="password" name="prevent_autofill_pwd" tabIndex={-1} aria-hidden="true" className="hidden opacity-0 absolute -top-9999px -left-9999px h-0 w-0 pointer-events-none" />
+
       {error && (
         <div className="bg-error-container/50 border border-error-container text-on-error-container px-4 py-3 rounded-lg text-xs flex items-center gap-2">
           <span className="material-symbols-outlined text-sm">error</span>
@@ -41,9 +45,14 @@ export default function LoginForm({ onSwitchTab }: Props) {
         <div className="relative">
           <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary text-lg">mail</span>
           <input
-            id="email" type="email" required
-            placeholder="student@galala.edu.eg"
-            value={email} onChange={e => setEmail(e.target.value)}
+            id="email"
+            name="gu_login_email"
+            type="email"
+            required
+            autoComplete="off"
+            placeholder="name@gu.edu.eg"
+            value={email}
+            onChange={e => setEmail(e.target.value)}
             className="w-full h-[44px] pl-10 pr-4 bg-surface-bright border border-border-whisper rounded-[6px] font-body-md text-body-md text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:border-primary-container focus:ring-1 focus:ring-primary-container transition-all"
           />
         </div>
@@ -57,9 +66,14 @@ export default function LoginForm({ onSwitchTab }: Props) {
         <div className="relative">
           <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary text-lg">lock</span>
           <input
-            id="password" type={showPw ? 'text' : 'password'} required
+            id="password"
+            name="gu_login_pass"
+            type={showPw ? 'text' : 'password'}
+            required
+            autoComplete="new-password"
             placeholder="••••••••"
-            value={password} onChange={e => setPassword(e.target.value)}
+            value={password}
+            onChange={e => setPassword(e.target.value)}
             className="w-full h-[44px] pl-10 pr-10 bg-surface-bright border border-border-whisper rounded-[6px] font-body-md text-body-md text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:border-primary-container focus:ring-1 focus:ring-primary-container transition-all"
           />
           <button type="button" onClick={() => setShowPw(p => !p)} className="absolute right-3 top-1/2 -translate-y-1/2 text-text-secondary hover:text-text-primary">

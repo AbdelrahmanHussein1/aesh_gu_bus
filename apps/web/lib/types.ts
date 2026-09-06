@@ -90,6 +90,7 @@ export interface Booking {
   paymentStatus: string;
   receiptRef: string;
   qrToken: string;
+  boardingCode?: string;
   tripDate: string;
   routeAr: string;
   departureTime: string;
@@ -110,6 +111,7 @@ export interface ManifestEntry {
   receiptRef: string;
   riderName: string;
   riderEmail: string;
+  boardingCode?: string;
   isBoarded: boolean;
   boardedAt: string | null;
 }

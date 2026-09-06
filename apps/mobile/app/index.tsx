@@ -106,6 +106,7 @@ export default function AppHome() {
     setTimeout(() => {
       // Create new ticket
       const bookingId = `book-${Math.random().toString(36).substring(2, 9)}`;
+      const boardingCode = 'GU-' + Math.random().toString(36).substring(2, 6).toUpperCase();
       const mockToken = `${bookingId.replace(/-/g, '')}.${activeTrip.id.toString(16)}.${selectedSeat.toString(16)}.20260625.1.mocksignaturehex`;
 
       const newTicket = {
@@ -114,6 +115,7 @@ export default function AppHome() {
         seatNumber: selectedSeat,
         time: activeTrip.time,
         date: '2026-06-25',
+        boardingCode,
         qrToken: mockToken
       };
 
@@ -367,6 +369,11 @@ export default function AppHome() {
                         <Text style={{fontSize: 8, color: '#333', marginTop: 4, fontWeight: 'bold'}}>SCANNABLE TICKET</Text>
                       </View>
                     </View>
+                  </View>
+                  <View style={{ marginTop: 8, paddingHorizontal: 12, paddingVertical: 6, backgroundColor: 'rgba(56, 189, 248, 0.1)', borderWidth: 1, borderColor: 'rgba(56, 189, 248, 0.3)', borderRadius: 8, alignItems: 'center' }}>
+                    <Text style={{ fontSize: 9, color: '#94a3b8', fontWeight: 'bold' }}>MANUAL BOARDING CODE</Text>
+                    <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#38bdf8', letterSpacing: 2, marginVertical: 2 }}>{t.boardingCode || ('GU-' + t.id.substring(5, 9).toUpperCase())}</Text>
+                    <Text style={{ fontSize: 8, color: '#64748b' }}>Give to supervisor if camera scan fails</Text>
                   </View>
                   <Text style={styles.qrTokenText} numberOfLines={1}>Token: {t.qrToken}</Text>
                 </View>

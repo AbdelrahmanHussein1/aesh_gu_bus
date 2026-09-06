@@ -1,5 +1,14 @@
 import { z } from 'zod';
-import crypto from 'node:crypto';
+
+function getNodeCrypto(): any {
+  if (typeof window !== 'undefined') return null;
+  try {
+    // Prevent webpack from statically bundling node crypto for client
+    return eval('require')('crypto');
+  } catch {
+    return null;
+  }
+}
 
 // Time Slot Schema & Types
 export const TimeSlotSchema = z.enum([
@@ -89,6 +98,20 @@ export const VerifySheerIdSchema = z.object({
   faculty: z.string().optional(),
 });
 
+/**
+ * Generates a short, highly memorable alphanumeric boarding code.
+ * Format: GU-XXXX (e.g. GU-7B2K)
+ * Excludes ambiguous characters (0, O, 1, I) to prevent confusion.
+ */
+export function generateBoardingCode(): string {
+  const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+  let code = '';
+  for (let i = 0; i < 4; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return `GU-${code}`;
+}
+
 // Compact QR Token Codec
 // Format: bookingIdHex.tripIdHex.seatNumberHex.dateCompact.versionHex.legTypeCode.signatureHex
 // legTypeCode: 0 = to_campus, 1 = from_campus
@@ -98,6 +121,7 @@ export class QRCodec {
    * Can only be run in environment with Node crypto support (e.g. Fastify backend).
    */
   static encode(payload: QRPayload, secret: string): string {
+    const crypto = getNodeCrypto();
     if (!crypto) {
       throw new Error('QRCodec.encode() requires Node.js crypto module — not available in this environment');
     }
@@ -169,6 +193,7 @@ export class QRCodec {
    * Can only be run in environment with Node crypto support.
    */
   static verify(token: string, secret: string): boolean {
+    const crypto = getNodeCrypto();
     if (!crypto) {
       throw new Error('QRCodec.verify() requires Node.js crypto module — not available in this environment');
     }

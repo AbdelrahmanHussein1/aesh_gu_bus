@@ -132,14 +132,43 @@ export default function QRScanner() {
         )}
       </div>
 
-      <div className="w-full space-y-2 pt-3 border-t border-border-whisper">
-        <label className="text-[10px] text-text-secondary font-semibold block uppercase tracking-wider">Or Paste Token Manually:</label>
-        <div className="flex gap-2">
-          <input type="text" value={scanInputToken} onChange={e => setScanInputToken(e.target.value)} placeholder="Paste QR payload..."
-            className="flex-1 bg-surface border border-border-whisper rounded-xl px-4 py-2 text-xs text-text-primary focus:outline-none focus:border-primary-container" />
-          <button onClick={handleSimulatedScan} disabled={!scanInputToken || isScanning || isCameraActive}
-            className="px-4 py-2 bg-primary-container hover:opacity-90 text-on-primary-container rounded-xl text-xs font-semibold disabled:opacity-40 transition">Verify</button>
+      <div className="w-full space-y-3 pt-3 border-t border-border-whisper">
+        <div className="flex items-center justify-between">
+          <label className="text-[10px] text-text-secondary font-bold uppercase tracking-wider flex items-center gap-1">
+            <span className="material-symbols-outlined text-sm text-primary-container">pin</span>
+            Manual Boarding Code / Token
+          </label>
+          <span className="text-[9px] text-text-secondary font-mono">e.g. GU-7X4K</span>
         </div>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (scanInputToken && !isScanning && !isCameraActive) {
+              handleSimulatedScan();
+            }
+          }}
+          className="flex gap-2"
+        >
+          <input
+            type="text"
+            value={scanInputToken}
+            onChange={e => setScanInputToken(e.target.value.toUpperCase())}
+            placeholder="Enter Boarding Code (e.g. GU-7X4K)"
+            autoComplete="off"
+            className="flex-1 bg-surface border border-border-whisper rounded-xl px-4 py-2.5 text-xs font-mono font-bold text-text-primary tracking-wider placeholder:font-normal placeholder:tracking-normal focus:outline-none focus:border-primary-container focus:ring-1 focus:ring-primary-container uppercase"
+          />
+          <button
+            type="submit"
+            disabled={!scanInputToken || isScanning || isCameraActive}
+            className="px-4 py-2.5 bg-primary-container hover:opacity-90 text-on-primary-container rounded-xl text-xs font-bold disabled:opacity-40 transition flex items-center gap-1 shadow-sm whitespace-nowrap"
+          >
+            <span className="material-symbols-outlined text-[16px]">check_circle</span>
+            Verify
+          </button>
+        </form>
+        <p className="text-[9px] text-text-secondary text-center leading-tight">
+          يمكنك إدخال رمز الطالب المكون من 4 خانات (مثل GU-7X4K) أو لصق رمز الـ QR مباشرة
+        </p>
       </div>
     </div>
   );

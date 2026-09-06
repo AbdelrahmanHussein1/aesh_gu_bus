@@ -1,4 +1,5 @@
 import type { Route, Trip, Seat, Booking, ManifestEntry, AuditLog, BookingType, Direction, TimeSlot, PersonnelContact } from './types';
+import { generateBoardingCode } from '@bus-aesh/shared';
 
 const ERP_ROUTES: Route[] = [
   { id: 29, nameAr: 'بورتوفيق - السويس', nameEn: 'Port Tawfik (Suez)' },
@@ -183,6 +184,7 @@ export function generateMockManifest(tripId: number): ManifestEntry[] {
     receiptRef: b.receiptRef,
     riderName: b.riderName || 'Student Passenger',
     riderEmail: b.riderEmail || 'student@gu.edu.eg',
+    boardingCode: b.boardingCode || ('GU-' + b.id.substring(0, 4).toUpperCase()),
     isBoarded: b.isBoarded || false,
     boardedAt: b.boardedAt || null,
   }));
@@ -211,7 +213,7 @@ export function generateOfflineBooking(
         bookingType: 'round_trip', legType: 'to_campus', pairedBookingId: returnId,
         paymentMethod: paymentMethod as any, paymentStatus: paymentMethod === 'visa_mock' ? 'paid' : 'receipt_uploaded',
         receiptRef: paymentMethod === 'visa_mock' ? `MOCK-TX-${Math.floor(100000 + Math.random() * 900000)}` : receiptRef,
-        qrToken: arrivalToken, tripDate: activeArrivalTrip.tripDate, routeAr: activeArrivalTrip.bus.name.split('/')[0],
+        qrToken: arrivalToken, boardingCode: generateBoardingCode(), tripDate: activeArrivalTrip.tripDate, routeAr: activeArrivalTrip.bus.name.split('/')[0],
         departureTime: activeArrivalTrip.departureTime, riderName: userName, riderEmail: userEmail, isBoarded: false, boardedAt: null,
         driver: activeArrivalTrip.driver, supervisors: activeArrivalTrip.supervisors,
       },
@@ -220,7 +222,7 @@ export function generateOfflineBooking(
         bookingType: 'round_trip', legType: 'from_campus', pairedBookingId: arrivalId,
         paymentMethod: paymentMethod as any, paymentStatus: paymentMethod === 'visa_mock' ? 'paid' : 'receipt_uploaded',
         receiptRef: paymentMethod === 'visa_mock' ? `MOCK-TX-${Math.floor(100000 + Math.random() * 900000)}` : receiptRef,
-        qrToken: returnToken, tripDate: activeReturnTrip.tripDate, routeAr: activeReturnTrip.bus.name.split('/')[0],
+        qrToken: returnToken, boardingCode: generateBoardingCode(), tripDate: activeReturnTrip.tripDate, routeAr: activeReturnTrip.bus.name.split('/')[0],
         departureTime: activeReturnTrip.departureTime, riderName: userName, riderEmail: userEmail, isBoarded: false, boardedAt: null,
         driver: activeReturnTrip.driver, supervisors: activeReturnTrip.supervisors,
       },
@@ -236,7 +238,7 @@ export function generateOfflineBooking(
       bookingType: 'one_way', legType: bookingType === 'to_campus' ? 'to_campus' : 'from_campus',
       paymentMethod: paymentMethod as any, paymentStatus: paymentMethod === 'visa_mock' ? 'paid' : 'receipt_uploaded',
       receiptRef: paymentMethod === 'visa_mock' ? `MOCK-TX-${Math.floor(100000 + Math.random() * 900000)}` : receiptRef,
-      qrToken: token, tripDate: activeTrip.tripDate, routeAr: activeTrip.bus.name.split('/')[0],
+      qrToken: token, boardingCode: generateBoardingCode(), tripDate: activeTrip.tripDate, routeAr: activeTrip.bus.name.split('/')[0],
       departureTime: activeTrip.departureTime, riderName: userName, riderEmail: userEmail, isBoarded: false, boardedAt: null,
       driver: activeTrip.driver, supervisors: activeTrip.supervisors,
     }];

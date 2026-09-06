@@ -2,7 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { SwapBookingSchema, VerifyScanSchema, QRCodec } from '@bus-aesh/shared';
 import { db } from '../db/index.js';
 import * as schema from '../db/schema.js';
-import { eq, and, desc, inArray } from 'drizzle-orm';
+import { eq, and, desc, inArray, or, sql } from 'drizzle-orm';
 import { WebSocketHub } from '../websocket/hub.js';
 import { EmailService } from '../services/email.service.js';
 
@@ -155,54 +155,84 @@ export async function supervisorRoutes(fastify: FastifyInstance) {
     const { token, expectedLegType, latitude, longitude, deviceInfo } = bodyResult.data;
     const scannerId = request.user.id;
 
-    const isSignatureValid = QRCodec.verify(token, jwtSecret);
-    if (!isSignatureValid) {
-      return { success: false, result: 'invalid', message: 'Verification Failed: Tampered or invalid signature' };
-    }
+    const cleanToken = token.trim();
+    const isManualCode = !cleanToken.includes('.') || cleanToken.toUpperCase().startsWith('GU-');
 
-    const payload = QRCodec.decode(token);
+    let booking: any = null;
+    let payload: any = null;
 
-    const booking = await db.query.bookings.findFirst({
-      where: eq(schema.bookings.id, payload.bookingId),
-      with: {
-        user: true,
-        trip: { with: { route: true, bus: true } },
-      },
-    });
+    if (isManualCode) {
+      let formattedCode = cleanToken.toUpperCase();
+      if (!formattedCode.startsWith('GU-')) {
+        formattedCode = `GU-${formattedCode.replace(/^GU/i, '')}`;
+      }
 
-    if (!booking) {
-      return { success: false, result: 'invalid', message: 'No active booking record found' };
+      booking = await db.query.bookings.findFirst({
+        where: or(
+          eq(schema.bookings.boardingCode, formattedCode),
+          eq(schema.bookings.boardingCode, cleanToken.toUpperCase()),
+          sql`LOWER(${schema.bookings.id}) LIKE ${cleanToken.replace(/^GU-/i, '').toLowerCase() + '%'}`
+        ),
+        with: {
+          user: true,
+          trip: { with: { route: true, bus: true } },
+        },
+      });
+
+      if (!booking) {
+        return { success: false, result: 'invalid', message: `Invalid Boarding Code: ${formattedCode}` };
+      }
+    } else {
+      const isSignatureValid = QRCodec.verify(token, jwtSecret);
+      if (!isSignatureValid) {
+        return { success: false, result: 'invalid', message: 'Verification Failed: Tampered or invalid signature' };
+      }
+
+      payload = QRCodec.decode(token);
+
+      booking = await db.query.bookings.findFirst({
+        where: eq(schema.bookings.id, payload.bookingId),
+        with: {
+          user: true,
+          trip: { with: { route: true, bus: true } },
+        },
+      });
+
+      if (!booking) {
+        return { success: false, result: 'invalid', message: 'No active booking record found' };
+      }
+
+      if (booking.qrVersion !== payload.version) {
+        return { success: false, result: 'expired', message: 'This QR code is expired. The rider has been assigned a newer seat.' };
+      }
+
+      if (expectedLegType && payload.legType !== expectedLegType) {
+        return {
+          success: false,
+          result: 'wrong_leg',
+          message: `Wrong QR code: This is a ${payload.legType === 'to_campus' ? 'University' : 'Return'} QR, but scanning for ${expectedLegType === 'to_campus' ? 'University' : 'Return'} leg.`,
+          riderName: booking.user.fullName,
+          seatNumber: booking.seatNumber,
+        };
+      }
     }
 
     if (booking.status === 'cancelled' || booking.status === 'no_show') {
-      return { success: false, result: 'invalid', message: `Booking is ${booking.status}. QR code is no longer valid.` };
+      return { success: false, result: 'invalid', message: `Booking is ${booking.status}. Pass code is no longer valid.` };
     }
 
     if (booking.qrExpiresAt && new Date() > new Date(booking.qrExpiresAt)) {
-      return { success: false, result: 'expired', message: 'QR code has expired (24-hour window passed).' };
+      return { success: false, result: 'expired', message: 'Pass code has expired (24-hour window passed).' };
     }
 
     if (booking.qrUsedAt) {
       return {
         success: false,
         result: 'already_checked_in',
-        message: `QR already used at ${new Date(booking.qrUsedAt).toLocaleTimeString()}`,
+        message: `Already boarded at ${new Date(booking.qrUsedAt).toLocaleTimeString()}`,
         riderName: booking.user.fullName,
         seatNumber: booking.seatNumber,
-      };
-    }
-
-    if (booking.qrVersion !== payload.version) {
-      return { success: false, result: 'expired', message: 'This QR code is expired. The rider has been assigned a newer seat.' };
-    }
-
-    if (expectedLegType && payload.legType !== expectedLegType) {
-      return {
-        success: false,
-        result: 'wrong_leg',
-        message: `Wrong QR code: This is a ${payload.legType === 'to_campus' ? 'University' : 'Return'} QR, but scanning for ${expectedLegType === 'to_campus' ? 'University' : 'Return'} leg.`,
-        riderName: booking.user.fullName,
-        seatNumber: booking.seatNumber,
+        boardingCode: booking.boardingCode,
       };
     }
 
@@ -240,6 +270,7 @@ export async function supervisorRoutes(fastify: FastifyInstance) {
       route: booking.trip.route.nameEn,
       bus: booking.trip.bus.name,
       legType: booking.legType,
+      boardingCode: booking.boardingCode || ('GU-' + booking.id.substring(0, 4).toUpperCase()),
     };
   });
 
@@ -277,6 +308,7 @@ export async function supervisorRoutes(fastify: FastifyInstance) {
       receiptRef: b.receiptRef,
       riderName: b.user.fullName,
       riderEmail: b.user.email,
+      boardingCode: b.boardingCode || ('GU-' + b.id.substring(0, 4).toUpperCase()),
       isBoarded: b.boardingLogs.some(log => log.scanResult === 'valid'),
       boardedAt: b.boardingLogs.find(log => log.scanResult === 'valid')?.scannedAt || null,
     }));

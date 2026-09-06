@@ -43,6 +43,40 @@ function BoardedStamp({ isJustBoarded, size = 'normal' }: BoardedStampProps) {
   );
 }
 
+function BoardingCodeBadge({ code, bId }: { code?: string; bId: string }) {
+  const displayCode = code || ('GU-' + bId.substring(0, 4).toUpperCase());
+  return (
+    <div className="bg-primary-container/5 border border-primary-container/25 rounded-xl p-2 max-w-[220px] mx-auto text-center space-y-1 mt-2 shadow-xs">
+      <div className="flex items-center justify-center gap-1 text-[10px] font-bold text-primary-container">
+        <span className="material-symbols-outlined text-[13px]">pin</span>
+        <span>رمز الصعود البديل (Manual Code)</span>
+      </div>
+      <div className="flex items-center justify-center gap-2 bg-surface-container py-1 px-2.5 rounded-lg border border-border-whisper">
+        <span className="font-mono text-sm font-extrabold tracking-widest text-primary-container select-all">
+          {displayCode}
+        </span>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            if (typeof navigator !== 'undefined' && navigator.clipboard) {
+              navigator.clipboard.writeText(displayCode);
+            }
+            alert(`تم نسخ رمز الصعود: ${displayCode}`);
+          }}
+          className="text-text-secondary hover:text-primary-container p-0.5 rounded transition-colors"
+          title="نسخ الرمز"
+        >
+          <span className="material-symbols-outlined text-[14px]">content_copy</span>
+        </button>
+      </div>
+      <p className="text-[8px] text-text-secondary leading-tight">
+        أعطِ هذا الرمز للمشرف عند تعذر مسح الـ QR
+      </p>
+    </div>
+  );
+}
+
 function RoundTripCard({ group }: { group: GroupedBooking }) {
   const { expandedTicketId, setExpandedTicketId, justBoardedBookingIds, handleCancelBooking, setScanInputToken } = useApp();
   const arr = group.arrival!;
@@ -82,7 +116,8 @@ function RoundTripCard({ group }: { group: GroupedBooking }) {
                   <div className="w-20 h-20 bg-white p-1 rounded-lg border border-border-whisper mx-auto">
                     <img src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(arr.qrToken)}`} alt="Arrival QR" className="w-full h-full" />
                   </div>
-                  <button onClick={() => { setScanInputToken(arr.qrToken); alert('Token copied to scanner!'); }} className="text-[9px] text-primary-container hover:underline">Simulate Boarding</button>
+                  <BoardingCodeBadge code={arr.boardingCode} bId={arr.id} />
+                  <button onClick={() => { setScanInputToken(arr.boardingCode || arr.qrToken); alert('Token copied to scanner!'); }} className="text-[9px] text-primary-container hover:underline">Simulate Boarding</button>
                 </div>
               )}
             </div>
@@ -99,7 +134,8 @@ function RoundTripCard({ group }: { group: GroupedBooking }) {
                   <div className="w-20 h-20 bg-white p-1 rounded-lg border border-border-whisper mx-auto">
                     <img src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(ret.qrToken)}`} alt="Return QR" className="w-full h-full" />
                   </div>
-                  <button onClick={() => { setScanInputToken(ret.qrToken); alert('Token copied to scanner!'); }} className="text-[9px] text-primary-container hover:underline">Simulate Boarding</button>
+                  <BoardingCodeBadge code={ret.boardingCode} bId={ret.id} />
+                  <button onClick={() => { setScanInputToken(ret.boardingCode || ret.qrToken); alert('Token copied to scanner!'); }} className="text-[9px] text-primary-container hover:underline">Simulate Boarding</button>
                 </div>
               )}
             </div>
@@ -182,7 +218,8 @@ function OneWayCard({ group }: { group: GroupedBooking }) {
               <div className="w-24 h-24 bg-white p-1 rounded-lg border border-border-whisper mx-auto">
                 <img src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(b.qrToken)}`} alt="Ticket QR" className="w-full h-full" />
               </div>
-              <button onClick={() => { setScanInputToken(b.qrToken); alert('Token copied to scanner!'); }} className="text-[9px] text-primary-container hover:underline">Simulate Scan</button>
+              <BoardingCodeBadge code={b.boardingCode} bId={b.id} />
+              <button onClick={() => { setScanInputToken(b.boardingCode || b.qrToken); alert('Token copied to scanner!'); }} className="text-[9px] text-primary-container hover:underline">Simulate Scan</button>
             </div>
           )}
 

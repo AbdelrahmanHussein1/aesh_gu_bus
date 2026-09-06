@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { StyleSheet, Text, View, Button, TouchableOpacity, ActivityIndicator, NativeModules } from 'react-native';
+import { StyleSheet, Text, View, Button, TouchableOpacity, ActivityIndicator, NativeModules, TextInput, Modal } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -26,6 +26,8 @@ export default function QRScanner() {
   const [scanned, setScanned] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
   const [result, setResult] = useState<any>(null);
+  const [manualModalVisible, setManualModalVisible] = useState(false);
+  const [manualCodeInput, setManualCodeInput] = useState('');
 
   if (!permission) {
     // Camera permissions are still loading.
@@ -92,6 +94,20 @@ export default function QRScanner() {
     // 2. Offline Fallback Validation
     setTimeout(() => {
       setIsVerifying(false);
+
+      if (data.startsWith('GU-') || data.length === 4) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        setResult({
+          success: true,
+          result: 'valid',
+          riderName: 'Student Passenger (Manual Code)',
+          seatNumber: Math.floor(Math.random() * 40) + 1,
+          route: 'Verified via Boarding Code',
+          bus: `Code: ${data}`
+        });
+        return;
+      }
+
       const parts = data.split('.');
       
       if (parts.length < 5) {
@@ -132,6 +148,14 @@ export default function QRScanner() {
         bus: 'Bus 116'
       });
     }, 300); // 300ms verification delay for offline feel
+  };
+
+  const handleManualSubmit = () => {
+    if (!manualCodeInput.trim()) return;
+    const code = manualCodeInput.trim().toUpperCase();
+    setManualModalVisible(false);
+    setManualCodeInput('');
+    handleBarcodeScanned({ data: code });
   };
 
   const resetScanner = () => {
@@ -197,10 +221,57 @@ export default function QRScanner() {
         </View>
       )}
 
-      {/* Manual Back button */}
-      <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
-        <Text style={styles.backBtnText}>✕ Close Scanner</Text>
-      </TouchableOpacity>
+      {/* Bottom controls */}
+      <View style={styles.bottomControls}>
+        {!scanned && (
+          <TouchableOpacity style={styles.manualCodeBtn} onPress={() => setManualModalVisible(true)}>
+            <Text style={styles.manualCodeBtnText}>⌨ Enter Code Manually (رمز الصعود)</Text>
+          </TouchableOpacity>
+        )}
+        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+          <Text style={styles.backBtnText}>✕ Close Scanner</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Manual Code Modal */}
+      <Modal
+        visible={manualModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setManualModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.manualModalCard}>
+            <Text style={styles.manualModalTitle}>Manual Boarding Code</Text>
+            <Text style={styles.manualModalSubtitle}>Type student's unique 4-character code (e.g. GU-7X4K or 7X4K)</Text>
+            <TextInput
+              style={styles.manualInput}
+              value={manualCodeInput}
+              onChangeText={setManualCodeInput}
+              placeholder="GU-7X4K"
+              placeholderTextColor="#64748b"
+              autoCapitalize="characters"
+              autoCorrect={false}
+              autoFocus
+            />
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
+              <TouchableOpacity
+                style={[styles.modalBtn, { backgroundColor: '#1e293b' }]}
+                onPress={() => { setManualModalVisible(false); setManualCodeInput(''); }}
+              >
+                <Text style={styles.modalBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalBtn, { backgroundColor: '#38bdf8' }]}
+                onPress={handleManualSubmit}
+                disabled={!manualCodeInput.trim()}
+              >
+                <Text style={[styles.modalBtnText, { color: '#0b0f19', fontWeight: 'bold' }]}>Verify & Board</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -344,9 +415,30 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: 'bold',
   },
-  backBtn: {
+  bottomControls: {
     position: 'absolute',
-    bottom: 48,
+    bottom: 36,
+    left: 20,
+    right: 20,
+    alignItems: 'center',
+    gap: 12,
+  },
+  manualCodeBtn: {
+    backgroundColor: '#0284c7',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+  },
+  manualCodeBtnText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: 'bold',
+  },
+  backBtn: {
     backgroundColor: '#020617',
     borderWidth: 1,
     borderColor: '#1e293b',
@@ -358,5 +450,58 @@ const styles = StyleSheet.create({
     color: '#94a3b8',
     fontSize: 12,
     fontWeight: 'bold',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  manualModalCard: {
+    width: '100%',
+    maxWidth: 320,
+    backgroundColor: '#0f172a',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#1e293b',
+    padding: 20,
+    alignItems: 'center',
+  },
+  manualModalTitle: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  manualModalSubtitle: {
+    color: '#94a3b8',
+    fontSize: 11,
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  manualInput: {
+    width: '100%',
+    backgroundColor: '#020617',
+    borderWidth: 1,
+    borderColor: '#38bdf8',
+    borderRadius: 12,
+    color: '#ffffff',
+    fontSize: 20,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    letterSpacing: 2,
+    paddingVertical: 12,
+  },
+  modalBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  modalBtnText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '600',
   }
 });
