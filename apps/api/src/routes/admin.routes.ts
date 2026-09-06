@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { db } from '../db/index.js';
 import * as schema from '../db/schema.js';
 import { eq, and, desc, inArray } from 'drizzle-orm';
+import { WebSocketHub } from '../websocket/hub.js';
 
 const requireRole = (roles: string[]) => async (request: any, reply: any) => {
   const user = request.user;
@@ -273,6 +274,25 @@ export async function adminRoutes(fastify: FastifyInstance) {
       entityId: String(newTrip.id),
       details: { tripId: newTrip.id, tripDate, routeId, timeSlot },
     });
+
+    try {
+      const route = await db.query.routes.findFirst({
+        where: eq(schema.routes.id, parseInt(routeId)),
+      });
+      WebSocketHub.broadcastToAll({
+        type: 'NEW_TRIP_ANNOUNCED',
+        tripId: newTrip.id,
+        routeId: newTrip.routeId,
+        routeNameAr: route?.nameAr || 'خط جديد',
+        routeNameEn: route?.nameEn || 'New Route',
+        tripDate: newTrip.tripDate,
+        timeSlot: newTrip.timeSlot,
+        messageAr: `📢 باص جديد متاح الآن! تمت إضافة حافلة على خط ${route?.nameAr || ''} لتاريخ ${newTrip.tripDate}. الحجز متاح الآن!`,
+        messageEn: `📢 New bus available! Route: ${route?.nameEn || ''} on ${newTrip.tripDate}. Booking is now open!`,
+      });
+    } catch (e) {
+      console.warn('[Admin] Failed to broadcast new trip notification:', e);
+    }
 
     return { success: true, trip: newTrip };
   });

@@ -6,6 +6,7 @@ import SideNavBar from '@/components/layout/SideNavBar';
 import TopBar, { MobileTopBar } from '@/components/layout/TopBar';
 import DeveloperBar from '@/components/layout/DeveloperBar';
 import SupervisorCancellationModal from '@/components/booking/SupervisorCancellationModal';
+import SingleTabGuard from '@/components/auth/SingleTabGuard';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { user, role, logout, sidebarCollapsed, isAuthLoading, supervisorCancelAlert, dismissSupervisorCancelAlert } = useApp();
@@ -134,6 +135,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         alertData={supervisorCancelAlert} 
         onDismiss={dismissSupervisorCancelAlert} 
       />
+
+      {/* Single-Tab Lock: Strictly prevents multiple tabs for the same student/user */}
+      <SingleTabGuard />
     </div>
   );
 }

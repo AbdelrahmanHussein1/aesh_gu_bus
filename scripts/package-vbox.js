@@ -42,6 +42,8 @@ const rootFiles = [
   'docker-compose.yml',
   'Dockerfile',
   'start.sh',
+  'README.md',
+  'STABLE_DOMAIN_GUIDE.md',
   'erp_bus_data.json',
   'VBOX_UBUNTU_GUIDE.md',
   'DEPLOY.md',

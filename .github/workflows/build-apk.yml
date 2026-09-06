@@ -1,0 +1,99 @@
+name: Build Android Standalone APK
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-apk:
+    name: 📱 Build Standalone Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: ⬇️ Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: ☕ Set up Java JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: 🟢 Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: 📦 Install Node Dependencies
+        run: |
+          npm ci --legacy-peer-deps || npm install --legacy-peer-deps
+
+      - name: 🔨 Build Shared Package & API
+        run: |
+          npm run build --workspace=@bus-aesh/shared
+          npm run build --workspace=@bus-aesh/api
+
+      - name: 🤖 Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: ⚙️ Make Gradlew Executable
+        run: |
+          chmod +x apps/mobile/android/gradlew
+
+      - name: 🚀 Build Standalone APK
+        working-directory: apps/mobile/android
+        run: |
+          ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: 📋 Locate and Rename APK
+        run: |
+          mkdir -p release-output
+          APK_PATH=$(find apps/mobile/android/app/build/outputs/apk -name "*.apk" | head -n 1)
+          if [ -n "$APK_PATH" ]; then
+            echo "Found APK at: $APK_PATH"
+            cp "$APK_PATH" release-output/bus-aesh-v1.1-release.apk
+            ls -lh release-output/bus-aesh-v1.1-release.apk
+          else
+            echo "❌ APK build output not found"
+            exit 1
+          fi
+
+      - name: 📤 Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bus-aesh-v1.1-release-apk
+          path: release-output/bus-aesh-v1.1-release.apk
+          retention-days: 30
+
+      - name: 🏷️ Publish GitHub Release (v1.1)
+        if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: 'v1.1'
+          name: 'Release 1.1 — Galala University Transit (Bus Aesh)'
+          body: |
+            # 🚌 Bus Aesh Release 1.1
+
+            Official release of **Galala University Smart Transit System (Bus Aesh)**.
+
+            ### 🚀 What's New in Version 1.1:
+            - **Official Outlook Student OTP Verification**: High-priority OTP delivered directly to `@gu.edu.eg` official Microsoft 365 Outlook accounts with a direct button to open the webmail.
+            - **Supervisor 5-Hour Cutoff Real-Date Fix**: Accurately combines trip calendar date (`YYYY-MM-DD`) with departure times, resolving cancellation on 7 September 2026 and future dates.
+            - **Single-Tab & Single-Device Concurrency Lock**: Strictly prevents multiple tabs per user with instantaneous broadcast lock and displaces concurrent sessions across devices.
+            - **100% Free Stable Domain Support**: Permanent Cloudflare Zero Trust Named Tunnel support (`CLOUDFLARE_TUNNEL_TOKEN`) and free custom subdomains.
+            - **Standalone Android App (Play Store Grade)**: Full integration with live backend APIs, real student registration with Outlook OTP, live seat booking, boarding code display, and real-time push notifications for supervisor cancellations and new bus lines (`NEW_TRIP_ANNOUNCED`).
+
+            ### 📱 Download Android APK:
+            Download `bus-aesh-v1.1-release.apk` directly below and install on any Android phone.
+          files: |
+            release-output/bus-aesh-v1.1-release.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

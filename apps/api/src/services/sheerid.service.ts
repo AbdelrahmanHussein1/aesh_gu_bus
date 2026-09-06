@@ -4,6 +4,7 @@ import { db } from '../db/index.js';
 import * as schema from '../db/schema.js';
 import { eq, and, gt, desc } from 'drizzle-orm';
 import { Resend } from 'resend';
+import { MailService } from './mail.service.js';
 
 const resendApiKey = process.env.RESEND_API_KEY || 're_mock_key';
 const emailFrom = process.env.EMAIL_FROM || 'Bus Aesh <onboarding@resend.dev>';
@@ -137,40 +138,16 @@ export class SheerIDService {
     // Log verification code to server console for testing/audit
     console.log(`[SheerID Verification] 🔐 Verification OTP for ${email} (Academic ID: ${academicId}) is: ${verificationCode}`);
 
-    // Send code via Resend
+    // Send verification OTP via MailService (Microsoft 365 / Outlook SMTP, Resend, or Console)
     try {
-      // 1. Send directly to student email
-      const emailHtml = `
-        <div style="font-family: sans-serif; max-width: 500px; margin: 0 auto; padding: 20px; border: 1px solid #1e293b; border-radius: 12px; background: #0b0f19; color: #f8fafc;">
-          <h2 style="color: #38bdf8; margin-top: 0;">منظومة باصات جامعة الجلالة — Bus Aesh</h2>
-          <p>مرحباً <strong>${fullName}</strong>،</p>
-          <p>رمز تأكيد قيدك الطلابي الأكاديمي (<strong>${academicId}</strong>) هو:</p>
-          <div style="background: #0f172a; border: 1px solid #38bdf8; border-radius: 8px; padding: 16px; text-align: center; font-size: 28px; font-weight: bold; letter-spacing: 4px; color: #38bdf8; margin: 20px 0;">
-            ${verificationCode}
-          </div>
-          <p style="color: #94a3b8; font-size: 13px;">هذا الرمز صالح لمدة 15 دقيقة فقط. إذا لم تقم بطلب هذا الرمز، يمكنك تجاهل هذه الرسالة.</p>
-        </div>
-      `;
-
-      const sendResult = await resend.emails.send({
-        from: emailFrom,
-        to: email.toLowerCase().trim(),
-        subject: `رمز التحقق الخاص بجامعة الجلالة: ${verificationCode} — Bus Aesh`,
-        html: emailHtml,
+      await MailService.sendStudentOtpEmail({
+        email: email.toLowerCase().trim(),
+        fullName,
+        academicId,
+        otp: verificationCode,
       });
-
-      // 2. If rejected in sandbox mode (free tier Resend can only deliver to account owner), forward to sandbox recipient
-      if (sendResult.error && sandboxRecipient && sandboxRecipient !== email.toLowerCase().trim()) {
-        console.log(`[SheerIDService] Direct student delivery failed (${sendResult.error.message}). Forwarding code to sandbox email: ${sandboxRecipient}`);
-        await resend.emails.send({
-          from: emailFrom,
-          to: sandboxRecipient,
-          subject: `[Bus Aesh Test Forward] كود التحقق لـ ${email}: ${verificationCode}`,
-          html: emailHtml,
-        });
-      }
     } catch (err: any) {
-      console.warn('[SheerIDService] Failed to send verification email via Resend:', err?.message);
+      console.warn('[SheerIDService] MailService delivery encountered error:', err?.message);
     }
 
     return {

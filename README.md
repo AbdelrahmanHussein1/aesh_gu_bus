@@ -1,177 +1,119 @@
-# `bus.aesh` Platform Run & Architecture Guide
+# 🚌 منظومة النقل الذكي لباصات جامعة الجلالة — Bus Aesh Transit (v1.1)
 
-`bus.aesh` is a premium university bus booking console and management system engineered for Galala University students and bus supervisors. It features real-time seat locks, dual-shift morning routes, paired round-trip bookings with automatic same-seat allocations, leg-specific single-use QR codes, and a cross-platform mobile scanner.
+[![Release](https://img.shields.io/badge/Release-v1.1-38bdf8?style=for-the-badge&logo=github)](https://github.com/AbdelrahmanHussein1/aesh_gu_bus/releases/tag/v1.1)
+[![Android APK](https://img.shields.io/badge/Android-APK%20Ready-22c55e?style=for-the-badge&logo=android)](https://github.com/AbdelrahmanHussein1/aesh_gu_bus/releases/tag/v1.1)
+[![Docker](https://img.shields.io/badge/Docker-Production%20Ready-2563eb?style=for-the-badge&logo=docker)](https://github.com/AbdelrahmanHussein1/aesh_gu_bus)
+[![Fastify](https://img.shields.io/badge/Fastify-Backend%20API-000000?style=for-the-badge&logo=fastify)](https://github.com/AbdelrahmanHussein1/aesh_gu_bus)
+[![Next.js](https://img.shields.io/badge/Next.js%2015-Portal%20Frontend-black?style=for-the-badge&logo=next.js)](https://github.com/AbdelrahmanHussein1/aesh_gu_bus)
 
----
-
-## 🏗️ Project Architecture & Tech Stack
-
-This project is organized as an **npm workspaces monorepo**:
-
-* **`/packages/shared`**: Reusable validation schemas (Zod) and QR token encoding/decoding modules (`QRCodec`).
-* **`/apps/api`**: Fastify backend API managing JWT auth, Postgres database transactions, Redis-based distributed seat locks, and WebSockets.
-* **`/apps/web`**: High-fidelity Next.js web application utilizing Tailwind CSS/vanilla CSS styles with dynamic dark-mode aesthetics. Supports Rider, Supervisor, and Administrator roles.
-* **`/apps/mobile`**: Cross-platform Expo/React Native mobile application equipping supervisors with a physical camera scanner.
-
-### Technologies
-* **Runtime**: Node.js & TypeScript
-* **Database**: PostgreSQL (via Drizzle ORM)
-* **Caching/Syncing**: Redis
-* **Frameworks**: Fastify (API), Next.js (Web), Expo (Mobile App)
-
-### Web App Design System
-The web console at `apps/web` was redesigned with a premium light-theme interface using:
-- **Typography**: Outfit (headings/body) + JetBrains Mono (mono/metadata)
-- **Icons**: Material Symbols Outlined (variable font axis)
-- **Color**: Canvas-based palette with `#14259B` primary, `#F8FAFC` background
-- **Components**: 20+ custom React components organized by feature (auth, booking, layout, supervisor, admin)
-- **Offline Engine**: Complete local simulation via localStorage with mock users, trips, and seat management
+**منظومة النقل الذكي لجامعة الجلالة (Bus Aesh)** هي منصة متكاملة عالية الكفاءة لإدارة وحجز وتفويج باصات الجامعة لطلاب وأعضاء هيئة التدريس ومشرفي الخطوط، مبنية وفق أعلى معايير الأمان والتزامن اللحظي (Real-Time Concurrency).
 
 ---
 
-## ⚙️ Requirements & Environment Setup
+## 🌟 أبرز مميزات التحديث الجديد (Release 1.1)
 
-Before starting, ensure you have the following installed on your system:
-1. **Node.js** (v18.x or v20.x recommended)
-2. **Docker Desktop** (for running Postgres & Redis)
-3. **Expo Go** (app installed on your phone if testing the mobile scanner)
+### 1. 📧 تفعيل وتسجيل الطلاب عبر بريد Outlook الرسمي (@gu.edu.eg)
+- إرسال كود التحقق الأكاديمي (OTP) مباشرة عبر خوادم **Microsoft 365 / Outlook** الرسمية (`smtp.office365.com`).
+- زر مدمج بضغطة واحدة لفتح صندوق بريد الجامعة الأكاديمي على الويب (`https://outlook.office.com/mail/`).
+- التحقق الفوري من القيد الأكاديمي للجامعة (Academic ID & Faculty Validation).
 
-### Local Configuration
-Configuration values are loaded from environment files. The API backend configuration is located in `apps/api/.env`:
+### 2. 🛡️ سياسة إلغاء المشرف الدقيقة (حل مشكلة 7 سبتمبر 2026 وما بعدها)
+- تصحيح دقيق لمعادلة حساب موعد انطلاق الرحلة (`getTripDepartureDateTime`) بدمج تاريخ الرحلة الفعلي (`YYYY-MM-DD`) مع ساعات الانطلاق المجدولة.
+- إمكانية إلغاء المشرف للتذاكر قبل موعد الرحلة بأكثر من 5 ساعات مع **إصدار استرداد فوري وتلقائي لكامل المبلغ (160 ج.م)**.
+- قفل الإلغاء الصارم في حال كان الراكب قد صعد للحافلة بالفعل منعاً للتلاعب.
+
+### 3. 🔒 قفل الجلسات الصارم (نافذة واحدة وجهاز واحد فقط لكل مستخدم)
+- **Single-Tab Guard**: منع فتح أكثر من علامة تبويب (Tab) واحدة لنفس الحساب في المتصفح باستخدام تقنية `BroadcastChannel` الفورية مع شاشة تحذير باللغتين العربية والإنجليزية.
+- **Single-Device Enforcement**: إنهاء فوري لأي جلسة قديمة على أي جهاز آخر عند تسجيل الدخول من جهاز جديد لحماية مقاعد الحجز ومنع الازدواجية.
+
+### 4. 🌐 دعم النطاقات الثابتة المجانية 100% (Permanent Free Stable Domain)
+- دعم كامل لأنفاق **Cloudflare Zero Trust Named Tunnel** الدائمة عبر المتغير (`CLOUDFLARE_TUNNEL_TOKEN`) بحيث لا يتغير الرابط نهائياً عند إعادة التشغيل.
+- دعم بديل مجاني فوري دون تسجيل عبر **Localtunnel** برابط مخصص دائم.
+- دليل تفصيلي خطوة بخطوة في ملف [`STABLE_DOMAIN_GUIDE.md`](./STABLE_DOMAIN_GUIDE.md).
+
+### 5. 📱 تطبيق أندرويد مستقل (Play Store Grade Mobile App)
+- تطبيق React Native متصل كلياً بالـ APIs الحقيقية:
+  - تسجيل حسابات الطلاب وتأكيد بريد Outlook بالـ OTP.
+  - استعراض الخطوط الحية وحجز المقاعد ودفع التذاكر.
+  - إظهار كود الصعود اليدوي البارز (`GU-XXXX`) بجانب كود الـ QR.
+  - استقبال إشعارات هاتفية لحظية (Push Notifications) عند قيام المشرف بالإلغاء، أو عند صعود الباص، أو **عند إضافة وإعلان باص جديد (`NEW_TRIP_ANNOUNCED`)**.
+
+---
+
+## 🏗️ هيكلية المشروع (Monorepo Architecture)
+
+```
+aesh_gu_bus/
+├── apps/
+│   ├── api/          # Fastify Backend API (PostgreSQL + Redis + WebSockets)
+│   ├── web/          # Next.js 15 Web Portal (Student, Supervisor, Admin)
+│   └── mobile/       # React Native / Expo Mobile App with Camera Scanner
+├── packages/
+│   └── shared/       # Shared Zod Schemas & QR Codec Module
+├── .github/
+│   └── workflows/    # Automated Standalone APK Build & Release Workflow
+├── docker-compose.yml# Production Multi-Service Container Stack
+├── start.sh          # 1-Click Server Launch Script (Linux / VirtualBox)
+└── STABLE_DOMAIN_GUIDE.md # 100% Free Permanent Domain Guide
+```
+
+---
+
+## 🚀 التشغيل بضغطة زر واحدة (Linux / Ubuntu / VirtualBox)
+
+إذا كنت تستخدم نظام Ubuntu أو جهاز VirtualBox، يمكنك تشغيل المنظومة بالكامل بضغطة واحدة:
+
+```bash
+# 1. الدخول لمجلد المشروع
+cd aesh_gu_bus
+
+# 2. تشغيل السكربت الموحد (يقوم بالبناء والتجهيز والإطلاق تلقائياً)
+bash start.sh
+```
+
+سيعرض السكربت فور انتهائه:
+- 🌐 **رابط بوابة الويب المحلية**: `http://localhost:3001`
+- ⚡ **رابط الـ API وسجلات الفحص**: `http://localhost:3000/health`
+- 🌍 **الرابط العالمي الخارجي (HTTPS)**: متاح للوصول من أي هاتف أو كمبيوتر خارج الشبكة.
+
+---
+
+## 📱 تحميل وتثبيت تطبيق الأندرويد (Release 1.1 APK)
+
+1. توجه إلى صفحة [**Releases على GitHub**](https://github.com/AbdelrahmanHussein1/aesh_gu_bus/releases/tag/v1.1).
+2. حمل ملف التطبيق المستقل: `bus-aesh-v1.1-release.apk`.
+3. ثبته على هاتفك مباشرة — التطبيق يعمل بكامل مزاياه ويرتبط بالخادم مباشرة مع خاصية ضبط عنوان السيرفر.
+
+---
+
+## 🔑 الحسابات الافتراضية للتجربة السريعة
+
+| الدور (Role) | البريد الإلكتروني | كلمة المرور | الوظيفة |
+|---|---|---|---|
+| **Student (طالب)** | `student@gu.edu.eg` أو التسجيل بريدك الرسمي | `123456` | حجز المقاعد، التذاكر، كود الصعود |
+| **Supervisor (مشرف)** | `supervisor@gu.edu.eg` | `123456` | مسح الـ QR وكود الصعود، الإلغاء، الاسترداد |
+| **System Admin (مدير)** | `admin@gu.edu.eg` | `123456` | إضافة الحافلات، إعلان الرحلات، مراقبة الأسطول |
+
+---
+
+## ⚙️ ضبط خيارات البريد والنطاق (.env)
+
+يمكنك إنشاء أو تعديل ملف `.env` لإضافة إعدادات بريد Outlook الرسمي والنطاق الثابت:
 
 ```env
-PORT=3000
-HOST=0.0.0.0
-DATABASE_URL=postgres://aesh_user:aesh_password@localhost:5432/aesh_db
-REDIS_URL=redis://localhost:6379
-JWT_SECRET=super-secret-aesh-key
-RESEND_API_KEY=re_mock_key
-MOCK_ERP=true
+# النطاق الدائم من Cloudflare Zero Trust (اختياري)
+CLOUDFLARE_TUNNEL_TOKEN=eyJh...
+
+# إرسال بريد Outlook الرسمي (@gu.edu.eg)
+SMTP_HOST=smtp.office365.com
+SMTP_PORT=587
+SMTP_USER=your_email@gu.edu.eg
+SMTP_PASS=your_outlook_app_password
 ```
 
 ---
 
-## 🚀 Step-by-Step Installation & Run Guide
+## 📄 الترخيص والدعم (License & Support)
 
-Run all of the following commands from the **root** folder of the repository.
-
-### 1. Install Dependencies
-Initialize and install workspace dependencies:
-```bash
-npm run install:all
-```
-
-### 2. Start Services (Postgres & Redis)
-Spin up the PostgreSQL and Redis containers configured in the `docker-compose.yml` file:
-```bash
-docker compose up -d
-```
-
-### 3. Generate & Apply DB Migrations
-Compile the shared packages and push database schema migrations to the Postgres database:
-```bash
-# Build the shared schemas package first
-npm run build --workspace=packages/shared
-
-# Run migration to create schema tables
-npm run db:migrate
-```
-
-### 4. Seed Database
-Seed the database with default university accounts (Admin, Supervisor) and trips split across all shifts:
-```bash
-npm run db:seed
-```
-
-### 5. Launch the Applications
-
-You can start the different applications using the scripts in the root `package.json`:
-
-#### A. Start the API Backend
-Runs the Fastify server on port `3000`:
-```bash
-npm run dev:api
-```
-
-#### B. Start the Web Console
-Runs the Next.js web dashboard on port `3001` (or next free port):
-```bash
-npm run dev:web
-```
-
-#### C. Start the Mobile Scanner App
-Starts the Expo development bundle. Scan the QR code displayed in your terminal using the **Expo Go** app on your phone:
-```bash
-npm run dev:mobile
-```
-
----
-
-## 🛡️ Core System Features & Logic
-
-### 1. Tri-Shift Schedule & Pricing
-* **Shift 1 (05:00 - 10:00)**: Arrival leg bound to university campus.
-* **Shift 2 (10:00 - 11:30)**: Late morning arrival leg to campus.
-* **Return (12:00 - 17:10)**: Return leg bound from university to cities.
-* **Flat Price**: All trips cost exactly **160 EGP** regardless of booking direction.
-
-### 2. Round-Trip Same-Seat Allocation
-* Round-trip bookings automatically allocate the **same seat number** on both the arrival leg and return leg.
-* The seat selection map fetches seat states from **both** active trips. A seat is shown as occupied if it is booked or held on either of the two legs.
-* Booking a round-trip locks the seat on both legs inside a database transaction, ensuring no double-bookings occur on either trip.
-
-### 3. Dual QR Code System & Expiration
-* Round-trip checkouts issue **two distinct, leg-specific QR codes** immediately.
-* QR tokens contain the `legType` identifier:
-  * `0` = University Only (`to_campus`)
-  * `1` = Return Only (`from_campus`)
-* **Single-Use**: Tickets expire immediately after being successfully scanned on board.
-* **24h Expiration**: Tickets expire and become invalid 24 hours after creation if they are unused.
-
-### 4. Offline Simulation Fallback Engine
-If the Fastify backend is not running or unreachable:
-* The web console and mobile scanner gracefully fail-over to an **Offline Simulation Engine**.
-* Credentials and bookings are saved locally to `localStorage` (or memory on mobile).
-* Live seats are simulated, allowing you to test seat locks, checkout validations, and scans in a zero-network environment.
-
-### 5. Web App Route Structure (Next.js App Router)
-The web console uses route groups to separate auth and dashboard views:
-
-| Route | View | Description |
-| :--- | :--- | :--- |
-| `/` | Auth Portal | Login / Register / Forgot Password (auto-redirects if authenticated) |
-| `/rider` | Rider Dashboard | Book trips, select seats, checkout, view QR passes |
-| `/supervisor` | Supervisor Panel | Passenger manifest, QR scanner (camera + manual), seat swaps |
-| `/admin` | Admin Console | Fleet status, audit log, policy settings |
-
-### 6. Sidebar Navigation & Mobile Responsiveness
-- **Desktop**: Fixed sidebar (collapsible via chevron, `w-64` / `w-16` icon-only mode)
-- **Mobile**: Overlay drawer triggered by hamburger menu, backdrop dismiss
-- **TopBar**: Desktop shows role switcher + status badge; mobile shows compact header with menu toggle
-
----
-
-## 📱 Mobile Scanner & Local Wi-Fi Testing (Insecure Origins)
-
-Modern mobile browsers restrict camera access (`getUserMedia`) to secure origins (**HTTPS** or **localhost**). If you are accessing the web console or mobile scanner over local Wi-Fi (`http://192.168.1.X:3001`), the browser will block camera authorization.
-
-### How to Bypass Browser Blocks on Phone:
-1. **Google Chrome**:
-   * Open Chrome on your mobile device.
-   * Go to URL: `chrome://flags/#unsafely-treat-insecure-origin-as-secure`.
-   * Add your computer's local IP and port (e.g. `http://192.168.1.9:3001` and `http://192.168.1.9:3000`).
-   * Toggle to **Enabled** and relaunch Chrome.
-2. **Safari (iOS)**:
-   * Settings -> Safari -> Advanced -> Experimental Features -> Enable `MediaRecorder` or trust local IP hosts. (Alternatively, test using the Expo Go mobile app wrapper which does not restrict HTTP camera permissions).
-
----
-
-## 🔑 Quick Demo Accounts
-
-When testing, use these default accounts for auto-login:
-
-| Role | Email | Password | Description |
-| :--- | :--- | :--- | :--- |
-| **Rider (Student)** | *(Register via Student Registration tab)* | *(Your registered password)* | Books seats and views scannable QRs. |
-| **Supervisor** | `supervisor@gu.edu.eg` | `super123` | Scans passengers and manages rosters. |
-| **Admin** | `admin@gu.edu.eg` | `admin123` | Configures lock policies and wipes databases. |
+تم تطوير هذا النظام لصالح منظومة النقل الذكي لجامعة الجلالة (Galala University).
+جميع الحقوق محفوظة © 2026.

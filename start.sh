@@ -37,6 +37,16 @@ if [ -d ".git" ]; then
     git pull origin main 2>/dev/null || echo "ℹ️  Continuing with local files..."
 fi
 
+# Check for permanent Cloudflare Tunnel Token in .env
+if [ -f ".env" ] && grep -q '^CLOUDFLARE_TUNNEL_TOKEN=' .env; then
+    export $(grep '^CLOUDFLARE_TUNNEL_TOKEN=' .env | xargs)
+fi
+
+if [ -n "$CLOUDFLARE_TUNNEL_TOKEN" ]; then
+    echo "🔒 Using permanent Cloudflare Zero Trust Named Tunnel (Stable & Fixed Domain)..."
+    export CLOUDFLARE_TUNNEL_COMMAND="tunnel run --token ${CLOUDFLARE_TUNNEL_TOKEN}"
+fi
+
 echo "🚀 Building fresh Docker image (no cache)..."
 $DOCKER_COMPOSE build --no-cache app
 echo "🚀 Starting all services..."
@@ -62,13 +72,23 @@ echo ""
 echo "  📱 If testing from your Windows host (outside VirtualBox):"
 echo "     Use your VirtualBox VM IP address, for example: http://<VM_IP>:3001"
 echo ""
-# Wait briefly and extract Cloudflare Quick Tunnel URL if available
-sleep 3
-CF_URL=$($DOCKER_COMPOSE logs cloudflared 2>&1 | grep -o 'https://[-a-zA-Z0-9@:%._\+~#=]*\.trycloudflare\.com' | head -n 1 || true)
-if [ -n "$CF_URL" ]; then
-    echo "  🌍 Global Online Public HTTPS URL (Accessible from Any Phone, 4G/5G, or PC):"
-    echo "     👉 $CF_URL"
+# Output Permanent Tunnel or Quick Tunnel URL
+if [ -n "$CLOUDFLARE_TUNNEL_TOKEN" ]; then
+    echo "  🌍 Global Permanent Stable Domain (Cloudflare Zero Trust):"
+    echo "     👉 Running with permanent token (Stable & Unchanging URL)"
+    echo "     Access using your configured custom domain in Cloudflare dashboard."
     echo ""
+else
+    sleep 3
+    CF_URL=$($DOCKER_COMPOSE logs cloudflared 2>&1 | grep -o 'https://[-a-zA-Z0-9@:%._\+~#=]*\.trycloudflare\.com' | head -n 1 || true)
+    if [ -n "$CF_URL" ]; then
+        echo "  🌍 Global Online Public HTTPS URL (Accessible from Any Phone, 4G/5G, or PC):"
+        echo "     👉 $CF_URL"
+        echo ""
+        echo "  💡 TIP: To make this domain permanent and unchanging 100% free:"
+        echo "     See STABLE_DOMAIN_GUIDE.md to add CLOUDFLARE_TUNNEL_TOKEN in .env"
+        echo ""
+    fi
 fi
 echo "================================================================"
 echo ""

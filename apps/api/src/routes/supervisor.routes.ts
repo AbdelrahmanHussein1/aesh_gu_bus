@@ -5,6 +5,7 @@ import * as schema from '../db/schema.js';
 import { eq, and, desc, inArray, or, sql } from 'drizzle-orm';
 import { WebSocketHub } from '../websocket/hub.js';
 import { EmailService } from '../services/email.service.js';
+import { getHoursUntilDeparture, getTripDepartureDateTime } from '../utils/trip-time.js';
 
 const jwtSecret = process.env.JWT_SECRET || 'super-secret-aesh-key';
 const QR_EXPIRY_HOURS = 24;
@@ -369,9 +370,11 @@ export async function supervisorRoutes(fastify: FastifyInstance) {
     }
 
     // 2. 5-Hour Cutoff Limit: At least 5 hours difference before trip departure time
-    const departure = new Date(booking.trip.departureTime);
-    const now = Date.now();
-    const hoursUntilDeparture = (departure.getTime() - now) / (1000 * 60 * 60);
+    const hoursUntilDeparture = getHoursUntilDeparture(
+      booking.trip.tripDate,
+      booking.trip.departureTime,
+      booking.trip.timeSlot
+    );
 
     const SUPERVISOR_CANCELLATION_MIN_HOURS = 5;
 

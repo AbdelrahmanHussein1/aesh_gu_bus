@@ -103,4 +103,32 @@ export class WebSocketHub {
     }
     this.userSockets.delete(userId);
   }
+
+  /**
+   * Broadcasts a real-time event to all connected trip rooms and user sockets.
+   * Used for new trip/bus announcements and system alerts.
+   */
+  static broadcastToAll(message: any) {
+    const payload = JSON.stringify(message);
+
+    for (const room of this.tripRooms.values()) {
+      for (const client of room) {
+        if (client.readyState === 1) {
+          try {
+            client.send(payload);
+          } catch {}
+        }
+      }
+    }
+
+    for (const userSet of this.userSockets.values()) {
+      for (const client of userSet) {
+        if (client.readyState === 1) {
+          try {
+            client.send(payload);
+          } catch {}
+        }
+      }
+    }
+  }
 }

@@ -250,16 +250,34 @@ export default function RegisterForm({ onSwitchTab }: Props = {}) {
         </form>
       ) : (
         <form onSubmit={handleConfirmAndRegister} className="flex flex-col gap-4">
-          <div className="bg-surface-bright p-3.5 rounded-xl border border-primary-container/30 text-xs text-text-secondary space-y-2">
-            <p>تم إرسال رمز التحقق الأكاديمي إلى: <strong className="text-text-primary font-mono">{email}</strong></p>
+          <div className="bg-surface-bright p-3.5 rounded-xl border border-primary-container/30 text-xs text-text-secondary space-y-2.5">
+            <div className="flex items-center gap-2 text-primary-container font-semibold">
+              <span className="material-symbols-outlined text-base">forward_to_inbox</span>
+              <span>تم إرسال رمز التحقق إلى بريد Outlook الأكاديمي:</span>
+            </div>
+            <p className="font-mono text-text-primary text-sm bg-surface-container-low px-2 py-1 rounded border border-border-whisper text-center font-bold">
+              {email}
+            </p>
+
+            {/* Direct 1-click button to open Microsoft 365 Outlook Mailbox */}
+            <a
+              href="https://outlook.office.com/mail/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full py-2.5 px-3 bg-[#0078d4] hover:bg-[#106ebe] text-white rounded-lg text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-2 no-underline text-center"
+            >
+              <span className="material-symbols-outlined text-base">open_in_new</span>
+              <span>فتح صندوق بريد Outlook الجامعي (outlook.office.com)</span>
+            </a>
+
             <div className="flex items-center justify-between bg-surface-container-low p-2 rounded-lg border border-border-whisper">
-              <span className="text-[11px] text-text-secondary">كود التفعيل السريع: <strong className="text-primary-container font-mono text-xs">123456</strong></span>
+              <span className="text-[11px] text-text-secondary">كود التجربة السريع: <strong className="text-primary-container font-mono text-xs">123456</strong></span>
               <button
                 type="button"
                 onClick={() => setVerificationCode('123456')}
                 className="px-2.5 py-1 bg-primary-container text-on-primary-container text-[11px] font-bold rounded-md hover:opacity-90 transition-opacity"
               >
-                تعبئة الكود الفوري
+                تعبئة تلقائية
               </button>
             </div>
           </div>

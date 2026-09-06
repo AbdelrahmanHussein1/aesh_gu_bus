@@ -346,6 +346,56 @@ async function seed() {
       }
     }
 
+    // 5. Seed Dynamic Active Trips for Current & Upcoming Dates (including September 2026)
+    console.log('Seeding Dynamic Trips for Current & Upcoming Dates (September 2026)...');
+    const targetDates: string[] = ['2026-09-06', '2026-09-07', '2026-09-08', '2026-09-09', '2026-09-10'];
+    
+    for (let i = 0; i <= 7; i++) {
+      const d = new Date();
+      d.setDate(d.getDate() + i);
+      const isoDate = d.toISOString().split('T')[0];
+      if (!targetDates.includes(isoDate)) {
+        targetDates.push(isoDate);
+      }
+    }
+
+    const allDbRoutes = await db.select().from(schema.routes);
+    const allDbBuses = await db.select().from(schema.buses);
+    const [defaultSupervisor] = await db.select().from(schema.users).where(eq(schema.users.role, 'supervisor')).limit(1);
+
+    if (allDbRoutes.length > 0 && allDbBuses.length > 0) {
+      for (const curDate of targetDates) {
+        for (const r of allDbRoutes.slice(0, 10)) {
+          const bus = allDbBuses[r.id % allDbBuses.length] || allDbBuses[0];
+          for (const [slotKey, slotConfig] of Object.entries(TIME_SLOTS)) {
+            const depTime = new Date(`${curDate}T${String(slotConfig.depHour).padStart(2, '0')}:${String(slotConfig.depMin).padStart(2, '0')}:00+02:00`);
+            const arrTime = new Date(`${curDate}T${String(slotConfig.arriveHour).padStart(2, '0')}:${String(slotConfig.arriveMin).padStart(2, '0')}:00+02:00`);
+
+            const [insertedTrip] = await db.insert(schema.trips).values({
+              routeId: r.id,
+              busId: bus.id,
+              tripDate: curDate,
+              departureTime: depTime,
+              returnTime: arrTime,
+              direction: slotConfig.direction,
+              timeSlot: slotKey,
+              totalSeats: 50,
+              status: 'scheduled',
+              cancellationLockHours: 3,
+            }).onConflictDoNothing().returning();
+
+            if (insertedTrip && defaultSupervisor) {
+              await db.insert(schema.tripSupervisors).values({
+                tripId: insertedTrip.id,
+                userId: defaultSupervisor.id,
+                assignedRole: 'line_supervisor',
+              }).onConflictDoNothing();
+            }
+          }
+        }
+      }
+    }
+
     console.log('--- DATABASE SEEDING COMPLETED ---');
   } catch (error) {
     console.error('Seeding failed:', error);
