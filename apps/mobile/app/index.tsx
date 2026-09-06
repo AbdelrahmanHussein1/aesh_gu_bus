@@ -9,9 +9,48 @@ import {
   ActivityIndicator, 
   Modal, 
   Alert,
-  Image 
+  Image,
+  NativeModules
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import * as Notifications from 'expo-notifications';
+
+try {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: true,
+    }),
+  });
+} catch {}
+
+const getApiUrl = () => {
+  const scriptURL = NativeModules.SourceCode?.scriptURL;
+  if (scriptURL) {
+    const match = scriptURL.match(/http:\/\/([^:/]+)/);
+    if (match && match[1]) {
+      return `http://${match[1]}:3000`;
+    }
+  }
+  return 'http://192.168.1.9:3000';
+};
+
+const triggerLocalNotification = async (title: string, body: string) => {
+  try {
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title,
+        body,
+        sound: true,
+        priority: Notifications.AndroidNotificationPriority.HIGH,
+      },
+      trigger: null,
+    });
+  } catch (err) {
+    console.log('Local push notification error:', err);
+  }
+};
 
 // Simulated local storage / local DB state for offline simulation
 // Since AsyncStorage is async, we can use a simple memory state initialized with mock records.
@@ -78,6 +117,68 @@ export default function AppHome() {
     }));
     setSeats(mockSeats);
   };
+
+  // Live WebSocket listener for real-time mobile push & supervisor cancellation notification
+  useEffect(() => {
+    if (!user) return;
+    const apiUrl = getApiUrl();
+    const wsUrl = apiUrl.replace(/^http/, 'ws');
+    let socket: WebSocket | null = null;
+    try {
+      socket = new WebSocket(`${wsUrl}/ws/user/session?token=${user.id}`);
+      socket.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.type === 'SUPERVISOR_CANCELLED_TICKET') {
+            triggerLocalNotification(
+              "⚠️ تم إلغاء حجزك واسترداد المبلغ",
+              `قام مشرف الخط بإلغاء حجز المقعد رقم (${msg.seatNumber}). تم استرداد المبلغ بالكامل (160 ج.م) لحسابك.`
+            );
+            Alert.alert(
+              "⚠️ تم إلغاء الحجز واسترداد المبلغ",
+              msg.messageAr || `قام مشرف الرحلة بإلغاء حجزك للمقعد رقم (${msg.seatNumber}). تم تحويل 160 ج.م كاسترداد فوري لحسابك.`,
+              [{ text: "فهمت (Dismiss)" }]
+            );
+            setMyTickets(prev => prev.map(t => (t.id === msg.bookingId || t.seatNumber === msg.seatNumber) ? {
+              ...t,
+              status: 'cancelled',
+              cancelReason: msg.messageAr,
+              isRefunded: true,
+            } : t));
+          } else if (msg.type === 'rider_boarded') {
+            setMyTickets(prev => prev.map(t => (t.id === msg.bookingId || t.seatNumber === msg.seatNumber) ? {
+              ...t,
+              isBoarded: true,
+            } : t));
+          }
+        } catch {}
+      };
+    } catch (e) {
+      console.log('Mobile WS listener error:', e);
+    }
+
+    return () => {
+      if (socket) socket.close();
+    };
+  }, [user]);
+
+  // Check for offline / startup supervisor cancellations
+  useEffect(() => {
+    if (!user || myTickets.length === 0) return;
+    const unalertedCancelled = myTickets.find(t => t.status === 'cancelled' && !t.alertShown);
+    if (unalertedCancelled) {
+      triggerLocalNotification(
+        "⚠️ تنبيه: تم إلغاء حجزك واسترداد المبلغ",
+        `تم إلغاء حجز المقعد رقم (${unalertedCancelled.seatNumber}) من قبل مشرف الخط وتم استرداد 160 ج.م لحسابك.`
+      );
+      Alert.alert(
+        "⚠️ تنبيه: تم إلغاء الحجز من المشرف",
+        `تم إلغاء حجزك للمقعد رقم (${unalertedCancelled.seatNumber}) على رحلة (${unalertedCancelled.route}) بواسطة مشرف الخط.\n\nتم استرداد المبلغ بالكامل (160 ج.م) لحسابك.`,
+        [{ text: "فهمت (Dismiss)" }]
+      );
+      setMyTickets(prev => prev.map(t => t.id === unalertedCancelled.id ? { ...t, alertShown: true } : t));
+    }
+  }, [user, myTickets]);
 
   const handleLogin = () => {
     if (!email || !password) return;
@@ -351,8 +452,17 @@ export default function AppHome() {
                 </View>
               </View>
 
-              {/* QR Image / Boarded status */}
-              {t.isBoarded ? (
+              {/* QR Image / Boarded status / Cancelled status */}
+              {t.status === 'cancelled' ? (
+                <View style={{ width: '100%', backgroundColor: 'rgba(239, 68, 68, 0.08)', borderWidth: 1.5, borderColor: 'rgba(239, 68, 68, 0.35)', borderRadius: 14, alignItems: 'center', justifyContent: 'center', paddingVertical: 14, marginVertical: 8 }}>
+                  <View style={{ width: 44, height: 44, borderRadius: 22, borderWidth: 2, borderColor: '#ef4444', alignItems: 'center', justifyContent: 'center', marginBottom: 6, backgroundColor: 'rgba(239, 68, 68, 0.15)' }}>
+                    <Text style={{ fontSize: 20, color: '#ef4444', fontWeight: 'bold' }}>✕</Text>
+                  </View>
+                  <Text style={{ fontSize: 13, fontWeight: '900', color: '#ef4444', letterSpacing: 2 }}>CANCELLED BY SUPERVISOR</Text>
+                  <Text style={{ fontSize: 11, color: '#10b981', marginTop: 4, fontWeight: 'bold' }}>💰 Full Refund Processed (160 EGP)</Text>
+                  <Text style={{ fontSize: 9, color: '#94a3b8', marginTop: 2, textAlign: 'center', paddingHorizontal: 10 }}>{t.cancelReason || 'Amount credited back to your payment method'}</Text>
+                </View>
+              ) : t.isBoarded ? (
                 <View style={{ width: 140, height: 140, backgroundColor: 'rgba(34, 197, 94, 0.1)', borderWidth: 2, borderColor: 'rgba(34, 197, 94, 0.4)', borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginVertical: 8 }}>
                   <View style={{ width: 44, height: 44, borderRadius: 22, borderWidth: 2, borderColor: '#22c55e', alignItems: 'center', justifyContent: 'center', marginBottom: 6, backgroundColor: 'rgba(34, 197, 94, 0.15)' }}>
                     <Text style={{ fontSize: 22, color: '#22c55e', fontWeight: 'bold' }}>✓</Text>

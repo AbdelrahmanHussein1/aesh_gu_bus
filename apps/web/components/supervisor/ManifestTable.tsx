@@ -168,7 +168,13 @@ export default function ManifestTable() {
                         </button>
                         <button
                           onClick={() => handleSupervisorCancel(row.bookingId)}
-                          className="text-xs bg-destructive-alt/10 hover:bg-destructive-alt/20 text-destructive-alt px-3 py-1.5 rounded-lg border border-destructive-alt/20 transition font-medium"
+                          disabled={row.isBoarded}
+                          title={row.isBoarded ? 'لا يمكن إلغاء التذكرة: الراكب قد صعد بالفعل إلى الحافلة' : 'إلغاء التذكرة مع استرداد المبلغ بالكامل'}
+                          className={`text-xs px-3 py-1.5 rounded-lg border transition font-medium ${
+                            row.isBoarded 
+                              ? 'bg-surface-container-high/40 text-text-secondary/40 border-transparent cursor-not-allowed opacity-50' 
+                              : 'bg-destructive-alt/10 hover:bg-destructive-alt/20 text-destructive-alt border-destructive-alt/20 cursor-pointer'
+                          }`}
                         >
                           Cancel
                         </button>

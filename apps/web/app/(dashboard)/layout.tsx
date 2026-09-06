@@ -5,9 +5,10 @@ import { useApp } from '@/hooks/useAppStore';
 import SideNavBar from '@/components/layout/SideNavBar';
 import TopBar, { MobileTopBar } from '@/components/layout/TopBar';
 import DeveloperBar from '@/components/layout/DeveloperBar';
+import SupervisorCancellationModal from '@/components/booking/SupervisorCancellationModal';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const { user, role, logout, sidebarCollapsed, isAuthLoading } = useApp();
+  const { user, role, logout, sidebarCollapsed, isAuthLoading, supervisorCancelAlert, dismissSupervisorCancelAlert } = useApp();
   const pathname = usePathname();
   const router = useRouter();
   const [sessionDisplacedNotice, setSessionDisplacedNotice] = useState<string | null>(null);
@@ -127,6 +128,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       {/* Strict Developer/Simulation Bar: Rendered ONLY for developer email */}
       <DeveloperBar />
+
+      {/* Real-time Supervisor Cancellation Warning Modal with Refund notice */}
+      <SupervisorCancellationModal 
+        alertData={supervisorCancelAlert} 
+        onDismiss={dismissSupervisorCancelAlert} 
+      />
     </div>
   );
 }

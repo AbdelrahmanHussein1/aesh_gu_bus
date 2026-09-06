@@ -1,6 +1,7 @@
 'use client';
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
 import type { Route, Trip, Seat, Booking, AuditLog, GroupedBooking, ManifestEntry, BookingType, Direction, TimeSlot, PaymentMethod, Role, User } from '@/lib/types';
+import type { SupervisorCancellationAlertData } from '@/components/booking/SupervisorCancellationModal';
 import { getMockRoutes, generateMockTrips, generateMockSeats, generateRoundTripSeats, generateMockManifest, generateOfflineBooking, addMockAuditLog, getAuditLogs } from '@/lib/offline';
 import { getApiBaseUrl, getApiUrls } from '@/lib/api';
 
@@ -50,6 +51,7 @@ interface AppState {
   showCameraPermissionGuide: boolean;
   sidebarCollapsed: boolean;
   mobileSidebarOpen: boolean;
+  supervisorCancelAlert: SupervisorCancellationAlertData | null;
 }
 
 interface AppActions {
@@ -78,6 +80,7 @@ interface AppActions {
   setSwapSeatNumber: (v: string) => void;
   handleSupervisorSwapSubmit: (e: React.FormEvent) => void;
   handleSupervisorCancel: (bookingId: string) => void;
+  dismissSupervisorCancelAlert: () => void;
   setScanInputToken: (v: string) => void;
   setScanResult: (v: any) => void;
   setIsCameraActive: (v: boolean) => void;
@@ -178,6 +181,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const toggleSidebar = useCallback(() => setSidebarCollapsed(v => !v), []);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [supervisorCancelAlert, setSupervisorCancelAlert] = useState<SupervisorCancellationAlertData | null>(null);
 
   // Authenticate helper with backend
   const authenticateWithBackend = useCallback(async (email: string, pass?: string) => {
@@ -402,6 +406,65 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // Real-Time Supervisor Cancellation Alert & Refund Handler
+  const handleSupervisorCancelledNotification = useCallback((msg: any) => {
+    // Play subtle alert tone if possible
+    try {
+      if (typeof window !== 'undefined' && ((window as any).AudioContext || (window as any).webkitAudioContext)) {
+        const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
+        const ctx = new AudioCtx();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(440, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(220, ctx.currentTime + 0.35);
+        gain.gain.setValueAtTime(0.3, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.35);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.4);
+      }
+    } catch {}
+
+    setSupervisorCancelAlert({
+      visible: true,
+      bookingId: msg.bookingId,
+      boardingCode: msg.boardingCode,
+      seatNumber: msg.seatNumber,
+      routeNameAr: msg.routeNameAr,
+      refundAmount: msg.refundAmount || 160,
+      messageAr: msg.messageAr,
+      messageEn: msg.messageEn,
+      timestamp: msg.timestamp || new Date().toISOString(),
+    });
+
+    setMyBookings(prev => prev.map(b => b.id === msg.bookingId ? {
+      ...b,
+      status: 'cancelled',
+      paymentStatus: 'refunded',
+      cancelReason: msg.messageAr || msg.reason || 'Cancelled by supervisor with full refund',
+    } : b));
+
+    if (msg.seatNumber) {
+      setSeats(prev => prev.map(s => s.seatNumber === msg.seatNumber ? { ...s, status: 'free' } : s));
+    }
+  }, []);
+
+  const dismissSupervisorCancelAlert = useCallback(() => {
+    if (supervisorCancelAlert?.bookingId) {
+      try {
+        const key = 'aesh_dismissed_cancellations';
+        const current = JSON.parse(localStorage.getItem(key) || '[]');
+        if (!current.includes(supervisorCancelAlert.bookingId)) {
+          current.push(supervisorCancelAlert.bookingId);
+          localStorage.setItem(key, JSON.stringify(current));
+        }
+      } catch {}
+    }
+    setSupervisorCancelAlert(null);
+  }, [supervisorCancelAlert]);
+
   // Real-Time Seat Synchronization via WebSocket
   useEffect(() => {
     const tid = activeTrip ? activeTrip.id : activeArrivalTrip ? activeArrivalTrip.id : null;
@@ -422,6 +485,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
             setSeats(prev => prev.map(s => s.seatNumber === msg.seatNumber ? { ...s, status: 'booked' } : s));
           } else if (msg.type === 'rider_boarded') {
             handleRiderBoardedNotification(msg);
+          } else if (msg.type === 'SUPERVISOR_CANCELLED_TICKET') {
+            handleSupervisorCancelledNotification(msg);
           }
         } catch {}
       };
@@ -432,7 +497,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => {
       if (socket) socket.close();
     };
-  }, [activeTrip, activeArrivalTrip, isOffline, handleRiderBoardedNotification]);
+  }, [activeTrip, activeArrivalTrip, isOffline, handleRiderBoardedNotification, handleSupervisorCancelledNotification]);
 
   // Real-Time User Session Displacement & Boarding Listener via WebSocket
   useEffect(() => {
@@ -449,6 +514,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
             window.dispatchEvent(new CustomEvent('session_displaced', { detail: msg }));
           } else if (msg.type === 'rider_boarded') {
             handleRiderBoardedNotification(msg);
+          } else if (msg.type === 'SUPERVISOR_CANCELLED_TICKET') {
+            handleSupervisorCancelledNotification(msg);
           }
         } catch {}
       };
@@ -457,7 +524,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => {
       if (socket) socket.close();
     };
-  }, [token, isOffline, handleRiderBoardedNotification]);
+  }, [token, isOffline, handleRiderBoardedNotification, handleSupervisorCancelledNotification]);
 
   // Live Supervisor Manifest (Polls DB every 3 seconds)
   const loadSupervisorManifest = useCallback(async () => {
@@ -524,6 +591,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
           const data = await res.json();
           if (Array.isArray(data)) {
             setMyBookings(data);
+
+            // Check if any recent booking was cancelled by supervisor and not yet dismissed
+            try {
+              const dismissedKey = 'aesh_dismissed_cancellations';
+              const dismissed = JSON.parse(localStorage.getItem(dismissedKey) || '[]');
+              const recentCancel = data.find((b: any) => 
+                b.status === 'cancelled' && 
+                (b.paymentStatus === 'refunded' || (b.cancelReason && b.cancelReason.toLowerCase().includes('supervisor'))) &&
+                !dismissed.includes(b.id)
+              );
+              if (recentCancel) {
+                setSupervisorCancelAlert({
+                  visible: true,
+                  bookingId: recentCancel.id,
+                  boardingCode: recentCancel.boardingCode || ('GU-' + recentCancel.id.substring(0, 4).toUpperCase()),
+                  seatNumber: recentCancel.seatNumber,
+                  routeNameAr: recentCancel.routeAr,
+                  refundAmount: 160,
+                  messageAr: recentCancel.cancelReason || 'قام مشرف الرحلة بإلغاء حجزك وتم استرداد المبلغ بالكامل (160 ج.م) لحسابك.',
+                  messageEn: 'Your booking was cancelled by the line supervisor. A full refund has been issued.',
+                  timestamp: recentCancel.cancelledAt || new Date().toISOString(),
+                });
+              }
+            } catch {}
+
             return;
           }
         }
@@ -965,33 +1057,39 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [swapBookingTarget, swapTripId, swapSeatNumber, isOffline, token, loadSupervisorManifest, loadSeatMap]);
 
   const handleSupervisorCancel = useCallback(async (bookingId: string) => {
-    const reason = window.prompt('Enter cancellation reason:');
+    const reason = window.prompt('أدخل سبب الإلغاء (Enter cancellation reason):');
     if (reason === null) return;
 
     const apiUrl = getApiBaseUrl();
     if (!isOffline && token) {
       try {
-        await fetch(`${apiUrl}/api/bookings/cancel`, {
+        const res = await fetch(`${apiUrl}/api/supervisor/cancel-booking`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({ bookingId, reason }),
         });
-        loadSupervisorManifest();
-        loadSeatMap();
-        alert('Passenger booking cancelled.');
+        const data = await res.json();
+        if (!res.ok) {
+          alert(`❌ ${data.messageAr || data.error || 'فشل إلغاء الحجز'}`);
+          return;
+        }
+        await loadSupervisorManifest();
+        await loadSeatMap();
+        alert(`✅ ${data.messageAr || 'تم إلغاء التذكرة بنجاح وإصدار أمر استرداد كامل للمبلغ (160 ج.م).'}`);
         return;
-      } catch (e) {
-        console.warn('API cancellation failed:', e);
+      } catch (e: any) {
+        alert(`❌ فشل الاتصال بالخادم: ${e.message}`);
+        return;
       }
     }
 
     const all: Booking[] = JSON.parse(localStorage.getItem('aesh_bookings') || '[]');
-    const updated = all.map(b => b.id === bookingId ? { ...b, status: 'cancelled' as const, cancelReason: reason } : b);
+    const updated = all.map(b => b.id === bookingId ? { ...b, status: 'cancelled' as const, cancelReason: reason, paymentStatus: 'refunded' } : b);
     localStorage.setItem('aesh_bookings', JSON.stringify(updated));
-    addMockAuditLog('SUPERVISOR_CANCEL', `Supervisor cancelled booking ${bookingId}`);
+    addMockAuditLog('SUPERVISOR_CANCEL', `Supervisor cancelled booking ${bookingId} with refund`);
     loadSupervisorManifest();
     loadSeatMap();
-    alert('Passenger booking cancelled.');
+    alert('تم إلغاء التذكرة واحتساب الاسترداد.');
   }, [isOffline, token, loadSupervisorManifest, loadSeatMap]);
 
   const setSwapBookingTargetOpen = useCallback((t: ManifestEntry | null) => {
@@ -1033,7 +1131,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setBookingType, setTimeSlot, setReturnTimeSlot, setActiveTrip, setActiveArrivalTrip, setActiveReturnTrip,
     handleSeatClick, setShowCheckout, setPaymentMethod, setCardNumber, setReceiptRef,
     handleCheckoutSubmit, handleCancelBooking, setExpandedTicketId, setSwapBookingTarget, setSwapBookingTargetOpen,
-    setSwapTripId, setSwapSeatNumber, handleSupervisorSwapSubmit, handleSupervisorCancel,
+    setSwapTripId, setSwapSeatNumber, handleSupervisorSwapSubmit, handleSupervisorCancel, dismissSupervisorCancelAlert, supervisorCancelAlert,
     setScanInputToken, setScanResult, setIsCameraActive, setCameraError, setShowCameraPermissionGuide,
     handleSimulatedScan, startCameraScan, stopCameraScan, setCancelLockHours,
     setIsScanning, setIsSwapping, getGroupedBookings, toggleSidebar, setMobileSidebarOpen, setIsOffline,

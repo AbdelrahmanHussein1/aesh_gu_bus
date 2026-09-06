@@ -99,6 +99,8 @@ export interface Booking {
   isBoarded: boolean;
   boardedAt: string | null;
   qrUsedAt?: string;
+  cancelReason?: string;
+  cancelledAt?: string;
   driver?: PersonnelContact | null;
   supervisors?: PersonnelContact[];
 }
