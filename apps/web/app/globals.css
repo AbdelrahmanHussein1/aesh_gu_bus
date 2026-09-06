@@ -109,11 +109,33 @@ body {
 }
 
 .qr-checkmark-anim {
-  animation: qrScanCheckmark 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  animation: qrScanCheckmark 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
 }
 
 .qr-ripple {
   animation: qrScanRipple 0.8s ease-out forwards;
+}
+
+@keyframes checkmarkStroke {
+  0% { stroke-dashoffset: 50; }
+  100% { stroke-dashoffset: 0; }
+}
+
+.animate-checkmark-draw {
+  stroke-dasharray: 50;
+  stroke-dashoffset: 50;
+  animation: checkmarkStroke 0.6s cubic-bezier(0.65, 0, 0.45, 1) 0.1s forwards;
+}
+
+@keyframes boardBadgePop {
+  0% { transform: scale(0.65); opacity: 0; }
+  60% { transform: scale(1.15); opacity: 1; }
+  80% { transform: scale(0.95); }
+  100% { transform: scale(1); }
+}
+
+.animate-badge-pop {
+  animation: boardBadgePop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
 }
 
 .ticket-boarded {

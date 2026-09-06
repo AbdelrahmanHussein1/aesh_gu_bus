@@ -25,8 +25,12 @@ export default function AuthPage() {
     <div className="min-h-screen bg-surface-bright flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <div className="w-14 h-14 bg-primary-container rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
-            <span className="material-symbols-outlined text-on-primary-container text-3xl">directions_bus</span>
+          <div className="w-24 h-24 mx-auto mb-4 flex items-center justify-center">
+            <img
+              src="/app-logo.png"
+              alt="Bus Aesh Galala University"
+              className="w-24 h-24 object-contain rounded-2xl shadow-xl transition-transform hover:scale-105 duration-300"
+            />
           </div>
           <h1 className="text-2xl font-bold text-text-primary">Bus Aesh</h1>
           <p className="text-sm text-text-secondary mt-1">Galala University Booking Portal</p>

@@ -103,6 +103,34 @@ const MOCK_USERS: Record<string, User> = {
   'admin@gu.edu.eg': { id: 'admin-id', email: 'admin@gu.edu.eg', fullName: 'System Administrator', role: 'admin' },
 };
 
+function playSuccessChime() {
+  if (typeof window === 'undefined') return;
+  try {
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextClass) return;
+    const ctx = new AudioContextClass();
+    const now = ctx.currentTime;
+    // Harmonious multi-tone success chime (C5 -> E5 -> G5 -> C6)
+    const tones = [523.25, 659.25, 783.99, 1046.5];
+    tones.forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(freq, now + idx * 0.08);
+
+      gain.gain.setValueAtTime(0, now + idx * 0.08);
+      gain.gain.linearRampToValueAtTime(0.2, now + idx * 0.08 + 0.03);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.08 + 0.55);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(now + idx * 0.08);
+      osc.stop(now + idx * 0.08 + 0.6);
+    });
+  } catch {}
+}
+
 export function AppProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState('');
   const [user, setUser] = useState<User | null>(null);
@@ -328,6 +356,39 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(interval);
   }, [heldExpiresAt]);
 
+  // Real-Time Boarding Animation & Sound trigger
+  const handleRiderBoardedNotification = useCallback((msg: any) => {
+    const bId = msg.bookingId;
+    setMyBookings(prev => prev.map(b => {
+      if (b.id === bId || (b.seatNumber === msg.seatNumber && (!msg.legType || b.legType === msg.legType))) {
+        return {
+          ...b,
+          qrUsedAt: msg.scannedAt || new Date().toISOString(),
+          isBoarded: true,
+          boardedAt: new Date(msg.scannedAt || Date.now()).toLocaleTimeString(),
+        };
+      }
+      return b;
+    }));
+
+    if (bId) {
+      setJustBoardedBookingIds(prev => new Set(prev).add(bId));
+      setExpandedTicketId(bId);
+    }
+
+    playSuccessChime();
+    if (typeof window !== 'undefined') {
+      import('canvas-confetti').then(mod => {
+        mod.default({
+          particleCount: 140,
+          spread: 85,
+          origin: { y: 0.55 },
+          colors: ['#22c55e', '#16a34a', '#4ade80', '#38bdf8', '#fbbf24'],
+        });
+      }).catch(() => {});
+    }
+  }, []);
+
   // Real-Time Seat Synchronization via WebSocket
   useEffect(() => {
     const tid = activeTrip ? activeTrip.id : activeArrivalTrip ? activeArrivalTrip.id : null;
@@ -346,6 +407,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
             setSeats(prev => prev.map(s => s.seatNumber === msg.seatNumber ? { ...s, status: 'free' } : s));
           } else if (msg.type === 'seat_booked') {
             setSeats(prev => prev.map(s => s.seatNumber === msg.seatNumber ? { ...s, status: 'booked' } : s));
+          } else if (msg.type === 'rider_boarded') {
+            handleRiderBoardedNotification(msg);
           }
         } catch {}
       };
@@ -356,9 +419,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => {
       if (socket) socket.close();
     };
-  }, [activeTrip, activeArrivalTrip, isOffline]);
+  }, [activeTrip, activeArrivalTrip, isOffline, handleRiderBoardedNotification]);
 
-  // Real-Time User Session Displacement Listener via WebSocket
+  // Real-Time User Session Displacement & Boarding Listener via WebSocket
   useEffect(() => {
     if (isOffline || !token || typeof window === 'undefined') return;
 
@@ -371,6 +434,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
           const msg = JSON.parse(event.data);
           if (msg.type === 'SESSION_TERMINATED') {
             window.dispatchEvent(new CustomEvent('session_displaced', { detail: msg }));
+          } else if (msg.type === 'rider_boarded') {
+            handleRiderBoardedNotification(msg);
           }
         } catch {}
       };
@@ -379,7 +444,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => {
       if (socket) socket.close();
     };
-  }, [token, isOffline]);
+  }, [token, isOffline, handleRiderBoardedNotification]);
 
   // Live Supervisor Manifest (Polls DB every 3 seconds)
   const loadSupervisorManifest = useCallback(async () => {
@@ -758,8 +823,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const checkInTime = new Date().toLocaleTimeString();
     target.isBoarded = true;
     target.boardedAt = checkInTime;
+    target.qrUsedAt = new Date().toISOString();
     const updated = all.map(b => b.id === target.id ? target : b);
     localStorage.setItem('aesh_bookings', JSON.stringify(updated));
+    setMyBookings(prev => prev.map(b => b.id === target.id ? { ...b, isBoarded: true, qrUsedAt: new Date().toISOString() } : b));
+    setJustBoardedBookingIds(prev => new Set(prev).add(target.id));
+    playSuccessChime();
+    if (typeof window !== 'undefined') {
+      import('canvas-confetti').then(mod => {
+        mod.default({
+          particleCount: 140,
+          spread: 85,
+          origin: { y: 0.55 },
+          colors: ['#22c55e', '#16a34a', '#4ade80', '#38bdf8', '#fbbf24'],
+        });
+      }).catch(() => {});
+    }
     addMockAuditLog('ATTENDANCE_SCAN', `Rider ${target.riderName} scanned on board`);
     setScanResult({ success: true, result: 'valid', riderName: target.riderName, seatNumber: target.seatNumber, route: target.routeAr, time: checkInTime });
     setIsScanning(false);

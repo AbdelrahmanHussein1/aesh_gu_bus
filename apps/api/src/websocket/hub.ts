@@ -57,6 +57,29 @@ export class WebSocketHub {
   }
 
   /**
+   * Directly sends a real-time event to all active sockets belonging to a specific user.
+   */
+  static sendToUser(userId: string, message: any) {
+    const sockets = this.userSockets.get(userId);
+    if (!sockets) return;
+    const payload = JSON.stringify(message);
+    for (const client of sockets) {
+      if (client.readyState === 1) { // OPEN
+        try {
+          client.send(payload);
+        } catch {
+          sockets.delete(client);
+        }
+      } else {
+        sockets.delete(client);
+      }
+    }
+    if (sockets.size === 0) {
+      this.userSockets.delete(userId);
+    }
+  }
+
+  /**
    * Displaces any active client connected for this user on other devices.
    */
   static notifySessionDisplaced(userId: string, newDevice?: string) {

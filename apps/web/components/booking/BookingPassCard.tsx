@@ -2,6 +2,47 @@
 import { useApp } from '@/hooks/useAppStore';
 import type { GroupedBooking } from '@/lib/types';
 
+interface BoardedStampProps {
+  isJustBoarded: boolean;
+  size?: 'normal' | 'compact';
+}
+
+function BoardedStamp({ isJustBoarded, size = 'normal' }: BoardedStampProps) {
+  const isCompact = size === 'compact';
+  return (
+    <div className="flex flex-col items-center justify-center space-y-2">
+      {isJustBoarded && (
+        <div className="py-1 px-3 bg-emerald-500/15 border border-emerald-500/30 rounded-full inline-flex items-center gap-1.5 text-[11px] font-bold text-emerald-600 dark:text-emerald-400 animate-badge-pop shadow-sm">
+          <span className="material-symbols-outlined text-sm text-emerald-500">verified</span>
+          <span>تم تأكيد الصعود بنجاح</span>
+        </div>
+      )}
+
+      <div
+        className={`relative ${isCompact ? 'w-24 h-24' : 'w-28 h-28'} bg-emerald-500/10 border-2 border-emerald-500/40 rounded-2xl flex flex-col items-center justify-center mx-auto text-emerald-600 dark:text-emerald-400 shadow-sm transition-all duration-500 ${
+          isJustBoarded ? 'animate-badge-pop ring-4 ring-emerald-400/40 shadow-[0_0_25px_rgba(16,185,129,0.35)]' : ''
+        }`}
+      >
+        {isJustBoarded && (
+          <span className="absolute inset-0 rounded-2xl bg-emerald-400/20 animate-ping pointer-events-none opacity-70" />
+        )}
+
+        <div className={`${isCompact ? 'w-10 h-10' : 'w-11 h-11'} rounded-full border-2 border-emerald-500 flex items-center justify-center mb-1 bg-emerald-500/10 ${isJustBoarded ? 'qr-checkmark-anim' : ''}`}>
+          <svg className={`${isCompact ? 'w-5 h-5' : 'w-6 h-6'} text-emerald-600 dark:text-emerald-400 stroke-current fill-none`} viewBox="0 0 24 24" strokeWidth="3">
+            <path
+              className={isJustBoarded ? 'animate-checkmark-draw' : ''}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M5 13l4 4L19 7"
+            />
+          </svg>
+        </div>
+        <span className={`${isCompact ? 'text-[10px]' : 'text-xs'} font-black tracking-widest text-emerald-600 dark:text-emerald-400`}>BOARDED</span>
+      </div>
+    </div>
+  );
+}
+
 function RoundTripCard({ group }: { group: GroupedBooking }) {
   const { expandedTicketId, setExpandedTicketId, justBoardedBookingIds, handleCancelBooking, setScanInputToken } = useApp();
   const arr = group.arrival!;
@@ -11,9 +52,10 @@ function RoundTripCard({ group }: { group: GroupedBooking }) {
   const retBoarded = !!ret.qrUsedAt;
   const arrJustBoarded = justBoardedBookingIds.has(arr.id);
   const retJustBoarded = justBoardedBookingIds.has(ret.id);
+  const hasJustBoarded = arrJustBoarded || retJustBoarded;
 
   return (
-    <div className={`bg-surface-container border border-border-whisper rounded-xl overflow-hidden shadow-sm transition-all duration-300 ${group.status === 'cancelled' ? 'opacity-40' : (arrBoarded && retBoarded) ? 'ticket-boarded' : ''}`}>
+    <div className={`bg-surface-container border border-border-whisper rounded-xl overflow-hidden shadow-sm transition-all duration-500 ${group.status === 'cancelled' ? 'opacity-40' : (arrBoarded && retBoarded) ? 'ticket-boarded' : ''} ${hasJustBoarded ? 'ring-2 ring-emerald-500/70 shadow-lg' : ''}`}>
       <button onClick={() => setExpandedTicketId(isExpanded ? null : group.id)} className="w-full p-4 flex items-center justify-between text-left hover:bg-surface-container-low transition-colors">
         <div className="min-w-0 flex items-center gap-3">
           <span className="material-symbols-outlined text-primary-container text-2xl">confirmation_number</span>
@@ -34,10 +76,7 @@ function RoundTripCard({ group }: { group: GroupedBooking }) {
               <p className="text-[10px] text-text-secondary font-mono">{arr.departureTime}</p>
               <p className="text-xs font-bold text-text-primary">Seat {arr.seatNumber}</p>
               {arrBoarded ? (
-                <div className="w-20 h-20 bg-success-galala/10 border border-success-galala/30 rounded-lg flex flex-col items-center justify-center mx-auto text-success-galala">
-                  <span className="material-symbols-outlined">check_circle</span>
-                  <span className="text-[8px] font-bold mt-1">BOARDED</span>
-                </div>
+                <BoardedStamp isJustBoarded={arrJustBoarded} size="compact" />
               ) : (
                 <div className="space-y-2">
                   <div className="w-20 h-20 bg-white p-1 rounded-lg border border-border-whisper mx-auto">
@@ -54,10 +93,7 @@ function RoundTripCard({ group }: { group: GroupedBooking }) {
               <p className="text-[10px] text-text-secondary font-mono">{ret.departureTime}</p>
               <p className="text-xs font-bold text-text-primary">Seat {ret.seatNumber}</p>
               {retBoarded ? (
-                <div className="w-20 h-20 bg-success-galala/10 border border-success-galala/30 rounded-lg flex flex-col items-center justify-center mx-auto text-success-galala">
-                  <span className="material-symbols-outlined">check_circle</span>
-                  <span className="text-[8px] font-bold mt-1">BOARDED</span>
-                </div>
+                <BoardedStamp isJustBoarded={retJustBoarded} size="compact" />
               ) : (
                 <div className="space-y-2">
                   <div className="w-20 h-20 bg-white p-1 rounded-lg border border-border-whisper mx-auto">
@@ -117,8 +153,10 @@ function OneWayCard({ group }: { group: GroupedBooking }) {
   const isExpanded = expandedTicketId === group.id;
   const isBoarded = !!b.qrUsedAt;
 
+  const isJustBoarded = justBoardedBookingIds.has(b.id);
+
   return (
-    <div className={`bg-surface-container border border-border-whisper rounded-xl overflow-hidden shadow-sm transition-all duration-300 ${group.status === 'cancelled' ? 'opacity-40' : isBoarded ? 'ticket-boarded' : ''}`}>
+    <div className={`bg-surface-container border border-border-whisper rounded-xl overflow-hidden shadow-sm transition-all duration-500 ${group.status === 'cancelled' ? 'opacity-40' : isBoarded ? 'ticket-boarded' : ''} ${isJustBoarded ? 'ring-2 ring-emerald-500/70 shadow-lg' : ''}`}>
       <button onClick={() => setExpandedTicketId(isExpanded ? null : group.id)} className="w-full p-4 flex items-center justify-between text-left hover:bg-surface-container-low transition-colors">
         <div className="min-w-0 flex items-center gap-3">
           <span className="material-symbols-outlined text-primary-container text-2xl">confirmation_number</span>
@@ -138,10 +176,7 @@ function OneWayCard({ group }: { group: GroupedBooking }) {
           <p className="text-[10px] text-text-secondary font-mono">Departure: {b.departureTime}</p>
           <p className="text-xs font-bold text-text-primary">Seat {b.seatNumber}</p>
           {isBoarded ? (
-            <div className="w-24 h-24 bg-success-galala/10 border border-success-galala/30 rounded-lg flex flex-col items-center justify-center mx-auto text-success-galala">
-              <span className="material-symbols-outlined text-2xl">check_circle</span>
-              <span className="text-xs font-bold mt-1">BOARDED</span>
-            </div>
+            <BoardedStamp isJustBoarded={isJustBoarded} size="normal" />
           ) : (
             <div className="space-y-2">
               <div className="w-24 h-24 bg-white p-1 rounded-lg border border-border-whisper mx-auto">

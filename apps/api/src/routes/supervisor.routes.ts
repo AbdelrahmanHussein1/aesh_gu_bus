@@ -219,14 +219,18 @@ export async function supervisorRoutes(fastify: FastifyInstance) {
       longitude: longitude ? String(longitude) : undefined,
     });
 
-    WebSocketHub.broadcastToTripRoom(booking.tripId, {
+    const boardedEvent = {
       type: 'rider_boarded',
       bookingId: booking.id,
+      userId: booking.userId,
       riderName: booking.user.fullName,
       seatNumber: booking.seatNumber,
       legType: booking.legType,
-      scannedAt: new Date(),
-    });
+      scannedAt: new Date().toISOString(),
+    };
+
+    WebSocketHub.broadcastToTripRoom(booking.tripId, boardedEvent);
+    WebSocketHub.sendToUser(booking.userId, boardedEvent);
 
     return {
       success: true,

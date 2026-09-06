@@ -356,18 +356,28 @@ export default function AppHome() {
                 </View>
               </View>
 
-              {/* QR Image mockup */}
-              <View style={styles.qrContainer}>
-                <View style={styles.qrWrapper}>
-                  <View style={{width: 140, height: 140, backgroundColor: 'white', padding: 4, borderRadius: 8}}>
-                    <View style={styles.qrMockPlaceholder}>
-                      <Text style={{fontSize: 24}}>📱</Text>
-                      <Text style={{fontSize: 8, color: '#333', marginTop: 4, fontWeight: 'bold'}}>SCANNABLE TICKET</Text>
+              {/* QR Image / Boarded status */}
+              {t.isBoarded ? (
+                <View style={{ width: 140, height: 140, backgroundColor: 'rgba(34, 197, 94, 0.1)', borderWidth: 2, borderColor: 'rgba(34, 197, 94, 0.4)', borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginVertical: 8 }}>
+                  <View style={{ width: 44, height: 44, borderRadius: 22, borderWidth: 2, borderColor: '#22c55e', alignItems: 'center', justifyContent: 'center', marginBottom: 6, backgroundColor: 'rgba(34, 197, 94, 0.15)' }}>
+                    <Text style={{ fontSize: 22, color: '#22c55e', fontWeight: 'bold' }}>✓</Text>
+                  </View>
+                  <Text style={{ fontSize: 13, fontWeight: '900', color: '#22c55e', letterSpacing: 2 }}>BOARDED</Text>
+                  <Text style={{ fontSize: 10, color: '#16a34a', marginTop: 2 }}>Gate Verified</Text>
+                </View>
+              ) : (
+                <View style={styles.qrContainer}>
+                  <View style={styles.qrWrapper}>
+                    <View style={{width: 140, height: 140, backgroundColor: 'white', padding: 4, borderRadius: 8}}>
+                      <View style={styles.qrMockPlaceholder}>
+                        <Text style={{fontSize: 24}}>📱</Text>
+                        <Text style={{fontSize: 8, color: '#333', marginTop: 4, fontWeight: 'bold'}}>SCANNABLE TICKET</Text>
+                      </View>
                     </View>
                   </View>
+                  <Text style={styles.qrTokenText} numberOfLines={1}>Token: {t.qrToken}</Text>
                 </View>
-                <Text style={styles.qrTokenText} numberOfLines={1}>Token: {t.qrToken}</Text>
-              </View>
+              )}
             </View>
           ))
         )}
