@@ -71,6 +71,9 @@ if (fs.existsSync(path.join(rootDir, 'Dockerfile'))) {
 if (fs.existsSync(path.join(rootDir, 'DEPLOY.md'))) {
   copyRecursive(path.join(rootDir, 'DEPLOY.md'), path.join(stageDir, 'DEPLOY.md'));
 }
+if (fs.existsSync(path.join(rootDir, 'start.sh'))) {
+  copyRecursive(path.join(rootDir, 'start.sh'), path.join(stageDir, 'start.sh'));
+}
 
 // 4. Create ZIP archive
 console.log('🗜️ Compressing release archive...');

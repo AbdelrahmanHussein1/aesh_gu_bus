@@ -25,9 +25,17 @@ if ! docker info > /dev/null 2>&1; then
         echo "👉 Ensure Docker service is running: sudo systemctl start docker"
         exit 1
     fi
+# 3. Always compose down before doing anything (clean teardown)
+echo "🛑 Stopping and cleaning any existing containers..."
+$DOCKER_COMPOSE down --remove-orphans 2>/dev/null || true
+
+# 4. Check and pull latest repository updates if running inside git clone
+if [ -d ".git" ]; then
+    echo "🔄 Checking for latest repository updates from GitHub..."
+    git pull origin main 2>/dev/null || echo "ℹ️  Continuing with local files..."
 fi
 
-echo "🚀 Building and starting Docker services..."
+echo "🚀 Building and starting Docker services with latest updates..."
 $DOCKER_COMPOSE up -d --build
 
 echo "⏳ Waiting for services to initialize..."
