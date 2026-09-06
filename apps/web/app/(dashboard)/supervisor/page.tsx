@@ -7,8 +7,19 @@ import QRScanner from '@/components/supervisor/QRScanner';
 import SwapModal from '@/components/supervisor/SwapModal';
 
 export default function SupervisorDashboardPage() {
-  const { user, role, switchRole } = useApp();
+  const { user, role, switchRole, isAuthLoading } = useApp();
   useEffect(() => { document.title = 'Supervisor Operations — Bus Aesh'; }, []);
+
+  if (isAuthLoading) {
+    return (
+      <div className="flex items-center justify-center h-64 text-text-secondary gap-2">
+        <span className="material-symbols-outlined animate-spin text-primary-container">sync</span>
+        <span>Loading supervisor operations...</span>
+      </div>
+    );
+  }
+
+  if (!user) return null;
 
   const isLocalhost = typeof window !== 'undefined' && (
     window.location.hostname === 'localhost' ||
@@ -16,7 +27,7 @@ export default function SupervisorDashboardPage() {
   );
   const isDev = isLocalhost || Boolean(process.env.NEXT_PUBLIC_DEV_EMAIL && user?.email === process.env.NEXT_PUBLIC_DEV_EMAIL);
 
-  if (role !== 'supervisor' && role !== 'admin') {
+  if (!isDev && role !== 'supervisor' && role !== 'admin') {
     return (
       <div className="flex flex-col items-center justify-center h-96 p-8 text-center space-y-3">
         <span className="material-symbols-outlined text-4xl text-text-secondary">badge</span>

@@ -1,5 +1,6 @@
 'use client';
 import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { useApp } from '@/hooks/useAppStore';
 import RouteSelector from '@/components/booking/RouteSelector';
 import TripList from '@/components/booking/TripList';
@@ -8,16 +9,21 @@ import CheckoutModal from '@/components/booking/CheckoutModal';
 import BookingPassCard from '@/components/booking/BookingPassCard';
 
 export default function RiderDashboardPage() {
-  const { user, role } = useApp();
+  const { user, role, isAuthLoading } = useApp();
+  const router = useRouter();
   useEffect(() => { document.title = 'Rider Dashboard — Bus Aesh'; }, []);
 
-  if (!user || user.role !== 'rider') {
+  if (isAuthLoading) {
     return (
-      <div className="flex items-center justify-center h-full p-8 text-text-secondary">
-        <span className="material-symbols-outlined mr-2">error</span>
-        Insufficient permissions — Rider access required.
+      <div className="flex items-center justify-center h-64 text-text-secondary gap-2">
+        <span className="material-symbols-outlined animate-spin text-primary-container">sync</span>
+        <span>Loading rider portal...</span>
       </div>
     );
+  }
+
+  if (!user) {
+    return null;
   }
 
   return (

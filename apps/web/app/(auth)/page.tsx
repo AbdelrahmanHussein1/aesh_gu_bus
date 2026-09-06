@@ -8,14 +8,15 @@ import { useApp } from '@/hooks/useAppStore';
 type AuthView = 'login' | 'register' | 'forgot';
 
 export default function AuthPage() {
-  const { user } = useApp();
+  const { user, isAuthLoading } = useApp();
   const [authView, setAuthView] = useState<AuthView>('login');
 
   useEffect(() => {
+    if (isAuthLoading) return;
     if (user?.role === 'rider') window.location.href = '/rider';
     else if (user?.role === 'supervisor') window.location.href = '/supervisor';
     else if (user?.role === 'admin') window.location.href = '/admin';
-  }, [user]);
+  }, [user, isAuthLoading]);
 
   const handleSuccess = () => {
     window.location.href = '/rider';

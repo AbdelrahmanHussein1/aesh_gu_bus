@@ -20,6 +20,11 @@ export default function LoginForm({ onSwitchTab }: Props) {
     setLoading(true);
     try {
       await login(email, password);
+      const saved = typeof window !== 'undefined' ? localStorage.getItem('aesh_web_user') : null;
+      const userRole = saved ? JSON.parse(saved).role : 'rider';
+      if (userRole === 'supervisor') window.location.href = '/supervisor';
+      else if (userRole === 'admin') window.location.href = '/admin';
+      else window.location.href = '/rider';
     } catch (err: any) {
       setError(err.message || 'Authentication failed');
     } finally {

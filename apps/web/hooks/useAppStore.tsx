@@ -5,6 +5,7 @@ import { getMockRoutes, generateMockTrips, generateMockSeats, generateRoundTripS
 import { getApiBaseUrl, getApiUrls } from '@/lib/api';
 
 interface AppState {
+  isAuthLoading: boolean;
   token: string;
   user: User | null;
   role: Role;
@@ -131,6 +132,7 @@ function playSuccessChime() {
 }
 
 export function AppProvider({ children }: { children: ReactNode }) {
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [token, setToken] = useState('');
   const [user, setUser] = useState<User | null>(null);
   const [role, setRole] = useState<Role>('rider');
@@ -209,31 +211,35 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    const savedToken = localStorage.getItem('aesh_web_token');
-    const savedUser = localStorage.getItem('aesh_web_user');
-    if (savedToken && savedUser) {
-      try {
-        const parsed = JSON.parse(savedUser);
-        if (parsed.email === 'aes400196@gu.edu.eg' || parsed.id === 'user-default-id') {
-          localStorage.removeItem('aesh_web_token');
-          localStorage.removeItem('aesh_web_user');
+    try {
+      const savedToken = localStorage.getItem('aesh_web_token');
+      const savedUser = localStorage.getItem('aesh_web_user');
+      if (savedToken && savedUser) {
+        try {
+          const parsed = JSON.parse(savedUser);
+          if (parsed.email === 'aes400196@gu.edu.eg' || parsed.id === 'user-default-id') {
+            localStorage.removeItem('aesh_web_token');
+            localStorage.removeItem('aesh_web_user');
+            setToken('');
+            setUser(null);
+            setRole('rider');
+          } else {
+            setToken(savedToken);
+            setUser(parsed);
+            setRole(parsed.role || 'rider');
+          }
+        } catch {
           setToken('');
           setUser(null);
           setRole('rider');
-        } else {
-          setToken(savedToken);
-          setUser(parsed);
-          setRole(parsed.role);
         }
-      } catch {
+      } else {
         setToken('');
         setUser(null);
         setRole('rider');
       }
-    } else {
-      setToken('');
-      setUser(null);
-      setRole('rider');
+    } finally {
+      setIsAuthLoading(false);
     }
 
     const init = async () => {
@@ -736,16 +742,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [isOffline, token, getUserBookings, loadSeatMap]);
 
   const login = useCallback(async (email: string, password: string) => {
-    const data = await authenticateWithBackend(email, password);
-    if (data) return;
+    try {
+      const data = await authenticateWithBackend(email, password);
+      if (data) return;
 
-    const mockUser = MOCK_USERS[email];
-    if (mockUser) {
-      localStorage.setItem('aesh_web_token', 'mock-offline-token');
-      localStorage.setItem('aesh_web_user', JSON.stringify(mockUser));
-      setToken('mock-offline-token');
-      setUser(mockUser);
-      setRole(mockUser.role);
+      const mockUser = MOCK_USERS[email];
+      if (mockUser) {
+        localStorage.setItem('aesh_web_token', 'mock-offline-token');
+        localStorage.setItem('aesh_web_user', JSON.stringify(mockUser));
+        setToken('mock-offline-token');
+        setUser(mockUser);
+        setRole(mockUser.role);
+      }
+    } finally {
+      setIsAuthLoading(false);
     }
   }, [authenticateWithBackend]);
 
@@ -760,6 +770,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setRole('rider');
     setSelectedSeat(null);
     setMyBookings([]);
+    setIsAuthLoading(false);
   }, []);
 
   const switchRole = useCallback(async (newRole: Role) => {
@@ -1012,7 +1023,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [myBookings]);
 
   const value = {
-    token, user, role, isOffline, routes, selectedRouteId, selectedDirection, selectedDate, trips,
+    isAuthLoading, token, user, role, isOffline, routes, selectedRouteId, selectedDirection, selectedDate, trips,
     activeTrip, activeArrivalTrip, activeReturnTrip, bookingType, timeSlot, returnTimeSlot, seats, selectedSeat,
     heldExpiresAt, lockingSeatNumber, myBookings, expandedTicketId, justBoardedBookingIds, auditLogs,
     supervisorManifest, showCheckout, paymentMethod, checkoutError, isPaying, cardNumber, receiptRef,

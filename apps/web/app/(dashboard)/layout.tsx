@@ -7,7 +7,7 @@ import TopBar, { MobileTopBar } from '@/components/layout/TopBar';
 import DeveloperBar from '@/components/layout/DeveloperBar';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const { user, role, logout, sidebarCollapsed } = useApp();
+  const { user, role, logout, sidebarCollapsed, isAuthLoading } = useApp();
   const pathname = usePathname();
   const router = useRouter();
   const [sessionDisplacedNotice, setSessionDisplacedNotice] = useState<string | null>(null);
@@ -27,9 +27,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     return () => window.removeEventListener('session_displaced', handleDisplaced);
   }, [logout, router]);
 
-  // 2. Strict Role-Based Route Protection (non-devs cannot access cross-role paths)
+  // 2. Strict Role-Based Route Protection & Auth Guard
   useEffect(() => {
-    if (!user) return;
+    if (isAuthLoading) return;
+
+    // If not logged in, redirect straight to the Portal login & registration page
+    if (!user) {
+      router.replace('/');
+      return;
+    }
+
     const isLocalhost = typeof window !== 'undefined' && (
       window.location.hostname === 'localhost' ||
       window.location.hostname === '127.0.0.1'
@@ -43,7 +50,53 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     } else if (user.role === 'supervisor' && pathname.startsWith('/admin')) {
       router.replace('/supervisor');
     }
-  }, [user, pathname, router]);
+  }, [isAuthLoading, user, pathname, router]);
+
+  if (isAuthLoading) {
+    return (
+      <div className="min-h-screen bg-surface-bright flex flex-col items-center justify-center p-4">
+        <div className="flex flex-col items-center gap-4 animate-pulse">
+          <img
+            src="/gu-logo-colored.png"
+            alt="Galala University"
+            className="h-12 w-auto object-contain"
+          />
+          <div className="flex items-center gap-2 text-text-secondary text-sm">
+            <span className="material-symbols-outlined animate-spin text-primary-container">sync</span>
+            <span>جاري التحقق من الجلسة... (Verifying Session)</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-surface-bright flex flex-col items-center justify-center p-4">
+        <div className="max-w-md w-full bg-surface-container border border-border-whisper rounded-2xl p-6 shadow-xl text-center flex flex-col items-center gap-4">
+          <img
+            src="/gu-logo-colored.png"
+            alt="Galala University"
+            className="h-12 w-auto object-contain"
+          />
+          <div className="w-14 h-14 rounded-full bg-primary-container/20 flex items-center justify-center text-primary-container">
+            <span className="material-symbols-outlined text-3xl">login</span>
+          </div>
+          <div>
+            <h3 className="text-lg font-bold text-text-primary mb-1">تسجيل الدخول مطلوب</h3>
+            <p className="text-sm text-text-secondary">يرجى تسجيل الدخول أو إنشاء حساب طالب للوصول إلى نظام حجز الباصات.</p>
+          </div>
+          <button
+            onClick={() => router.replace('/')}
+            className="w-full py-3 px-4 bg-primary-container text-on-primary-container rounded-xl font-bold text-sm hover:opacity-95 transition-all shadow-md flex items-center justify-center gap-2"
+          >
+            <span className="material-symbols-outlined text-lg">arrow_forward</span>
+            <span>الانتقال لبوابة التسجيل والدخول</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-surface-bright relative">

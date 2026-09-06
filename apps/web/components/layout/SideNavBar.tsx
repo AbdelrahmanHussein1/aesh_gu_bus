@@ -25,11 +25,13 @@ export default function SideNavBar() {
     <nav className={`flex flex-col h-full bg-surface-container border-r border-border-whisper transition-all duration-300 ${sidebarCollapsed ? 'w-16' : 'w-64'}`}>
       <div className="flex items-center justify-between px-3 h-14 shrink-0 border-b border-border-whisper">
         {!sidebarCollapsed && (
-          <img
-            alt="Galala University"
-            className="h-8 w-auto object-contain"
-            src="https://lh3.googleusercontent.com/aida-public/AB6AXuCoHBjjSLliXZorNzuNacznSYPSlke7EFUBucfJkmg2uDQDZ3sF2XWeXMaKA9sA-4rD1xfx64BedbovaOk-O_tW4xxIw-nFrI59drJwLc517uAALJcVh3pyB41jKdcv1YPCmuoQzLfrGiT5ElGSFOsJ8wRMKF4pJri9I81KtHV93P4bQ_wIOiS4NCFnfCBCS1gZ3iqIgIvPSIpcC4rpp_RaFnUZ4hjrtWGvaNbKmWF-axilZNWfsRq-b-oy-IDkzANAdBkRkjkDDMOG"
-          />
+          <Link href={user ? (user.role === 'admin' ? '/admin' : user.role === 'supervisor' ? '/supervisor' : '/rider') : '/'}>
+            <img
+              alt="Galala University"
+              className="h-9 w-auto object-contain cursor-pointer hover:opacity-90 transition-opacity"
+              src="/gu-logo-colored.png"
+            />
+          </Link>
         )}
         <button onClick={toggleSidebar} className="p-1.5 rounded-lg hover:bg-surface-container-high text-text-secondary transition-colors hidden md:block" title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
           <span className="material-symbols-outlined">{sidebarCollapsed ? 'menu_open' : 'chevron_left'}</span>
@@ -47,7 +49,7 @@ export default function SideNavBar() {
           </Link>
         )}
 
-        {user && (
+        {user ? (
           <div className={`${sidebarCollapsed ? 'px-0' : 'px-3'} py-2.5 bg-surface-container-low rounded-xl border border-border-whisper flex flex-col items-center gap-1`}>
             {sidebarCollapsed ? (
               <div className="w-8 h-8 rounded-full bg-primary-container/20 flex items-center justify-center text-primary-container font-bold text-sm">
@@ -64,6 +66,15 @@ export default function SideNavBar() {
               </>
             )}
           </div>
+        ) : (
+          !sidebarCollapsed && (
+            <div className="p-3 bg-surface-container-low rounded-xl border border-border-whisper text-center">
+              <p className="text-xs text-text-secondary mb-2">Guest Passenger</p>
+              <Link href="/" className="block py-2 px-3 bg-primary-container text-on-primary-container rounded-lg text-xs font-bold hover:opacity-90 transition-opacity shadow-sm">
+                Sign In / دخول
+              </Link>
+            </div>
+          )
         )}
 
         <div>

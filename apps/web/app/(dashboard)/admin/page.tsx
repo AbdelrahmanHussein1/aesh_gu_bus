@@ -9,12 +9,29 @@ import PolicySettings from '@/components/admin/PolicySettings';
 type AdminTab = 'schedules' | 'fleet' | 'policies';
 
 export default function AdminDashboardPage() {
-  const { role, switchRole } = useApp();
+  const { user, role, switchRole, isAuthLoading } = useApp();
   const [activeTab, setActiveTab] = useState<AdminTab>('schedules');
 
   useEffect(() => { document.title = 'Admin Console — Bus Aesh'; }, []);
 
-  if (role !== 'admin') {
+  if (isAuthLoading) {
+    return (
+      <div className="flex items-center justify-center h-64 text-text-secondary gap-2">
+        <span className="material-symbols-outlined animate-spin text-primary-container">sync</span>
+        <span>Loading admin console...</span>
+      </div>
+    );
+  }
+
+  if (!user) return null;
+
+  const isLocalhost = typeof window !== 'undefined' && (
+    window.location.hostname === 'localhost' ||
+    window.location.hostname === '127.0.0.1'
+  );
+  const isDev = isLocalhost || Boolean(process.env.NEXT_PUBLIC_DEV_EMAIL && user?.email === process.env.NEXT_PUBLIC_DEV_EMAIL);
+
+  if (!isDev && role !== 'admin') {
     return (
       <div className="flex flex-col items-center justify-center h-96 p-8 text-center space-y-3">
         <span className="material-symbols-outlined text-4xl text-text-secondary">admin_panel_settings</span>

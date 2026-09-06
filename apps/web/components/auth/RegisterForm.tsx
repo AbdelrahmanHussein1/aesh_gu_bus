@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { getApiBaseUrl } from '@/lib/api';
+import { useApp } from '@/hooks/useAppStore';
 
 const FACULTIES = [
   'Computer Science & Engineering',
@@ -20,6 +21,7 @@ interface Props {
 }
 
 export default function RegisterForm({ onSwitchTab }: Props = {}) {
+  const { login } = useApp();
   const [step, setStep] = useState<'details' | 'verify_code'>('details');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -122,11 +124,17 @@ export default function RegisterForm({ onSwitchTab }: Props = {}) {
         throw new Error(regData.messageAr || regData.error || 'Registration failed');
       }
 
-      alert('تم إنشاء حسابك وتأكيد القيد الطلابي بنجاح! يمكنك الآن تسجيل الدخول.');
-      if (onSwitchTab) {
-        onSwitchTab('login');
-      } else {
-        window.location.reload();
+      // Automatically log in the student and redirect to rider portal
+      try {
+        await login(email.toLowerCase().trim(), password);
+        window.location.href = '/rider';
+      } catch (loginErr) {
+        alert('تم إنشاء حسابك وتأكيد القيد الطلابي بنجاح! يمكنك الآن تسجيل الدخول.');
+        if (onSwitchTab) {
+          onSwitchTab('login');
+        } else {
+          window.location.href = '/';
+        }
       }
     } catch (err: any) {
       setError(err.message || 'Verification or registration failed');
