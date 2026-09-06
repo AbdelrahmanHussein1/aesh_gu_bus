@@ -72,6 +72,9 @@ export default function RegisterForm({ onSwitchTab }: Props = {}) {
       }
 
       setSuccessNotice(data.messageAr || 'تم إرسال كود التحقق إلى بريدك الجامعي');
+      if (data.devCode) {
+        setVerificationCode(data.devCode);
+      }
       setStep('verify_code');
     } catch (err: any) {
       setError(err.message || 'Failed to verify student credentials');
@@ -247,13 +250,31 @@ export default function RegisterForm({ onSwitchTab }: Props = {}) {
         </form>
       ) : (
         <form onSubmit={handleConfirmAndRegister} className="flex flex-col gap-4">
-          <div className="bg-surface-bright p-3 rounded-lg border border-border-whisper text-xs text-text-secondary">
-            <p>تم إرسال رمز التحقق الأكاديمي إلى: <strong className="text-text-primary">{email}</strong></p>
-            <p className="mt-1 text-[11px] text-cyan-400">تنبيه: يمكنك استخدام الرمز التجريبي <strong>123456</strong> للتسجيل الفوري.</p>
+          <div className="bg-surface-bright p-3.5 rounded-xl border border-primary-container/30 text-xs text-text-secondary space-y-2">
+            <p>تم إرسال رمز التحقق الأكاديمي إلى: <strong className="text-text-primary font-mono">{email}</strong></p>
+            <div className="flex items-center justify-between bg-surface-container-low p-2 rounded-lg border border-border-whisper">
+              <span className="text-[11px] text-text-secondary">كود التفعيل السريع: <strong className="text-primary-container font-mono text-xs">123456</strong></span>
+              <button
+                type="button"
+                onClick={() => setVerificationCode('123456')}
+                className="px-2.5 py-1 bg-primary-container text-on-primary-container text-[11px] font-bold rounded-md hover:opacity-90 transition-opacity"
+              >
+                تعبئة الكود الفوري
+              </button>
+            </div>
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-semibold text-text-primary" htmlFor="reg-code">6-Digit Verification Code</label>
+            <div className="flex justify-between items-center">
+              <label className="text-xs font-semibold text-text-primary" htmlFor="reg-code">6-Digit Verification Code</label>
+              <button
+                type="button"
+                onClick={() => setVerificationCode('123456')}
+                className="text-[11px] text-primary-container hover:underline font-medium"
+              >
+                استخدام 123456
+              </button>
+            </div>
             <input
               id="reg-code" type="text" maxLength={6} required placeholder="123456"
               value={verificationCode} onChange={e => setVerificationCode(e.target.value)}

@@ -217,7 +217,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (savedToken && savedUser) {
         try {
           const parsed = JSON.parse(savedUser);
-          if (parsed.email === 'aes400196@gu.edu.eg' || parsed.id === 'user-default-id') {
+          if (parsed.id === 'user-default-id') {
             localStorage.removeItem('aesh_web_token');
             localStorage.removeItem('aesh_web_user');
             setToken('');

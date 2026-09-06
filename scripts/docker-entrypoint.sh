@@ -17,8 +17,18 @@ client.connect().then(() => { client.end(); process.exit(0); }).catch(() => proc
 done
 echo "✅ PostgreSQL is ready and accepting connections!"
 
-# 2. Run Database Migrations
+# 2. Run Database Migrations & Ensure Schema Columns
 echo "📦 Applying database migrations..."
+node -e "
+const pg = require('pg');
+const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
+client.connect().then(async () => {
+  await client.query('ALTER TABLE IF EXISTS bookings ADD COLUMN IF NOT EXISTS boarding_code varchar(20);');
+  await client.query('CREATE UNIQUE INDEX IF NOT EXISTS unique_booking_boarding_code_idx ON bookings (boarding_code);');
+  await client.end();
+  console.log('   ✅ Column boarding_code confirmed in bookings table');
+}).catch(err => { console.warn('   ⚠️ Notice during column check:', err.message); process.exit(0); });
+"
 node apps/api/dist/db/migrate.js || {
   echo "⚠️ Migrations encountered a notice, proceeding..."
 }

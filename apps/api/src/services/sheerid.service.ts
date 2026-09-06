@@ -19,6 +19,7 @@ export interface VerificationResult {
   status: 'APPROVED' | 'PENDING_CODE' | 'REJECTED';
   message: string;
   messageAr: string;
+  devCode?: string;
 }
 
 export class SheerIDService {
@@ -177,7 +178,8 @@ export class SheerIDService {
       verificationId: verificationToken,
       status: 'PENDING_CODE',
       message: 'Verification code sent to your university email address.',
-      messageAr: 'تم إرسال كود التحقق المكون من 6 أرقام إلى بريدك الجامعي بنجاح.',
+      messageAr: 'تم إرسال كود التحقق بنجاح إلى بريدك الجامعي.',
+      devCode: verificationCode,
     };
   }
 

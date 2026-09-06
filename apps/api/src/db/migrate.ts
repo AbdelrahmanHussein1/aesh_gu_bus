@@ -25,6 +25,17 @@ async function runMigrate() {
   const db = drizzle(client);
 
   try {
+    // Explicit raw DDL to guarantee boarding_code column and index exist
+    try {
+      await client.query(`
+        ALTER TABLE IF EXISTS "bookings" ADD COLUMN IF NOT EXISTS "boarding_code" varchar(20);
+        CREATE UNIQUE INDEX IF NOT EXISTS "unique_booking_boarding_code_idx" ON "bookings" ("boarding_code");
+      `);
+      console.log('✅ Guaranteed boarding_code column exists in bookings table');
+    } catch (e: any) {
+      console.warn('Notice ensuring boarding_code column:', e.message);
+    }
+
     await migrate(db as any, {
       migrationsFolder: path.resolve(__dirname, '../../drizzle'),
     });

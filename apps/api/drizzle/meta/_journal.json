@@ -36,6 +36,13 @@
       "when": 1788699738821,
       "tag": "0004_first_screwball",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1788705000000,
+      "tag": "0005_add_boarding_code",
+      "breakpoints": true
     }
   ]
 }

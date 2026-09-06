@@ -46,11 +46,10 @@ async function seed() {
     const insertedBuses = new Map<number, number>();  // erpVehicleId -> dbId
     const personnelByPhone = new Map<string, string>(); // phone -> userId
 
-    // Insert Default System Admin and Rider accounts for testing
+    // Insert Default System Admin account
     console.log('Inserting default user roles...');
-    // Ensure any legacy testing student record is cleanly deleted so real registration can be tested
-    await db.delete(schema.users).where(eq(schema.users.email, 'aes400196@gu.edu.eg'));
-    await db.delete(schema.verificationTokens).where(eq(schema.verificationTokens.email, 'aes400196@gu.edu.eg'));
+    // Clean up any legacy dummy placeholder mock IDs if present
+    await db.delete(schema.users).where(eq(schema.users.id, 'user-default-id'));
 
     await db.insert(schema.users).values({
       email: 'admin@gu.edu.eg',
