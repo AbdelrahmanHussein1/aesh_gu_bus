@@ -25,6 +25,8 @@ if ! docker info > /dev/null 2>&1; then
         echo "👉 Ensure Docker service is running: sudo systemctl start docker"
         exit 1
     fi
+fi
+
 # 3. Always compose down before doing anything (clean teardown)
 echo "🛑 Stopping and cleaning any existing containers..."
 $DOCKER_COMPOSE down --remove-orphans 2>/dev/null || true
@@ -68,5 +70,5 @@ if [ -n "$CF_URL" ]; then
 fi
 echo "================================================================"
 echo ""
-echo "To view live logs, run: docker compose logs -f app"
+echo "To view live logs, run: $DOCKER_COMPOSE logs -f app"
 
