@@ -12,3 +12,9 @@
 -keep class com.facebook.react.turbomodule.** { *; }
 
 # Add any project specific keep options here:
+-keep class expo.modules.** { *; }
+-keep class com.facebook.react.** { *; }
+-keep class com.facebook.hermes.** { *; }
+-keepattributes *Annotation*
+-dontwarn javax.annotation.**
+-dontwarn org.w3c.dom.bootstrap.DOMImplementationRegistry

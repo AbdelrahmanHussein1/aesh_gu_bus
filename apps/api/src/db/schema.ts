@@ -12,8 +12,27 @@ export const users = pgTable('users', {
   phone: varchar('phone', { length: 20 }),
   role: varchar('role', { length: 20 }).default('rider').notNull(), // 'rider', 'supervisor', 'admin'
   password: text('password'), // nullable for Odoo-only accounts, filled for custom local accounts
+  academicId: varchar('academic_id', { length: 50 }),
+  faculty: varchar('faculty', { length: 100 }),
+  isSheerIdVerified: boolean('is_sheerid_verified').default(false),
+  sheerIdVerificationId: varchar('sheerid_verification_id', { length: 100 }),
+  currentSessionId: varchar('current_session_id', { length: 64 }),
+  lastLoginDevice: varchar('last_login_device', { length: 255 }),
+  lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+});
+
+// Student Verification Tokens / SheerID records
+export const verificationTokens = pgTable('verification_tokens', {
+  id: serial('id').primaryKey(),
+  email: varchar('email', { length: 255 }).notNull(),
+  token: varchar('token', { length: 64 }).notNull(),
+  code: varchar('code', { length: 10 }).notNull(),
+  academicId: varchar('academic_id', { length: 50 }),
+  isVerified: boolean('is_verified').default(false),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 });
 
 // Routes

@@ -21,6 +21,13 @@ services:
         condition: service_started
     restart: unless-stopped
 
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate --url http://app:3001
+    restart: unless-stopped
+    depends_on:
+      - app
+
   postgres:
     image: postgres:16-alpine
     environment:

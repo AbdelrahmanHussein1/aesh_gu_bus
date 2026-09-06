@@ -16,20 +16,6 @@ export default function TopBar() {
       </div>
 
       <div className="flex items-center gap-3">
-        <button
-          onClick={() => setIsOffline(!isOffline)}
-          className="font-label-mono text-label-mono text-text-secondary bg-surface-container-low hover:bg-surface-container-high border border-border-whisper px-3 py-1.5 rounded-lg flex items-center gap-2 max-lg:hidden transition-colors cursor-pointer"
-          title="Click to toggle Online / Offline Mode"
-        >
-          <div className={`w-2 h-2 rounded-full ${isOffline ? 'bg-amber-400 animate-pulse' : 'bg-success-galala'}`}></div>
-          {isOffline ? 'Offline (Click for Online)' : 'Online (System Healthy)'}
-        </button>
-
-        <div className="bg-surface-container-low p-0.5 rounded-lg border border-border-whisper flex gap-0.5">
-          <button onClick={() => switchRole('rider')} className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${role === 'rider' ? 'bg-primary-container text-on-primary-container shadow-sm' : 'text-text-secondary hover:text-text-primary'}`}>Rider</button>
-          <button onClick={() => switchRole('supervisor')} className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${role === 'supervisor' ? 'bg-primary-container text-on-primary-container shadow-sm' : 'text-text-secondary hover:text-text-primary'}`}>Supervisor</button>
-          <button onClick={() => switchRole('admin')} className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${role === 'admin' ? 'bg-primary-container text-on-primary-container shadow-sm' : 'text-text-secondary hover:text-text-primary'}`}>Admin</button>
-        </div>
 
         {user && (
           <div className="flex items-center gap-3 pl-3 border-l border-border-whisper">
@@ -60,10 +46,6 @@ export function MobileTopBar() {
         <span className="font-headline-md text-headline-md text-primary-container">Galala Transit</span>
       </div>
       <div className="flex items-center gap-3">
-        <button onClick={() => setIsOffline(!isOffline)} className="flex items-center gap-1.5 p-1 rounded hover:bg-surface-container-high" title="Click to toggle Online Mode">
-          <span className={`w-2.5 h-2.5 rounded-full ${isOffline ? 'bg-amber-400 animate-pulse' : 'bg-success-galala'}`}></span>
-          <span className="text-[10px] font-bold text-text-secondary">{isOffline ? 'Offline' : 'Online'}</span>
-        </button>
         <button onClick={logout} className="p-2 text-text-secondary hover:text-destructive-alt">
           <span className="material-symbols-outlined text-xl">logout</span>
         </button>

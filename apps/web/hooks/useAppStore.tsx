@@ -2,7 +2,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
 import type { Route, Trip, Seat, Booking, AuditLog, GroupedBooking, ManifestEntry, BookingType, Direction, TimeSlot, PaymentMethod, Role, User } from '@/lib/types';
 import { getMockRoutes, generateMockTrips, generateMockSeats, generateRoundTripSeats, generateMockManifest, generateOfflineBooking, addMockAuditLog, getAuditLogs } from '@/lib/offline';
-import { getApiBaseUrl } from '@/lib/api';
+import { getApiBaseUrl, getApiUrls } from '@/lib/api';
 
 interface AppState {
   token: string;
@@ -157,7 +157,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const res = await fetch(`${apiUrl}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password: pass }),
+        body: JSON.stringify({ email, password: pass, deviceInfo: 'Bus Aesh Web Portal' }),
       });
       if (res.ok) {
         const data = await res.json();
@@ -169,7 +169,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return data;
       }
     } catch (e) {
-      console.warn('[useAppStore] Backend auth failed, using local user fallback:', e);
+      console.warn('[useAppStore] Backend auth failed:', e);
     }
     return null;
   }, []);
@@ -184,20 +184,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setUser(parsed);
         setRole(parsed.role);
       } catch {
-        const defaultUser = MOCK_USERS['aes400196@gu.edu.eg'];
-        setToken('mock-rider-token');
-        setUser(defaultUser);
+        setToken('');
+        setUser(null);
         setRole('rider');
-        localStorage.setItem('aesh_web_token', 'mock-rider-token');
-        localStorage.setItem('aesh_web_user', JSON.stringify(defaultUser));
       }
     } else {
-      const defaultUser = MOCK_USERS['aes400196@gu.edu.eg'];
-      setToken('mock-rider-token');
-      setUser(defaultUser);
+      setToken('');
+      setUser(null);
       setRole('rider');
-      localStorage.setItem('aesh_web_token', 'mock-rider-token');
-      localStorage.setItem('aesh_web_user', JSON.stringify(defaultUser));
     }
 
     const init = async () => {
@@ -214,7 +208,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
               setSelectedRouteId(data[0].id);
             }
           }
-          await authenticateWithBackend('aes400196@gu.edu.eg');
           return;
         }
       } catch (err) {
@@ -224,7 +217,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       loadOfflineData();
     };
     init();
-  }, [authenticateWithBackend]);
+  }, []);
+
 
   const loadOfflineData = () => {
     const r = getMockRoutes();
@@ -326,6 +320,59 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }, 1000);
     return () => clearInterval(interval);
   }, [heldExpiresAt]);
+
+  // Real-Time Seat Synchronization via WebSocket
+  useEffect(() => {
+    const tid = activeTrip ? activeTrip.id : activeArrivalTrip ? activeArrivalTrip.id : null;
+    if (isOffline || !tid || typeof window === 'undefined') return;
+
+    const { wsUrl } = getApiUrls();
+    let socket: WebSocket | null = null;
+    try {
+      socket = new WebSocket(`${wsUrl}/ws/trips/${tid}/seats`);
+      socket.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.type === 'seat_locked') {
+            setSeats(prev => prev.map(s => s.seatNumber === msg.seatNumber ? { ...s, status: 'held' } : s));
+          } else if (msg.type === 'seat_unlocked' || msg.type === 'booking_cancelled') {
+            setSeats(prev => prev.map(s => s.seatNumber === msg.seatNumber ? { ...s, status: 'free' } : s));
+          } else if (msg.type === 'seat_booked') {
+            setSeats(prev => prev.map(s => s.seatNumber === msg.seatNumber ? { ...s, status: 'booked' } : s));
+          }
+        } catch {}
+      };
+    } catch (e) {
+      console.warn('Trip seats WebSocket error:', e);
+    }
+
+    return () => {
+      if (socket) socket.close();
+    };
+  }, [activeTrip, activeArrivalTrip, isOffline]);
+
+  // Real-Time User Session Displacement Listener via WebSocket
+  useEffect(() => {
+    if (isOffline || !token || typeof window === 'undefined') return;
+
+    const { wsUrl } = getApiUrls();
+    let socket: WebSocket | null = null;
+    try {
+      socket = new WebSocket(`${wsUrl}/ws/user/session?token=${encodeURIComponent(token)}`);
+      socket.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.type === 'SESSION_TERMINATED') {
+            window.dispatchEvent(new CustomEvent('session_displaced', { detail: msg }));
+          }
+        } catch {}
+      };
+    } catch {}
+
+    return () => {
+      if (socket) socket.close();
+    };
+  }, [token, isOffline]);
 
   // Live Supervisor Manifest (Polls DB every 3 seconds)
   const loadSupervisorManifest = useCallback(async () => {
@@ -469,17 +516,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
               Authorization: `Bearer ${token}`,
             },
             body: JSON.stringify({
-              outboundTripId: activeArrivalTrip!.id,
-              outboundSeatNumber: selectedSeat,
-              returnTripId: activeReturnTrip!.id,
-              returnSeatNumber: selectedSeat,
+              toCampusTripId: activeArrivalTrip!.id,
+              toCampusSeatNumber: selectedSeat,
+              fromCampusTripId: activeReturnTrip!.id,
+              fromCampusSeatNumber: selectedSeat,
               paymentMethod,
               receiptRef: receiptRef || undefined,
             }),
           });
+          const data = await res.json().catch(() => ({}));
           if (!res.ok) {
-            const errData = await res.json().catch(() => ({}));
-            throw new Error(errData.error || 'Round trip booking failed');
+            if (res.status === 409 || data.code === 'SEAT_ALREADY_BOOKED') {
+              setCheckoutError(data.message || data.error || 'عذراً، هذا المقعد محجوز بالفعل. يرجى اختيار مقعد متاح.');
+              setSelectedSeat(null);
+              loadSeatMap();
+              setIsPaying(false);
+              return;
+            }
+            throw new Error(data.message || data.error || 'Round trip booking failed');
           }
           apiBookingSuccess = true;
         } else {
@@ -499,14 +553,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
               receiptRef: receiptRef || undefined,
             }),
           });
+          const data = await res.json().catch(() => ({}));
           if (!res.ok) {
-            const errData = await res.json().catch(() => ({}));
-            throw new Error(errData.error || 'Booking failed');
+            if (res.status === 409 || data.code === 'SEAT_ALREADY_BOOKED') {
+              setCheckoutError(data.message || data.error || 'عذراً، هذا المقعد محجوز بالفعل. يرجى اختيار مقعد متاح.');
+              setSelectedSeat(null);
+              loadSeatMap();
+              setIsPaying(false);
+              return;
+            }
+            throw new Error(data.message || data.error || 'Booking failed');
           }
           apiBookingSuccess = true;
         }
       } catch (err: any) {
-        console.warn('[useAppStore] Backend booking failed, falling back to local storage:', err.message);
+        setCheckoutError(err.message || 'فشلت عملية الحجز. يرجى المحاولة مرة أخرى.');
+        setIsPaying(false);
+        return;
       }
     }
 

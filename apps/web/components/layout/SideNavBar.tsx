@@ -7,11 +7,15 @@ export default function SideNavBar() {
     sidebarCollapsed, toggleSidebar, mobileSidebarOpen, setMobileSidebarOpen,
   } = useApp();
 
-  const navItems = [
-    { label: 'Book Trip (Rider)', icon: 'directions_bus', href: '/rider', active: role === 'rider' },
-    { label: 'Gate Scanner (Supervisor)', icon: 'qr_code_scanner', href: '/supervisor', active: role === 'supervisor' },
-    { label: 'Fleet & Policy (Admin)', icon: 'admin_panel_settings', href: '/admin', active: role === 'admin' },
+  const isDev = user?.email?.toLowerCase().includes('abdulrahman.ehab') || user?.email === process.env.NEXT_PUBLIC_DEV_EMAIL;
+
+  const allNavItems = [
+    { label: 'Book Trip (Rider)', icon: 'directions_bus', href: '/rider', active: role === 'rider', roles: ['rider', 'admin'] },
+    { label: 'Gate Scanner (Supervisor)', icon: 'qr_code_scanner', href: '/supervisor', active: role === 'supervisor', roles: ['supervisor', 'admin'] },
+    { label: 'Fleet & Policy (Admin)', icon: 'admin_panel_settings', href: '/admin', active: role === 'admin', roles: ['admin'] },
   ];
+
+  const navItems = allNavItems.filter(item => isDev || item.roles.includes(role));
 
   const sidebar = (
     <nav className={`flex flex-col h-full bg-surface-container border-r border-border-whisper transition-all duration-300 ${sidebarCollapsed ? 'w-16' : 'w-64'}`}>
@@ -79,19 +83,6 @@ export default function SideNavBar() {
         </div>
 
         <div className="pt-4 border-t border-border-whisper flex flex-col gap-3">
-          <button
-            onClick={() => setIsOffline(!isOffline)}
-            className={`px-3 py-2 rounded-lg text-[10px] font-semibold flex items-center gap-2 w-full transition-colors cursor-pointer text-left ${isOffline ? 'bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100' : 'bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100'}`}
-            title="Click to toggle Online/Offline Mode"
-          >
-            <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${isOffline ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'}`}></span>
-            {!sidebarCollapsed && (
-              <div className="flex flex-col">
-                <span className="font-bold">{isOffline ? 'Offline Simulation' : 'Connected (Online)'}</span>
-                <span className="text-[9px] opacity-75">{isOffline ? 'Click to go Online' : 'System Healthy'}</span>
-              </div>
-            )}
-          </button>
           <button onClick={logout} className={`text-on-surface-variant hover:bg-surface-container-high transition-all flex items-center gap-3 px-3 py-2.5 rounded-xl w-full ${sidebarCollapsed ? 'justify-center' : ''}`} title="Logout">
             <span className="material-symbols-outlined">logout</span>
             {!sidebarCollapsed && <span className="font-body-md">Logout</span>}

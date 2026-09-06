@@ -40,7 +40,7 @@ echo ""
 echo "================================================================"
 echo "  🎉 Bus Aesh Stack is LIVE and Running!"
 echo "================================================================"
-echo "  🌐 Web Portal (Passenger / Admin / Supervisor):"
+echo "  🌐 Local Web Portal (Passenger / Admin / Supervisor):"
 echo "     👉 http://localhost:3001"
 echo ""
 echo "  ⚡ Fastify API Backend:"
@@ -49,7 +49,16 @@ echo "     👉 Health check: http://localhost:3000/health"
 echo ""
 echo "  📱 If testing from your Windows host (outside VirtualBox):"
 echo "     Use your VirtualBox VM IP address, for example: http://<VM_IP>:3001"
-echo "     Find your VM IP by running: ip a"
+echo ""
+# Wait briefly and extract Cloudflare Quick Tunnel URL if available
+sleep 3
+CF_URL=$($DOCKER_COMPOSE logs cloudflared 2>&1 | grep -o 'https://[-a-zA-Z0-9@:%._\+~#=]*\.trycloudflare\.com' | head -n 1 || true)
+if [ -n "$CF_URL" ]; then
+    echo "  🌍 Global Online Public HTTPS URL (Accessible from Any Phone, 4G/5G, or PC):"
+    echo "     👉 $CF_URL"
+    echo ""
+fi
 echo "================================================================"
 echo ""
 echo "To view live logs, run: docker compose logs -f app"
+

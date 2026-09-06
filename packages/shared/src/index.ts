@@ -74,8 +74,19 @@ export const VerifyScanSchema = z.object({
 export const RegisterSchema = z.object({
   email: z.string().email({ message: "Invalid email address" }),
   fullName: z.string().min(2, { message: "Name must be at least 2 characters" }),
-  role: z.enum(['rider', 'supervisor', 'admin']),
-  password: z.string().min(4, { message: "Password must be at least 4 characters" })
+  role: z.enum(['rider', 'supervisor', 'admin']).default('rider'),
+  password: z.string().min(4, { message: "Password must be at least 4 characters" }),
+  academicId: z.string().optional(),
+  faculty: z.string().optional(),
+  phone: z.string().optional(),
+  sheerIdVerificationId: z.string().optional(),
+});
+
+export const VerifySheerIdSchema = z.object({
+  email: z.string().email(),
+  academicId: z.string().min(4),
+  fullName: z.string().min(2),
+  faculty: z.string().optional(),
 });
 
 // Compact QR Token Codec

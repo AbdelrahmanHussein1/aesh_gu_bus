@@ -1,0 +1,211 @@
+import { FastifyInstance } from 'fastify';
+import { db } from '../db/index.js';
+import * as schema from '../db/schema.js';
+import { redis } from '../redis.js';
+import { eq, and, inArray } from 'drizzle-orm';
+import { WebSocketHub } from '../websocket/hub.js';
+
+export async function tripsRoutes(fastify: FastifyInstance) {
+  // 1. Fetch routes and stops
+  fastify.get('/api/routes', async () => {
+    const allRoutes = await db.query.routes.findMany({
+      where: eq(schema.routes.isActive, true),
+      with: {
+        stops: true,
+      },
+    });
+    return allRoutes;
+  });
+
+  // 2. Fetch active trips by date, route, direction, and optional time slot
+  fastify.get('/api/trips', async (request, reply) => {
+    const { date, routeId, direction, timeSlot } = request.query as {
+      date?: string;
+      routeId?: string;
+      direction?: string;
+      timeSlot?: string;
+    };
+    if (!date) {
+      return reply.status(400).send({ error: 'Missing date query parameter' });
+    }
+
+    const conditions = [
+      eq(schema.trips.tripDate, date),
+    ];
+    if (routeId && routeId !== 'all') {
+      const rid = parseInt(routeId);
+      if (!isNaN(rid)) {
+        conditions.push(eq(schema.trips.routeId, rid));
+      }
+    }
+    if (direction && (direction === 'to_campus' || direction === 'from_campus')) {
+      conditions.push(eq(schema.trips.direction, direction));
+    }
+    if (timeSlot && timeSlot !== 'all') {
+      conditions.push(eq(schema.trips.timeSlot, timeSlot));
+    }
+
+    const activeTrips = await db.query.trips.findMany({
+      where: and(...conditions),
+      with: {
+        bus: true,
+        route: true,
+        driver: true,
+        supervisors: {
+          with: {
+            user: true,
+          },
+        },
+      },
+    });
+
+    return activeTrips.map(t => ({
+      id: t.id,
+      routeId: t.routeId,
+      tripDate: t.tripDate,
+      departureTime: t.departureTime,
+      returnTime: t.returnTime,
+      direction: t.direction,
+      timeSlot: t.timeSlot,
+      totalSeats: t.totalSeats,
+      priceEgp: Number(t.priceEgp),
+      status: t.status,
+      cancellationLockHours: t.cancellationLockHours,
+      bus: t.bus,
+      route: t.route,
+      driver: t.driver ? {
+        nameAr: t.driver.fullNameAr || t.driver.fullName,
+        nameEn: t.driver.fullName,
+        phone: t.driver.phone || '',
+      } : null,
+      supervisors: t.supervisors?.map((s: any) => ({
+        nameAr: s.user.fullNameAr || s.user.fullName,
+        nameEn: s.user.fullName,
+        phone: s.user.phone || '',
+      })) || [],
+    }));
+  });
+
+  // 3. Fetch live seat map for a trip (DB confirmed + Redis temporary locks)
+  fastify.get('/api/trips/:tripId/seats', async (request, reply) => {
+    const { tripId } = request.params as { tripId: string };
+    const id = parseInt(tripId);
+    if (isNaN(id)) {
+      return reply.status(400).send({ error: 'Invalid tripId' });
+    }
+
+    const trip = await db.query.trips.findFirst({
+      where: eq(schema.trips.id, id),
+      with: { bus: true },
+    });
+    if (!trip) {
+      return reply.status(404).send({ error: 'Trip not found' });
+    }
+
+    const totalSeats = trip.bus?.totalSeats || trip.totalSeats;
+
+    const confirmedBookings = await db.query.bookings.findMany({
+      where: and(
+        eq(schema.bookings.tripId, id),
+        inArray(schema.bookings.status, ['confirmed', 'swapped'])
+      ),
+    });
+
+    const lockKeys = Array.from({ length: totalSeats }, (_, i) => `seat_lock:${id}:${i + 1}`);
+    const locks = await redis.mget(...lockKeys);
+
+    const seatMap = Array.from({ length: totalSeats }, (_, i) => {
+      const seatNumber = i + 1;
+      const booking = confirmedBookings.find(b => b.seatNumber === seatNumber);
+      const lockHolder = locks[i];
+
+      if (booking) {
+        return { seatNumber, status: 'booked' };
+      } else if (lockHolder) {
+        return { seatNumber, status: 'held' };
+      } else {
+        return { seatNumber, status: 'free' };
+      }
+    });
+
+    return seatMap;
+  });
+
+  // 4. Lock a seat (5-min Redis lock) & Broadcast Real-Time Seat Graying
+  fastify.post('/api/trips/:tripId/seats/:seatNumber/lock', {
+    preValidation: [(fastify as any).authenticate],
+  }, async (request: any, reply) => {
+    const { tripId, seatNumber } = request.params as { tripId: string; seatNumber: string };
+    const userId = request.user.id;
+    const tid = parseInt(tripId);
+    const sn = parseInt(seatNumber);
+
+    if (isNaN(tid) || isNaN(sn)) {
+      return reply.status(400).send({ error: 'Invalid tripId or seatNumber' });
+    }
+
+    const existing = await db.query.bookings.findFirst({
+      where: and(
+        eq(schema.bookings.tripId, tid),
+        eq(schema.bookings.seatNumber, sn),
+        inArray(schema.bookings.status, ['confirmed', 'swapped'])
+      ),
+    });
+
+    if (existing) {
+      return reply.status(409).send({
+        error: 'Seat already booked',
+        code: 'SEAT_ALREADY_BOOKED',
+        messageAr: 'عذراً، هذا المقعد محجوز بالفعل',
+      });
+    }
+
+    const lockKey = `seat_lock:${tid}:${sn}`;
+    const acquired = await (redis as any).set(lockKey, String(userId), 'NX', 'EX', 300);
+
+    if (acquired === 'OK') {
+      WebSocketHub.broadcastToTripRoom(tid, {
+        type: 'seat_locked',
+        tripId: tid,
+        seatNumber: sn,
+        expiresAt: Date.now() + 300000,
+      });
+      return { success: true, expiresAt: Date.now() + 300000 };
+    } else {
+      return reply.status(409).send({
+        error: 'Seat is currently held by another student',
+        code: 'SEAT_HELD',
+        messageAr: 'هذا المقعد محجوز مؤقتاً من قبل طالب آخر',
+      });
+    }
+  });
+
+  // 5. Unlock/Deselect a seat
+  fastify.post('/api/trips/:tripId/seats/:seatNumber/unlock', {
+    preValidation: [(fastify as any).authenticate],
+  }, async (request: any, reply) => {
+    const { tripId, seatNumber } = request.params as { tripId: string; seatNumber: string };
+    const userId = request.user.id;
+    const tid = parseInt(tripId);
+    const sn = parseInt(seatNumber);
+
+    if (isNaN(tid) || isNaN(sn)) {
+      return reply.status(400).send({ error: 'Invalid tripId or seatNumber' });
+    }
+
+    const lockKey = `seat_lock:${tid}:${sn}`;
+    const holder = await redis.get(lockKey);
+
+    if (holder === String(userId)) {
+      await redis.del(lockKey);
+      WebSocketHub.broadcastToTripRoom(tid, {
+        type: 'seat_unlocked',
+        tripId: tid,
+        seatNumber: sn,
+      });
+      return { success: true };
+    } else {
+      return reply.status(403).send({ error: 'You do not own this seat lock' });
+    }
+  });
+}
