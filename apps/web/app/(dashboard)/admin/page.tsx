@@ -18,11 +18,11 @@ export default function AdminDashboardPage() {
     return (
       <div className="flex flex-col items-center justify-center h-96 p-8 text-center space-y-3">
         <span className="material-symbols-outlined text-4xl text-text-secondary">admin_panel_settings</span>
-        <h3 className="font-bold text-base text-text-primary">Administrator Access Required</h3>
-        <p className="text-xs text-text-secondary max-w-sm">You are currently in {role} mode. Switch to Admin mode to inspect fleet operations, review audit logs, and manage cancellation policies.</p>
-        <button onClick={() => switchRole('admin')} className="px-4 py-2 bg-primary-container text-on-primary-container rounded-lg text-xs font-bold hover:opacity-90">
-          Switch to Admin Mode
-        </button>
+        <h3 className="font-bold text-base text-text-primary">Administrator Access Restricted</h3>
+        <p className="text-xs text-text-secondary max-w-sm">This section is reserved for Galala University transport administrators.</p>
+        <a href="/rider" className="px-4 py-2 bg-primary-container text-on-primary-container rounded-lg text-xs font-bold hover:opacity-90">
+          Return to Rider Portal
+        </a>
       </div>
     );
   }

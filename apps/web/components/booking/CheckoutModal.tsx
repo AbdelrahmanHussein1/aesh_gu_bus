@@ -106,7 +106,16 @@ export default function CheckoutModal() {
             </div>
           )}
 
-          {checkoutError && <p className="text-xs text-destructive-alt font-medium">{checkoutError}</p>}
+          {checkoutError && (
+            <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-xs text-red-400 flex items-center gap-2">
+              <span className="material-symbols-outlined text-sm shrink-0">error</span>
+              <span className="font-semibold">
+                {typeof checkoutError === 'string' && checkoutError !== '[object Object]'
+                  ? checkoutError
+                  : 'حدث خطأ أثناء إتمام الدفع. يرجى مراجعة البيانات والمحاولة ثانية.'}
+              </span>
+            </div>
+          )}
 
           <button type="submit" disabled={isPaying}
             className="w-full bg-primary-container text-on-primary-container font-headline-md py-4 rounded-lg flex items-center justify-center gap-2 hover:opacity-90 transition-opacity">

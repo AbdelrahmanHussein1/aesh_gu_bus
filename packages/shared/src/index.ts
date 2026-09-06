@@ -32,7 +32,7 @@ export const CreateBookingSchema = z.object({
   tripId: z.number().int().positive(),
   seatNumber: z.number().int().min(1).max(100),
   paymentMethod: z.enum(['visa_mock', 'instapay', 'telda']),
-  bookingType: z.enum(['one_way', 'round_trip']).default('one_way'),
+  bookingType: z.enum(['one_way', 'round_trip', 'to_campus', 'from_campus']).default('one_way').transform(v => (v === 'round_trip' ? 'round_trip' : 'one_way')),
   legType: z.enum(['to_campus', 'from_campus']).default('to_campus'),
   receiptImage: z.string().optional(), // Base64 receipt for Instapay/Telda manual validation
   receiptRef: z.string().optional()

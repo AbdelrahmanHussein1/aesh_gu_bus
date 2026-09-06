@@ -33,8 +33,37 @@ export default function AuthPage() {
         </div>
 
         <div className="bg-surface-container rounded-xl border border-border-whisper p-6 shadow-[0_2px_8px_-2px_rgba(15,23,42,0.05)]">
+          {authView !== 'forgot' && (
+            <div className="grid grid-cols-2 gap-1 p-1 bg-surface-container-low rounded-lg border border-border-whisper mb-6">
+              <button
+                type="button"
+                onClick={() => setAuthView('login')}
+                className={`py-2 text-xs font-semibold rounded-md transition-all flex items-center justify-center gap-1.5 ${
+                  authView === 'login'
+                    ? 'bg-primary-container text-on-primary-container font-bold shadow-sm'
+                    : 'text-text-secondary hover:text-text-primary'
+                }`}
+              >
+                <span className="material-symbols-outlined text-sm">login</span>
+                <span>Sign In (دخول)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setAuthView('register')}
+                className={`py-2 text-xs font-semibold rounded-md transition-all flex items-center justify-center gap-1.5 ${
+                  authView === 'register'
+                    ? 'bg-primary-container text-on-primary-container font-bold shadow-sm'
+                    : 'text-text-secondary hover:text-text-primary'
+                }`}
+              >
+                <span className="material-symbols-outlined text-sm">person_add</span>
+                <span>Register (تسجيل طالب)</span>
+              </button>
+            </div>
+          )}
+
           {authView === 'login' && <LoginForm onSwitchTab={(t) => setAuthView(t as AuthView)} />}
-          {authView === 'register' && <RegisterForm />}
+          {authView === 'register' && <RegisterForm onSwitchTab={(t) => setAuthView(t as AuthView)} />}
           {authView === 'forgot' && <ForgotPasswordForm onBack={() => setAuthView('login')} />}
         </div>
 

@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 import { useEffect } from 'react';
 import { useApp } from '@/hooks/useAppStore';
 import TripSelector from '@/components/supervisor/TripSelector';
@@ -10,15 +10,17 @@ export default function SupervisorDashboardPage() {
   const { user, role, switchRole } = useApp();
   useEffect(() => { document.title = 'Supervisor Operations — Bus Aesh'; }, []);
 
+  const isDev = user?.email?.toLowerCase().includes('abdulrahman.ehab') || user?.email === process.env.NEXT_PUBLIC_DEV_EMAIL;
+
   if (role !== 'supervisor' && role !== 'admin') {
     return (
       <div className="flex flex-col items-center justify-center h-96 p-8 text-center space-y-3">
         <span className="material-symbols-outlined text-4xl text-text-secondary">badge</span>
-        <h3 className="font-bold text-base text-text-primary">Supervisor Access Required</h3>
-        <p className="text-xs text-text-secondary max-w-sm">You are currently in {role} mode. Switch to Supervisor mode to manage manifests and scan QR passes.</p>
-        <button onClick={() => switchRole('supervisor')} className="px-4 py-2 bg-primary-container text-on-primary-container rounded-lg text-xs font-bold hover:opacity-90">
-          Switch to Supervisor Mode
-        </button>
+        <h3 className="font-bold text-base text-text-primary">Supervisor Access Restricted</h3>
+        <p className="text-xs text-text-secondary max-w-sm">This section is reserved for Galala University bus line supervisors and administrators.</p>
+        <a href="/rider" className="px-4 py-2 bg-primary-container text-on-primary-container rounded-lg text-xs font-bold hover:opacity-90">
+          Return to Rider Portal
+        </a>
       </div>
     );
   }

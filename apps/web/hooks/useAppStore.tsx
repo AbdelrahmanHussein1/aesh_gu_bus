@@ -167,9 +167,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
         localStorage.setItem('aesh_web_token', data.token);
         localStorage.setItem('aesh_web_user', JSON.stringify(data.user));
         return data;
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        const errMessage = typeof errData.error === 'string' ? errData.error : (errData.message || 'بيانات الدخول غير صحيحة');
+        throw new Error(errMessage);
       }
-    } catch (e) {
-      console.warn('[useAppStore] Backend auth failed:', e);
+    } catch (e: any) {
+      if (e.message && e.message !== 'Failed to fetch' && !e.message.includes('NetworkError') && !e.message.includes('abort')) {
+        throw e;
+      }
+      console.warn('[useAppStore] Backend auth failed or unreachable:', e);
     }
     return null;
   }, []);
@@ -526,18 +533,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
           });
           const data = await res.json().catch(() => ({}));
           if (!res.ok) {
+            const serverMsg = typeof data.error === 'string'
+              ? data.error
+              : (typeof data.message === 'string'
+                  ? data.message
+                  : (data.error ? JSON.stringify(data.error) : 'Round trip booking failed'));
+
             if (res.status === 409 || data.code === 'SEAT_ALREADY_BOOKED') {
-              setCheckoutError(data.message || data.error || 'عذراً، هذا المقعد محجوز بالفعل. يرجى اختيار مقعد متاح.');
+              setCheckoutError(serverMsg || 'عذراً، هذا المقعد محجوز بالفعل. يرجى اختيار مقعد متاح.');
               setSelectedSeat(null);
               loadSeatMap();
               setIsPaying(false);
               return;
             }
-            throw new Error(data.message || data.error || 'Round trip booking failed');
+            throw new Error(serverMsg);
           }
           apiBookingSuccess = true;
         } else {
           const targetTrip = activeTrip!;
+          const resolvedLegType = targetTrip.direction === 'from_campus' ? 'from_campus' : 'to_campus';
           const res = await fetch(`${apiUrl}/api/bookings`, {
             method: 'POST',
             headers: {
@@ -548,26 +562,37 @@ export function AppProvider({ children }: { children: ReactNode }) {
               tripId: targetTrip.id,
               seatNumber: selectedSeat,
               paymentMethod,
-              bookingType: bookingType,
-              legType: targetTrip.direction,
+              bookingType: 'one_way',
+              legType: resolvedLegType,
               receiptRef: receiptRef || undefined,
             }),
           });
           const data = await res.json().catch(() => ({}));
           if (!res.ok) {
+            const serverMsg = typeof data.error === 'string'
+              ? data.error
+              : (typeof data.message === 'string'
+                  ? data.message
+                  : (data.error ? JSON.stringify(data.error) : 'Booking failed'));
+
             if (res.status === 409 || data.code === 'SEAT_ALREADY_BOOKED') {
-              setCheckoutError(data.message || data.error || 'عذراً، هذا المقعد محجوز بالفعل. يرجى اختيار مقعد متاح.');
+              setCheckoutError(serverMsg || 'عذراً، هذا المقعد محجوز بالفعل. يرجى اختيار مقعد متاح.');
               setSelectedSeat(null);
               loadSeatMap();
               setIsPaying(false);
               return;
             }
-            throw new Error(data.message || data.error || 'Booking failed');
+            throw new Error(serverMsg);
           }
           apiBookingSuccess = true;
         }
       } catch (err: any) {
-        setCheckoutError(err.message || 'فشلت عملية الحجز. يرجى المحاولة مرة أخرى.');
+        const errorText = typeof err === 'string'
+          ? err
+          : (typeof err?.message === 'string' && err.message !== '[object Object]'
+              ? err.message
+              : 'فشلت عملية الحجز. يرجى المحاولة مرة أخرى.');
+        setCheckoutError(errorText);
         setIsPaying(false);
         return;
       }

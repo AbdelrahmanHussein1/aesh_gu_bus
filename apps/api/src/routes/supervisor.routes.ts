@@ -27,7 +27,15 @@ export async function supervisorRoutes(fastify: FastifyInstance) {
   }, async (request: any, reply) => {
     const bodyResult = SwapBookingSchema.safeParse(request.body);
     if (!bodyResult.success) {
-      return reply.status(400).send({ error: bodyResult.error.format() });
+      const fieldErrors = bodyResult.error.flatten().fieldErrors;
+      const errorMsg = Object.entries(fieldErrors)
+        .map(([k, v]) => `${k}: ${(v || []).join(', ')}`)
+        .join('; ') || 'Invalid swap request data';
+      return reply.status(400).send({ 
+        error: errorMsg,
+        message: errorMsg,
+        details: bodyResult.error.format() 
+      });
     }
 
     const { bookingId, targetTripId, targetSeatNumber, reason } = bodyResult.data;
@@ -133,7 +141,15 @@ export async function supervisorRoutes(fastify: FastifyInstance) {
   }, async (request: any, reply) => {
     const bodyResult = VerifyScanSchema.safeParse(request.body);
     if (!bodyResult.success) {
-      return reply.status(400).send({ error: bodyResult.error.format() });
+      const fieldErrors = bodyResult.error.flatten().fieldErrors;
+      const errorMsg = Object.entries(fieldErrors)
+        .map(([k, v]) => `${k}: ${(v || []).join(', ')}`)
+        .join('; ') || 'Invalid scan payload';
+      return reply.status(400).send({ 
+        error: errorMsg,
+        message: errorMsg,
+        details: bodyResult.error.format() 
+      });
     }
 
     const { token, expectedLegType, latitude, longitude, deviceInfo } = bodyResult.data;

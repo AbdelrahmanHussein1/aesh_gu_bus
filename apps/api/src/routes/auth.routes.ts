@@ -57,7 +57,15 @@ export async function authRoutes(fastify: FastifyInstance) {
   fastify.post('/api/auth/register', async (request, reply) => {
     const bodyResult = RegisterSchema.safeParse(request.body);
     if (!bodyResult.success) {
-      return reply.status(400).send({ error: bodyResult.error.format() });
+      const fieldErrors = bodyResult.error.flatten().fieldErrors;
+      const errorMsg = Object.entries(fieldErrors)
+        .map(([k, v]) => `${k}: ${(v || []).join(', ')}`)
+        .join('; ') || 'Invalid registration data';
+      return reply.status(400).send({ 
+        error: errorMsg,
+        message: errorMsg,
+        details: bodyResult.error.format() 
+      });
     }
 
     const { email, fullName, role, password, academicId, faculty, phone, sheerIdVerificationId } = bodyResult.data;
@@ -159,7 +167,15 @@ export async function authRoutes(fastify: FastifyInstance) {
   fastify.post('/api/auth/login', async (request, reply) => {
     const bodyResult = LoginSchema.safeParse(request.body);
     if (!bodyResult.success) {
-      return reply.status(400).send({ error: bodyResult.error.format() });
+      const fieldErrors = bodyResult.error.flatten().fieldErrors;
+      const errorMsg = Object.entries(fieldErrors)
+        .map(([k, v]) => `${k}: ${(v || []).join(', ')}`)
+        .join('; ') || 'Invalid login data';
+      return reply.status(400).send({ 
+        error: errorMsg,
+        message: errorMsg,
+        details: bodyResult.error.format() 
+      });
     }
 
     const { email, password } = bodyResult.data;

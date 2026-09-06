@@ -25,7 +25,15 @@ export async function bookingsRoutes(fastify: FastifyInstance) {
   }, async (request: any, reply) => {
     const bodyResult = CreateBookingSchema.safeParse(request.body);
     if (!bodyResult.success) {
-      return reply.status(400).send({ error: bodyResult.error.format() });
+      const fieldErrors = bodyResult.error.flatten().fieldErrors;
+      const errorMsg = Object.entries(fieldErrors)
+        .map(([k, v]) => `${k}: ${(v || []).join(', ')}`)
+        .join('; ') || 'Invalid booking request';
+      return reply.status(400).send({ 
+        error: errorMsg,
+        message: errorMsg,
+        details: bodyResult.error.format() 
+      });
     }
 
     const { tripId, seatNumber, paymentMethod, bookingType, legType, receiptImage, receiptRef } = bodyResult.data;
@@ -145,7 +153,15 @@ export async function bookingsRoutes(fastify: FastifyInstance) {
   }, async (request: any, reply) => {
     const bodyResult = CreateRoundTripBookingSchema.safeParse(request.body);
     if (!bodyResult.success) {
-      return reply.status(400).send({ error: bodyResult.error.format() });
+      const fieldErrors = bodyResult.error.flatten().fieldErrors;
+      const errorMsg = Object.entries(fieldErrors)
+        .map(([k, v]) => `${k}: ${(v || []).join(', ')}`)
+        .join('; ') || 'Invalid round-trip booking request';
+      return reply.status(400).send({ 
+        error: errorMsg,
+        message: errorMsg,
+        details: bodyResult.error.format() 
+      });
     }
 
     const { toCampusTripId, toCampusSeatNumber, fromCampusTripId, fromCampusSeatNumber, paymentMethod, receiptImage, receiptRef } = bodyResult.data;
@@ -377,7 +393,15 @@ export async function bookingsRoutes(fastify: FastifyInstance) {
   }, async (request: any, reply) => {
     const bodyResult = CancelBookingSchema.safeParse(request.body);
     if (!bodyResult.success) {
-      return reply.status(400).send({ error: bodyResult.error.format() });
+      const fieldErrors = bodyResult.error.flatten().fieldErrors;
+      const errorMsg = Object.entries(fieldErrors)
+        .map(([k, v]) => `${k}: ${(v || []).join(', ')}`)
+        .join('; ') || 'Invalid cancellation request';
+      return reply.status(400).send({ 
+        error: errorMsg,
+        message: errorMsg,
+        details: bodyResult.error.format() 
+      });
     }
 
     const { bookingId, reason } = bodyResult.data;

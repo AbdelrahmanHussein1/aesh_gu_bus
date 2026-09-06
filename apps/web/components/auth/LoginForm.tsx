@@ -83,6 +83,17 @@ export default function LoginForm({ onSwitchTab }: Props) {
           <span>Access Portal</span>
         )}
       </button>
+
+      <div className="pt-4 border-t border-border-whisper text-center text-xs text-text-secondary">
+        Don&apos;t have an account?{' '}
+        <button
+          type="button"
+          onClick={() => onSwitchTab('register')}
+          className="text-primary-container font-semibold hover:underline"
+        >
+          Register as Student (إنشاء حساب طالب)
+        </button>
+      </div>
     </form>
   );
 }

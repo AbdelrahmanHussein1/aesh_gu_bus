@@ -89,16 +89,18 @@ export default function SideNavBar() {
           </button>
         </div>
 
-        <div className="pt-4 border-t border-border-whisper">
-          <div className={`text-[10px] uppercase font-bold text-text-secondary mb-2 tracking-wider ${sidebarCollapsed ? 'text-center' : 'px-3'}`}>
-            {sidebarCollapsed ? '..' : 'Switch Role'}
+        {isDev && (
+          <div className="pt-4 border-t border-border-whisper">
+            <div className={`text-[10px] uppercase font-bold text-cyan-400 mb-2 tracking-wider ${sidebarCollapsed ? 'text-center' : 'px-3'}`}>
+              {sidebarCollapsed ? 'DEV' : 'Switch Role (Dev)'}
+            </div>
+            <div className="flex flex-col gap-1 p-1 bg-surface-container-low rounded-xl border border-cyan-500/20">
+              <button onClick={() => switchRole('rider')} className={`text-left px-3 py-2 rounded-lg text-xs font-semibold transition-all ${role === 'rider' ? 'bg-primary-container text-on-primary-container font-bold shadow-sm' : 'text-text-secondary hover:text-text-primary'}`}>{sidebarCollapsed ? 'R' : 'Rider Mode'}</button>
+              <button onClick={() => switchRole('supervisor')} className={`text-left px-3 py-2 rounded-lg text-xs font-semibold transition-all ${role === 'supervisor' ? 'bg-primary-container text-on-primary-container font-bold shadow-sm' : 'text-text-secondary hover:text-text-primary'}`}>{sidebarCollapsed ? 'S' : 'Supervisor Mode'}</button>
+              <button onClick={() => switchRole('admin')} className={`text-left px-3 py-2 rounded-lg text-xs font-semibold transition-all ${role === 'admin' ? 'bg-primary-container text-on-primary-container font-bold shadow-sm' : 'text-text-secondary hover:text-text-primary'}`}>{sidebarCollapsed ? 'A' : 'Admin Mode'}</button>
+            </div>
           </div>
-          <div className="flex flex-col gap-1 p-1 bg-surface-container-low rounded-xl border border-border-whisper">
-            <button onClick={() => switchRole('rider')} className={`text-left px-3 py-2 rounded-lg text-xs font-semibold transition-all ${role === 'rider' ? 'bg-primary-container text-on-primary-container font-bold shadow-sm' : 'text-text-secondary hover:text-text-primary'}`}>{sidebarCollapsed ? 'R' : 'Rider Mode'}</button>
-            <button onClick={() => switchRole('supervisor')} className={`text-left px-3 py-2 rounded-lg text-xs font-semibold transition-all ${role === 'supervisor' ? 'bg-primary-container text-on-primary-container font-bold shadow-sm' : 'text-text-secondary hover:text-text-primary'}`}>{sidebarCollapsed ? 'S' : 'Supervisor Mode'}</button>
-            <button onClick={() => switchRole('admin')} className={`text-left px-3 py-2 rounded-lg text-xs font-semibold transition-all ${role === 'admin' ? 'bg-primary-container text-on-primary-container font-bold shadow-sm' : 'text-text-secondary hover:text-text-primary'}`}>{sidebarCollapsed ? 'A' : 'Admin Mode'}</button>
-          </div>
-        </div>
+        )}
       </div>
     </nav>
   );
