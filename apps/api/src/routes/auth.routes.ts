@@ -8,6 +8,7 @@ import { SheerIDService } from '../services/sheerid.service.js';
 import { EmailService } from '../services/email.service.js';
 import { WebSocketHub } from '../websocket/hub.js';
 import { authenticateOdoo } from '../auth/odoo.js';
+import { logSecurityEvent } from '../services/audit.service.js';
 import crypto from 'node:crypto';
 
 export function hashPassword(password: string): string {
@@ -144,6 +145,22 @@ export async function authRoutes(fastify: FastifyInstance) {
         erpPartnerId,
       }).returning();
 
+      await logSecurityEvent({
+        userId: newUser.id,
+        action: 'USER_REGISTERED',
+        entityType: 'user',
+        entityId: newUser.id,
+        details: {
+          email: newUser.email,
+          fullName: newUser.fullName,
+          role: newUser.role,
+          academicId: newUser.academicId,
+          faculty: newUser.faculty,
+          phone: newUser.phone,
+        },
+        ipAddress: request.ip,
+      });
+
       return { success: true, user: newUser };
     } catch (error: any) {
       fastify.log.error(error);
@@ -253,6 +270,21 @@ export async function authRoutes(fastify: FastifyInstance) {
         sessionId,
       }, { expiresIn: '30d' });
 
+      await logSecurityEvent({
+        userId: user.id,
+        action: 'USER_LOGIN',
+        entityType: 'user',
+        entityId: user.id,
+        details: {
+          email: user.email,
+          fullName: user.fullName,
+          role: user.role,
+          academicId: user.academicId,
+          deviceInfo,
+        },
+        ipAddress: request.ip,
+      });
+
       return { token, user, sessionId };
     } catch (error: any) {
       return reply.status(401).send({ error: error.message || 'Login failed' });
@@ -266,6 +298,14 @@ export async function authRoutes(fastify: FastifyInstance) {
     const userId = request.user?.id;
     if (userId) {
       await SessionService.terminateSession(userId);
+      await logSecurityEvent({
+        userId,
+        action: 'USER_LOGOUT',
+        entityType: 'user',
+        entityId: userId,
+        details: { message: 'Session cleanly terminated on logout' },
+        ipAddress: request.ip,
+      });
     }
     return { success: true };
   });

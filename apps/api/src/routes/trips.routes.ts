@@ -4,6 +4,7 @@ import * as schema from '../db/schema.js';
 import { redis } from '../redis.js';
 import { eq, and, inArray } from 'drizzle-orm';
 import { WebSocketHub } from '../websocket/hub.js';
+import { logSecurityEvent } from '../services/audit.service.js';
 
 export async function tripsRoutes(fastify: FastifyInstance) {
   // 1. Fetch routes and stops
@@ -253,6 +254,16 @@ export async function tripsRoutes(fastify: FastifyInstance) {
         seatNumber: sn,
         expiresAt: Date.now() + 300000,
       });
+
+      await logSecurityEvent({
+        userId,
+        action: 'SEAT_LOCK_HELD',
+        entityType: 'trip_seat',
+        entityId: `${tid}:${sn}`,
+        details: { tripId: tid, seatNumber: sn, durationSeconds: 300 },
+        ipAddress: request.ip,
+      });
+
       return { success: true, expiresAt: Date.now() + 300000 };
     } else {
       return reply.status(409).send({
@@ -286,6 +297,16 @@ export async function tripsRoutes(fastify: FastifyInstance) {
         tripId: tid,
         seatNumber: sn,
       });
+
+      await logSecurityEvent({
+        userId,
+        action: 'SEAT_LOCK_RELEASED',
+        entityType: 'trip_seat',
+        entityId: `${tid}:${sn}`,
+        details: { tripId: tid, seatNumber: sn },
+        ipAddress: request.ip,
+      });
+
       return { success: true };
     } else {
       return reply.status(403).send({ error: 'You do not own this seat lock' });

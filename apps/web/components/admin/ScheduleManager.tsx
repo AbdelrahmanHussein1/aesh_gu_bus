@@ -5,6 +5,7 @@ import type { Trip, Route, TimeSlot, Direction, PersonnelContact } from '@/lib/t
 import { getOfflineAllTrips, cloneOfflineSchedule, getAllPersonnel, saveCustomOfflineTrips, getCustomOfflineTrips, addMockAuditLog } from '@/lib/offline';
 import { getApiBaseUrl } from '@/lib/api';
 import { getTodayDateString, formatDateString, getScheduleManagerDates } from '@/lib/dateUtils';
+import BusSeatInspectorModal from './BusSeatInspectorModal';
 
 const ADMIN_OPERATIONAL_DATES = getScheduleManagerDates(3, 10);
 
@@ -30,6 +31,7 @@ export default function ScheduleManager() {
   // Modals state
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showCloneModal, setShowCloneModal] = useState(false);
+  const [inspectingTripId, setInspectingTripId] = useState<number | null>(null);
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   // New Trip Form state
@@ -444,7 +446,9 @@ export default function ScheduleManager() {
               return (
                 <div
                   key={trip.id}
-                  className="bg-surface-container border border-border-whisper rounded-xl p-4 shadow-[0_2px_8px_-2px_rgba(15,23,42,0.05)] hover:border-primary-container/40 transition-all flex flex-col justify-between space-y-3"
+                  onClick={() => setInspectingTripId(trip.id)}
+                  className="bg-surface-container border border-border-whisper rounded-xl p-4 shadow-[0_2px_8px_-2px_rgba(15,23,42,0.05)] hover:border-primary-container hover:shadow-md transition-all flex flex-col justify-between space-y-3 cursor-pointer group relative"
+                  title="Click to view visual bus seat map and passenger list"
                 >
                   {/* Top line badge */}
                   <div>
@@ -453,7 +457,7 @@ export default function ScheduleManager() {
                         <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${trip.direction === 'to_campus' ? 'bg-primary-container/10 text-primary-container' : 'bg-secondary-fixed/30 text-amber-800'}`}>
                           {trip.direction === 'to_campus' ? 'To University / ذهاب' : 'Return Home / عودة'}
                         </span>
-                        <h4 className="font-bold text-sm text-text-primary mt-1.5 font-arabic">
+                        <h4 className="font-bold text-sm text-text-primary mt-1.5 font-arabic group-hover:text-primary-container transition-colors">
                           {trip.route?.nameAr || trip.bus.name.split('/')[0]}
                         </h4>
                         <p className="text-[11px] text-text-secondary">{trip.route?.nameEn || 'Galala Route'}</p>
@@ -476,6 +480,7 @@ export default function ScheduleManager() {
                       {trip.driver ? (
                         <a
                           href={`tel:${trip.driver.phone}`}
+                          onClick={(e) => e.stopPropagation()}
                           className="font-bold text-primary-container hover:underline flex items-center gap-1 font-arabic"
                           title="Call driver"
                         >
@@ -495,6 +500,7 @@ export default function ScheduleManager() {
                         </span>
                         <a
                           href={`tel:${trip.supervisors[0].phone}`}
+                          onClick={(e) => e.stopPropagation()}
                           className="font-bold text-amber-700 hover:underline flex items-center gap-1 font-arabic truncate max-w-[170px]"
                           title="Call line supervisor"
                         >
@@ -519,6 +525,15 @@ export default function ScheduleManager() {
                     </div>
                   </div>
 
+                  {/* Interactive Seat Map Action Button */}
+                  <div className="flex items-center justify-between text-[11px] text-primary-container font-bold bg-primary-container/10 px-3 py-1.5 rounded-lg group-hover:bg-primary-container/20 transition-all border border-primary-container/20">
+                    <span className="flex items-center gap-1.5">
+                      <span className="material-symbols-outlined text-base">directions_bus</span>
+                      <span>عرض خريطة المقاعد والركاب</span>
+                    </span>
+                    <span className="material-symbols-outlined text-sm group-hover:translate-x-0.5 transition-transform">visibility</span>
+                  </div>
+
                   {/* Footer actions */}
                   <div className="pt-2 border-t border-border-whisper flex items-center justify-between">
                     <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${trip.status === 'scheduled' ? 'bg-emerald-50 text-emerald-800' : trip.status === 'cancelled' ? 'bg-rose-50 text-rose-800' : 'bg-surface-variant text-text-secondary'}`}>
@@ -526,7 +541,10 @@ export default function ScheduleManager() {
                     </span>
 
                     <button
-                      onClick={() => handleDeleteTrip(trip.id)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteTrip(trip.id);
+                      }}
                       className="p-1.5 rounded-lg text-text-secondary hover:text-destructive-asu hover:bg-destructive-asu/10 transition-colors"
                       title="Delete / Cancel shift"
                     >
@@ -760,6 +778,14 @@ export default function ScheduleManager() {
             </form>
           </div>
         </div>
+      )}
+
+      {/* --- INTERACTIVE BUS SEAT MAP & PASSENGER INSPECTOR MODAL --- */}
+      {inspectingTripId !== null && (
+        <BusSeatInspectorModal
+          tripId={inspectingTripId}
+          onClose={() => setInspectingTripId(null)}
+        />
       )}
     </div>
   );

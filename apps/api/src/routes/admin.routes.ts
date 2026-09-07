@@ -3,6 +3,8 @@ import { db } from '../db/index.js';
 import * as schema from '../db/schema.js';
 import { eq, and, desc, inArray } from 'drizzle-orm';
 import { WebSocketHub } from '../websocket/hub.js';
+import { redis } from '../redis.js';
+import { logSecurityEvent } from '../services/audit.service.js';
 
 const requireRole = (roles: string[]) => async (request: any, reply: any) => {
   const user = request.user;
@@ -12,70 +14,462 @@ const requireRole = (roles: string[]) => async (request: any, reply: any) => {
 };
 
 export async function adminRoutes(fastify: FastifyInstance) {
-  // 1. Fleet Status Overview
+  // 1. Dynamic Fleet Status Overview (Live Real-Time Fleet Monitor)
   fastify.get('/api/admin/fleet', {
     preValidation: [(fastify as any).authenticate, requireRole(['admin'])],
-  }, async () => {
-    const routesList = await db.query.routes.findMany({
-      where: eq(schema.routes.isActive, true),
+  }, async (request: any) => {
+    const { date } = request.query as { date?: string };
+    const targetDate = date || new Date().toISOString().split('T')[0];
+
+    const tripsList = await db.query.trips.findMany({
+      where: eq(schema.trips.tripDate, targetDate),
       with: {
-        trips: {
-          with: {
-            bus: true,
-            driver: true,
-            bookings: {
-              where: inArray(schema.bookings.status, ['confirmed', 'swapped']),
-            },
-          },
+        bus: true,
+        route: true,
+        driver: true,
+        supervisors: { with: { user: true } },
+        bookings: {
+          where: inArray(schema.bookings.status, ['confirmed', 'swapped']),
         },
       },
+      orderBy: desc(schema.trips.departureTime),
     });
 
-    return routesList.map(r => {
-      const activeTrip = r.trips[0];
-      const totalBooked = r.trips.reduce((acc, t) => acc + t.bookings.length, 0);
-      const busName = activeTrip?.bus?.name || `${r.nameEn} Bus`;
-      const driverName = activeTrip?.driver ? (activeTrip.driver.fullNameAr || activeTrip.driver.fullName) : 'Mohamed Sobhi';
-      const driverPhone = activeTrip?.driver?.phone || '01021561196';
+    // If no trips on this specific date yet, fallback to active scheduled trips
+    const activeTrips = tripsList.length > 0 ? tripsList : await db.query.trips.findMany({
+      limit: 15,
+      with: {
+        bus: true,
+        route: true,
+        driver: true,
+        supervisors: { with: { user: true } },
+        bookings: {
+          where: inArray(schema.bookings.status, ['confirmed', 'swapped']),
+        },
+      },
+      orderBy: desc(schema.trips.departureTime),
+    });
+
+    return activeTrips.map(trip => {
+      const bookedSeats = trip.bookings.length;
+      const capacity = trip.bus?.totalSeats || trip.totalSeats || 50;
+      const percent = Math.min(100, Math.round((bookedSeats / capacity) * 100));
+
+      const driverName = trip.driver ? (trip.driver.fullNameAr || trip.driver.fullName) : 'محمد صبحي (Mohamed Sobhi)';
+      const driverPhone = trip.driver?.phone || '01021561196';
+      const firstSupervisor = trip.supervisors?.[0]?.user;
+      const superName = firstSupervisor ? (firstSupervisor.fullNameAr || firstSupervisor.fullName) : 'ممدوح بدران (Mamdouh Badran)';
+      const superPhone = firstSupervisor?.phone || '01275467090';
+
+      let status = 'scheduled';
+      if (bookedSeats >= capacity) {
+        status = 'full';
+      } else if (trip.status === 'in_transit') {
+        status = 'in_transit';
+      } else if (trip.status === 'completed') {
+        status = 'completed';
+      }
 
       return {
-        routeId: r.id,
-        nameAr: r.nameAr,
-        nameEn: r.nameEn,
-        busName,
-        licensePlate: activeTrip?.bus?.licensePlate || 'أ ب ج 101',
+        tripId: trip.id,
+        routeId: trip.routeId,
+        tripDate: trip.tripDate,
+        nameAr: trip.route?.nameAr || 'خط الجلالة',
+        nameEn: trip.route?.nameEn || 'Galala Line',
+        direction: trip.direction,
+        timeSlot: trip.timeSlot,
+        departureTime: trip.departureTime instanceof Date ? trip.departureTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : String(trip.departureTime || '07:00 AM'),
+        busName: trip.bus?.name || `باص جامعة الجلالة #${trip.id}`,
+        licensePlate: trip.bus?.licensePlate || `أ ب ج ${100 + (trip.id % 20)}`,
         driverName,
         driverPhone,
-        totalTrips: r.trips.length,
-        bookedSeats: totalBooked,
-        capacity: activeTrip?.bus?.totalSeats || 50,
-        status: 'on_schedule',
+        superName,
+        superPhone,
+        bookedSeats,
+        capacity,
+        occupancyPercent: percent,
+        status,
       };
     });
   });
 
-  // 2. Audit Logs
+  // 2. Rich Comprehensive Audit Logs (with search, filter, and student metadata)
   fastify.get('/api/admin/audit-logs', {
     preValidation: [(fastify as any).authenticate, requireRole(['admin'])],
-  }, async () => {
+  }, async (request: any) => {
+    const { limit = 150, search, action } = request.query as { limit?: string; search?: string; action?: string };
+    const maxLimit = Math.min(Number(limit) || 150, 500);
+
     const logs = await db.query.auditLogs.findMany({
       orderBy: desc(schema.auditLogs.createdAt),
-      limit: 100,
+      limit: maxLimit,
       with: {
         user: true,
       },
     });
 
-    return logs.map(l => ({
+    let results = logs.map(l => ({
       id: l.id,
       action: l.action,
       entityType: l.entityType,
       entityId: l.entityId,
-      details: typeof l.details === 'string' ? l.details : JSON.stringify(l.details),
-      userEmail: l.user?.email || 'system',
-      userName: l.user?.fullName || 'System',
+      details: l.details,
+      ipAddress: l.ipAddress || '127.0.0.1',
       time: l.createdAt,
+      user: l.user ? {
+        id: l.user.id,
+        fullName: l.user.fullName,
+        fullNameAr: l.user.fullNameAr,
+        email: l.user.email,
+        phone: l.user.phone,
+        role: l.user.role,
+        academicId: l.user.academicId || l.user.email.split('@')[0],
+        faculty: l.user.faculty,
+      } : null,
     }));
+
+    if (action && action !== 'all') {
+      results = results.filter(l => l.action.toLowerCase().includes(action.toLowerCase()));
+    }
+
+    if (search) {
+      const q = String(search).toLowerCase();
+      results = results.filter(l =>
+        l.action.toLowerCase().includes(q) ||
+        (l.entityId && String(l.entityId).toLowerCase().includes(q)) ||
+        (l.user?.email && l.user.email.toLowerCase().includes(q)) ||
+        (l.user?.fullName && l.user.fullName.toLowerCase().includes(q)) ||
+        (l.user?.academicId && l.user.academicId.toLowerCase().includes(q)) ||
+        (l.ipAddress && l.ipAddress.includes(q)) ||
+        JSON.stringify(l.details || {}).toLowerCase().includes(q)
+      );
+    }
+
+    return results;
+  });
+
+  // 2.1. Trip Full Seat Breakdown & Visual Inspector (Admin & Supervisor)
+  fastify.get('/api/admin/trips/:tripId/seat-details', {
+    preValidation: [(fastify as any).authenticate, requireRole(['admin', 'supervisor'])],
+  }, async (request: any, reply) => {
+    const { tripId } = request.params as { tripId: string };
+    const tid = parseInt(tripId);
+    if (isNaN(tid)) {
+      return reply.status(400).send({ error: 'Invalid tripId' });
+    }
+
+    const trip = await db.query.trips.findFirst({
+      where: eq(schema.trips.id, tid),
+      with: {
+        bus: true,
+        route: true,
+        driver: true,
+        supervisors: { with: { user: true } },
+      },
+    });
+
+    if (!trip) {
+      return reply.status(404).send({ error: 'Trip not found' });
+    }
+
+    const totalSeats = trip.bus?.totalSeats || trip.totalSeats || 50;
+
+    // 1. Confirmed bookings with passenger profile & boarding status
+    const bookings = await db.query.bookings.findMany({
+      where: and(
+        eq(schema.bookings.tripId, tid),
+        inArray(schema.bookings.status, ['confirmed', 'swapped'])
+      ),
+      with: {
+        user: true,
+        boardingLogs: {
+          orderBy: desc(schema.boardingLogs.scannedAt),
+        },
+      },
+    });
+
+    // 2. Active temporary Redis locks (Orange In-Progress Seats)
+    const lockKeys = Array.from({ length: totalSeats }, (_, i) => `seat_lock:${tid}:${i + 1}`);
+    const lockValues = await redis.mget(...lockKeys);
+    const lockHoldersMap: Record<number, string> = {};
+    const lockUserIds: string[] = [];
+
+    for (let i = 0; i < lockValues.length; i++) {
+      const val = lockValues[i];
+      if (val) {
+        lockHoldersMap[i + 1] = val;
+        if (!lockUserIds.includes(val)) {
+          lockUserIds.push(val);
+        }
+      }
+    }
+
+    let lockUsers: any[] = [];
+    if (lockUserIds.length > 0) {
+      lockUsers = await db.query.users.findMany({
+        where: inArray(schema.users.id, lockUserIds),
+      });
+    }
+
+    // TTL for held seats
+    const lockTtlMap: Record<number, number> = {};
+    for (const sn of Object.keys(lockHoldersMap).map(Number)) {
+      const ttl = await redis.ttl(`seat_lock:${tid}:${sn}`);
+      lockTtlMap[sn] = ttl > 0 ? ttl : 300;
+    }
+
+    // Build complete 1..totalSeats map
+    const seatDetails = Array.from({ length: totalSeats }, (_, i) => {
+      const seatNumber = i + 1;
+      const booking = bookings.find(b => b.seatNumber === seatNumber);
+      const lockHolderId = lockHoldersMap[seatNumber];
+
+      if (booking) {
+        const validBoardingLog = booking.boardingLogs?.find(l => l.scanResult === 'valid');
+        return {
+          seatNumber,
+          status: 'booked' as const,
+          booking: {
+            id: booking.id,
+            bookingType: booking.bookingType,
+            legType: booking.legType,
+            boardingCode: booking.boardingCode || ('GU-' + booking.id.substring(0, 4).toUpperCase()),
+            bookedAt: booking.createdAt,
+            paymentStatus: booking.paymentStatus,
+            receiptRef: booking.receiptRef,
+            fare: 160,
+            isBoarded: Boolean(validBoardingLog),
+            boardedAt: validBoardingLog?.scannedAt || null,
+          },
+          rider: {
+            id: booking.user?.id,
+            fullName: booking.user?.fullName || 'Galala Student',
+            fullNameAr: booking.user?.fullNameAr || null,
+            email: booking.user?.email || 'student@gu.edu.eg',
+            phone: booking.user?.phone || '01000000000',
+            academicId: booking.user?.academicId || (booking.user?.email ? booking.user.email.split('@')[0] : 'N/A'),
+            faculty: booking.user?.faculty || 'Computer Science & AI / Galala University',
+            role: booking.user?.role || 'rider',
+          },
+        };
+      } else if (lockHolderId) {
+        const holderUser = lockUsers.find(u => u.id === lockHolderId);
+        const remainingSeconds = lockTtlMap[seatNumber] || 300;
+        return {
+          seatNumber,
+          status: 'held' as const, // ORANGE IN-PROGRESS SEAT
+          lock: {
+            holderId: lockHolderId,
+            remainingSeconds,
+            heldAt: new Date(Date.now() - (300 - remainingSeconds) * 1000),
+          },
+          rider: holderUser ? {
+            id: holderUser.id,
+            fullName: holderUser.fullName,
+            fullNameAr: holderUser.fullNameAr,
+            email: holderUser.email,
+            phone: holderUser.phone || '01000000000',
+            academicId: holderUser.academicId || holderUser.email.split('@')[0],
+            faculty: holderUser.faculty || 'Engineering / Galala University',
+            role: holderUser.role,
+          } : {
+            id: lockHolderId,
+            fullName: 'Student in Checkout',
+            fullNameAr: 'طالب في مرحلة الدفع',
+            email: 'student@gu.edu.eg',
+            phone: 'N/A',
+            academicId: 'N/A',
+            faculty: 'Galala University',
+            role: 'rider',
+          },
+        };
+      } else {
+        return {
+          seatNumber,
+          status: 'free' as const, // UNTAKEN SEAT
+        };
+      }
+    });
+
+    return {
+      trip: {
+        id: trip.id,
+        tripDate: trip.tripDate,
+        direction: trip.direction,
+        timeSlot: trip.timeSlot,
+        departureTime: trip.departureTime instanceof Date ? trip.departureTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : String(trip.departureTime || '07:00 AM'),
+        status: trip.status,
+        totalSeats,
+        bookedCount: bookings.length,
+        heldCount: Object.keys(lockHoldersMap).length,
+        freeCount: totalSeats - bookings.length - Object.keys(lockHoldersMap).length,
+        bus: trip.bus ? {
+          id: trip.bus.id,
+          name: trip.bus.name,
+          licensePlate: trip.bus.licensePlate,
+          totalSeats: trip.bus.totalSeats,
+        } : {
+          name: 'باص جامعة الجلالة',
+          licensePlate: 'أ ب ج 100',
+          totalSeats: 50,
+        },
+        route: trip.route ? {
+          id: trip.route.id,
+          nameAr: trip.route.nameAr,
+          nameEn: trip.route.nameEn,
+        } : null,
+        driver: trip.driver ? {
+          id: trip.driver.id,
+          fullName: trip.driver.fullNameAr || trip.driver.fullName,
+          phone: trip.driver.phone,
+        } : {
+          fullName: 'محمد صبحي',
+          phone: '01021561196',
+        },
+        supervisors: trip.supervisors?.map(s => ({
+          id: s.user?.id,
+          fullName: s.user?.fullNameAr || s.user?.fullName,
+          phone: s.user?.phone,
+        })) || [{ fullName: 'ممدوح بدران', phone: '01275467090' }],
+      },
+      seats: seatDetails,
+    };
+  });
+
+  // 2.2. Database Explorer: Users
+  fastify.get('/api/admin/database/users', {
+    preValidation: [(fastify as any).authenticate, requireRole(['admin'])],
+  }, async (request: any) => {
+    const { search, role, limit = 200 } = request.query as any;
+    const allUsers = await db.query.users.findMany({
+      orderBy: desc(schema.users.createdAt),
+      limit: Math.min(Number(limit) || 200, 500),
+    });
+
+    let filtered = allUsers;
+    if (role && role !== 'all') {
+      filtered = filtered.filter(u => u.role === role);
+    }
+    if (search) {
+      const q = String(search).toLowerCase();
+      filtered = filtered.filter(u =>
+        u.email.toLowerCase().includes(q) ||
+        u.fullName.toLowerCase().includes(q) ||
+        (u.academicId && u.academicId.toLowerCase().includes(q)) ||
+        (u.phone && u.phone.includes(q))
+      );
+    }
+
+    const counts = {
+      total: allUsers.length,
+      riders: allUsers.filter(u => u.role === 'rider').length,
+      supervisors: allUsers.filter(u => u.role === 'supervisor').length,
+      admins: allUsers.filter(u => u.role === 'admin').length,
+    };
+
+    return { users: filtered, counts };
+  });
+
+  // 2.3. Database Explorer: Bookings
+  fastify.get('/api/admin/database/bookings', {
+    preValidation: [(fastify as any).authenticate, requireRole(['admin'])],
+  }, async (request: any) => {
+    const { search, status, limit = 200 } = request.query as any;
+    const allBookings = await db.query.bookings.findMany({
+      orderBy: desc(schema.bookings.createdAt),
+      limit: Math.min(Number(limit) || 200, 500),
+      with: {
+        user: true,
+        trip: {
+          with: { route: true, bus: true },
+        },
+      },
+    });
+
+    let filtered = allBookings;
+    if (status && status !== 'all') {
+      filtered = filtered.filter(b => b.status === status);
+    }
+    if (search) {
+      const q = String(search).toLowerCase();
+      filtered = filtered.filter(b =>
+        b.user?.email?.toLowerCase().includes(q) ||
+        b.user?.fullName?.toLowerCase().includes(q) ||
+        b.user?.academicId?.toLowerCase().includes(q) ||
+        b.boardingCode?.toLowerCase().includes(q) ||
+        b.receiptRef?.toLowerCase().includes(q)
+      );
+    }
+
+    return {
+      bookings: filtered.map(b => ({
+        id: b.id,
+        seatNumber: b.seatNumber,
+        status: b.status,
+        bookingType: b.bookingType,
+        legType: b.legType,
+        boardingCode: b.boardingCode || ('GU-' + b.id.substring(0, 4).toUpperCase()),
+        paymentStatus: b.paymentStatus,
+        receiptRef: b.receiptRef,
+        createdAt: b.createdAt,
+        user: b.user ? {
+          id: b.user.id,
+          fullName: b.user.fullName,
+          email: b.user.email,
+          phone: b.user.phone,
+          academicId: b.user.academicId || b.user.email.split('@')[0],
+          faculty: b.user.faculty,
+        } : null,
+        trip: b.trip ? {
+          id: b.trip.id,
+          tripDate: b.trip.tripDate,
+          timeSlot: b.trip.timeSlot,
+          departureTime: b.trip.departureTime instanceof Date ? b.trip.departureTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : String(b.trip.departureTime),
+          direction: b.trip.direction,
+          routeName: b.trip.route?.nameAr || 'خط الجلالة',
+          busName: b.trip.bus?.name || 'باص الجلالة',
+        } : null,
+      })),
+      totalCount: allBookings.length,
+    };
+  });
+
+  // 2.4. Database Explorer: Clean Test Student (Purges user and all bookings/logs)
+  fastify.post('/api/admin/database/clean-test-student', {
+    preValidation: [(fastify as any).authenticate, requireRole(['admin'])],
+  }, async (request: any, reply) => {
+    const { email = 'aes400196@gu.edu.eg' } = request.body as any;
+    const targetUser = await db.query.users.findFirst({
+      where: eq(schema.users.email, email.toLowerCase().trim()),
+    });
+
+    if (!targetUser) {
+      return reply.status(404).send({ error: `User ${email} not found in database.` });
+    }
+
+    const userBookings = await db.query.bookings.findMany({
+      where: eq(schema.bookings.userId, targetUser.id),
+    });
+    const bIds = userBookings.map(b => b.id);
+    if (bIds.length > 0) {
+      await db.delete(schema.boardingLogs).where(inArray(schema.boardingLogs.bookingId, bIds));
+      await db.delete(schema.swapLogs).where(inArray(schema.swapLogs.oldBookingId, bIds));
+      await db.delete(schema.bookings).where(inArray(schema.bookings.id, bIds));
+    }
+    await db.delete(schema.auditLogs).where(eq(schema.auditLogs.userId, targetUser.id));
+    await db.delete(schema.verificationTokens).where(eq(schema.verificationTokens.email, targetUser.email));
+    await db.delete(schema.users).where(eq(schema.users.id, targetUser.id));
+
+    await logSecurityEvent({
+      userId: request.user.id,
+      action: 'ADMIN_CLEAN_TEST_USER',
+      entityType: 'user',
+      entityId: targetUser.id,
+      details: { cleanedEmail: email, purgedBookingsCount: bIds.length },
+      ipAddress: request.ip,
+    });
+
+    return { success: true, message: `Successfully cleaned ${email} and all associated test records.` };
   });
 
   // 3. Settings
