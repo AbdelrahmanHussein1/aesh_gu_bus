@@ -252,12 +252,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const res = await fetch(`${apiUrl}/health`, { signal: AbortSignal.timeout(3000) });
         if (res.ok) {
           setIsOffline(false);
-          const routesRes = await fetch(`${apiUrl}/api/routes`);
-          if (routesRes.ok) {
-            const data = await routesRes.json();
-            if (data && data.length > 0) {
-              setRoutes(data);
-              setSelectedRouteId(data[0].id);
+          const savedUser = localStorage.getItem('aesh_web_user');
+          if (savedUser) {
+            const routesRes = await fetch(`${apiUrl}/api/routes`);
+            if (routesRes.ok) {
+              const data = await routesRes.json();
+              if (data && data.length > 0) {
+                setRoutes(data);
+                setSelectedRouteId(data[0].id);
+              }
             }
           }
           return;
@@ -266,10 +269,33 @@ export function AppProvider({ children }: { children: ReactNode }) {
         console.warn('Backend unavailable, using offline mode:', err);
       }
       setIsOffline(true);
-      loadOfflineData();
+      if (localStorage.getItem('aesh_web_user')) {
+        loadOfflineData();
+      }
     };
     init();
   }, []);
+
+  // Fetch routes upon login if not yet loaded
+  useEffect(() => {
+    if (!user || isOffline) return;
+    if (routes.length === 0) {
+      const fetchRoutes = async () => {
+        const apiUrl = getApiBaseUrl();
+        try {
+          const routesRes = await fetch(`${apiUrl}/api/routes`);
+          if (routesRes.ok) {
+            const data = await routesRes.json();
+            if (data && data.length > 0) {
+              setRoutes(data);
+              setSelectedRouteId(data[0].id);
+            }
+          }
+        } catch {}
+      };
+      fetchRoutes();
+    }
+  }, [user, routes.length, isOffline]);
 
 
   const loadOfflineData = () => {
@@ -286,6 +312,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
+    if (!user) {
+      setTrips([]);
+      return;
+    }
     if (isOffline) {
       const mockTrips = generateMockTrips(selectedRouteId, selectedDate, routes);
       setTrips(mockTrips);
@@ -304,7 +334,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       };
       fetchLiveTrips();
     }
-  }, [selectedRouteId, selectedDate, isOffline, routes]);
+  }, [user, selectedRouteId, selectedDate, isOffline, routes]);
 
   useEffect(() => {
     if (trips.length === 0) { setActiveTrip(null); setActiveArrivalTrip(null); setActiveReturnTrip(null); return; }
@@ -323,6 +353,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Load and sync real seat map from backend
   const loadSeatMap = useCallback(async () => {
+    if (!user) {
+      setSeats([]);
+      return;
+    }
     const apiUrl = getApiBaseUrl();
     const tid = activeTrip ? activeTrip.id : activeArrivalTrip ? activeArrivalTrip.id : null;
 
@@ -349,9 +383,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setSeats(generateMockSeats(activeTrip.id, user?.id || ''));
       } else { setSeats([]); }
     }
-  }, [activeTrip, activeArrivalTrip, activeReturnTrip, bookingType, isOffline, user]);
+  }, [user, activeTrip, activeArrivalTrip, activeReturnTrip, bookingType, isOffline]);
 
   useEffect(() => {
+    if (!user) {
+      setSelectedSeat(null);
+      setHeldExpiresAt(null);
+      setSeats([]);
+      return;
+    }
+
     setSelectedSeat(null);
     setHeldExpiresAt(null);
     loadSeatMap();
@@ -360,7 +401,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const interval = setInterval(loadSeatMap, 5000);
       return () => clearInterval(interval);
     }
-  }, [loadSeatMap, isOffline]);
+  }, [user, activeTrip?.id, activeArrivalTrip?.id, isOffline]);
 
   useEffect(() => {
     if (!heldExpiresAt) return;
@@ -467,6 +508,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Real-Time Seat Synchronization via WebSocket
   useEffect(() => {
+    if (!user) return;
     const tid = activeTrip ? activeTrip.id : activeArrivalTrip ? activeArrivalTrip.id : null;
     if (isOffline || !tid || typeof window === 'undefined') return;
 
@@ -570,12 +612,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [activeTrip, activeArrivalTrip, isOffline, token]);
 
   useEffect(() => {
-    if (role === 'supervisor') {
+    if (user && role === 'supervisor') {
       loadSupervisorManifest();
       const interval = setInterval(loadSupervisorManifest, 3000);
       return () => clearInterval(interval);
     }
-  }, [role, loadSupervisorManifest]);
+  }, [user, role, loadSupervisorManifest]);
 
   // Fetch real user bookings from database
   const getUserBookings = useCallback(async () => {
