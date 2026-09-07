@@ -33,6 +33,15 @@ export const getTodayDateString = (): string => {
 };
 
 /**
+ * Returns tomorrow's date in local 'YYYY-MM-DD' format (Primary bookable date)
+ */
+export const getTomorrowDateString = (): string => {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  return formatDateString(d);
+};
+
+/**
  * Formats any Date object into local 'YYYY-MM-DD' format
  */
 export const formatDateString = (d: Date): string => {
@@ -70,16 +79,16 @@ const ARABIC_MONTHS: Record<string, string> = {
 /**
  * Generates dynamic rolling calendar days around today.
  * Strictly enforces:
- * - Yesterday: disabled, unbookable, labeled 'أمس / YESTERDAY'
- * - Today: ACTIVE, bookable, prominent green outline, labeled 'اليوم / TODAY'
- * - Tomorrow: disabled, unbookable, labeled 'غداً / TOMORROW'
- * - Future (+2 to +5): disabled, unbookable
+ * - Yesterday (-1): disabled, unbookable, labeled 'أمس / YESTERDAY', status 'منتهي / Closed'
+ * - Today (0): prominent green outline indicator, unbookable for trips, labeled 'اليوم / TODAY', status 'انتهى حجز اليوم / Closed for Today'
+ * - Tomorrow (+1): ACTIVE, bookable, default selected, labeled 'غداً / TOMORROW', status 'متاح للحجز / Booking Open'
+ * - Future (+2 to +5): advance booking open, labeled with weekday, status 'متاح للحجز / Booking Open'
  */
 export const getDynamicOperationalDates = (todayOverride?: string): OperationalDate[] => {
   const baseDate = todayOverride ? new Date(`${todayOverride}T00:00:00`) : new Date();
   const base = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate());
 
-  // Window: -1 (yesterday), 0 (today), +1 (tomorrow), +2..+5 (future days)
+  // Window: -1 (yesterday), 0 (today), +1 (tomorrow), +2..+5 (advance days)
   const offsets = [-1, 0, 1, 2, 3, 4, 5];
 
   return offsets.map(offset => {
@@ -96,13 +105,13 @@ export const getDynamicOperationalDates = (todayOverride?: string): OperationalD
     const isYesterday = offset === -1;
     const isToday = offset === 0;
     const isTomorrow = offset === 1;
-    // Strictly: Only Today is bookable for riders (same-day booking)
-    const isBookable = isToday;
+    // Advance booking rule: Today's booking is closed; Tomorrow (+1) and upcoming days (+2..+5) are bookable!
+    const isBookable = offset >= 1;
 
     let labelEn = weekday;
     let labelAr = weekdayAr;
     let statusBadgeAr = 'غير متاح';
-    let statusBadgeEn = 'Locked';
+    let statusBadgeEn = 'Closed';
 
     if (isYesterday) {
       labelEn = 'YESTERDAY';
@@ -112,16 +121,16 @@ export const getDynamicOperationalDates = (todayOverride?: string): OperationalD
     } else if (isToday) {
       labelEn = 'TODAY';
       labelAr = 'اليوم';
-      statusBadgeAr = 'متاح للحجز';
-      statusBadgeEn = 'Open';
+      statusBadgeAr = 'انتهى حجز اليوم';
+      statusBadgeEn = 'Closed for Today';
     } else if (isTomorrow) {
       labelEn = 'TOMORROW';
       labelAr = 'غداً';
-      statusBadgeAr = 'غير متاح حالياً';
-      statusBadgeEn = 'Not Open';
+      statusBadgeAr = 'متاح للحجز';
+      statusBadgeEn = 'Open';
     } else {
-      statusBadgeAr = 'قريباً';
-      statusBadgeEn = 'Locked';
+      statusBadgeAr = 'متاح للحجز';
+      statusBadgeEn = 'Open';
     }
 
     return {

@@ -104,8 +104,39 @@ export default function AppHome() {
   const [selectedDirection, setSelectedDirection] = useState<'to_campus' | 'from_campus'>('to_campus');
   const [selectedDate, setSelectedDate] = useState(() => {
     const d = new Date();
+    d.setDate(d.getDate() + 1);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   });
+
+  const operationalDates = React.useMemo(() => {
+    const base = new Date();
+    const offsets = [-1, 0, 1, 2, 3, 4, 5];
+    const ARABIC_DAYS: Record<string, string> = {
+      'SUN': 'الأحد', 'MON': 'الإثنين', 'TUE': 'الثلاثاء', 'WED': 'الأربعاء',
+      'THU': 'الخميس', 'FRI': 'الجمعة', 'SAT': 'السبت'
+    };
+    return offsets.map(offset => {
+      const cur = new Date(base);
+      cur.setDate(base.getDate() + offset);
+      const date = `${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, '0')}-${String(cur.getDate()).padStart(2, '0')}`;
+      const day = String(cur.getDate());
+      const month = cur.toLocaleDateString('en-US', { month: 'short' });
+      const weekday = cur.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase();
+      const weekdayAr = ARABIC_DAYS[weekday] || weekday;
+      return {
+        date,
+        day,
+        month,
+        weekday,
+        weekdayAr,
+        isYesterday: offset === -1,
+        isToday: offset === 0,
+        isTomorrow: offset === 1,
+        isBookable: offset >= 1,
+      };
+    });
+  }, []);
+
   const [trips, setTrips] = useState<any[]>([]);
   const [activeTrip, setActiveTrip] = useState<any>(null);
   const [isLoadingTrips, setIsLoadingTrips] = useState(false);
@@ -888,6 +919,99 @@ export default function AppHome() {
             </Text>
           </TouchableOpacity>
         </View>
+
+        {/* Operational Date Selector */}
+        <View style={{ marginTop: 14 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+            <Text style={styles.selectLabel}>Operational Date (تاريخ الحجز)</Text>
+            <Text style={{ fontSize: 10, color: '#38bdf8', fontWeight: 'bold' }}>الحجز لرحلات الغد (Tomorrow)</Text>
+          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            {operationalDates.map(od => {
+              const isSelected = selectedDate === od.date;
+
+              // Today: Green outline anchor (closed for new bookings)
+              if (od.isToday) {
+                return (
+                  <View
+                    key={od.date}
+                    style={[
+                      styles.dateCard,
+                      {
+                        borderColor: '#10b981',
+                        borderWidth: 2,
+                        backgroundColor: 'rgba(16, 185, 129, 0.12)',
+                      }
+                    ]}
+                  >
+                    <View style={[styles.dateBadge, { backgroundColor: '#10b981' }]}>
+                      <Text style={[styles.dateBadgeText, { color: '#022c22' }]}>TODAY • اليوم</Text>
+                    </View>
+                    <Text style={[styles.dateDayText, { color: '#6ee7b7' }]}>{od.day}</Text>
+                    <Text style={[styles.dateSubText, { color: '#a7f3d0' }]}>{od.month} • {od.weekdayAr}</Text>
+                    <Text style={[styles.dateStatusBadge, { color: '#34d399', backgroundColor: 'rgba(16, 185, 129, 0.2)' }]}>
+                      انتهى حجز اليوم
+                    </Text>
+                  </View>
+                );
+              }
+
+              // Tomorrow and upcoming advance days (bookable)
+              if (od.isBookable) {
+                return (
+                  <TouchableOpacity
+                    key={od.date}
+                    onPress={() => setSelectedDate(od.date)}
+                    style={[
+                      styles.dateCard,
+                      isSelected ? {
+                        borderColor: '#38bdf8',
+                        borderWidth: 2,
+                        backgroundColor: 'rgba(56, 189, 248, 0.15)',
+                      } : {
+                        borderColor: '#1e293b',
+                        borderWidth: 1,
+                        backgroundColor: '#020617',
+                      }
+                    ]}
+                  >
+                    <View style={[styles.dateBadge, isSelected ? { backgroundColor: '#38bdf8' } : { backgroundColor: '#1e293b' }]}>
+                      <Text style={[styles.dateBadgeText, isSelected ? { color: '#0b0f19' } : { color: '#94a3b8' }]}>
+                        {od.isTomorrow ? 'TOMORROW • غداً' : od.weekdayAr}
+                      </Text>
+                    </View>
+                    <Text style={[styles.dateDayText, isSelected && { color: '#38bdf8' }]}>{od.day}</Text>
+                    <Text style={styles.dateSubText}>{od.month} • {od.weekdayAr}</Text>
+                    <Text style={[styles.dateStatusBadge, isSelected && { color: '#38bdf8', backgroundColor: 'rgba(56, 189, 248, 0.2)' }]}>
+                      متاح للحجز
+                    </Text>
+                  </TouchableOpacity>
+                );
+              }
+
+              // Past dates (e.g. Yesterday)
+              return (
+                <View
+                  key={od.date}
+                  style={[
+                    styles.dateCard,
+                    {
+                      borderColor: '#1e293b',
+                      borderWidth: 1,
+                      backgroundColor: '#020617',
+                      opacity: 0.4,
+                    }
+                  ]}
+                >
+                  <Text style={[styles.dateBadgeText, { color: '#64748b' }]}>YESTERDAY • أمس</Text>
+                  <Text style={[styles.dateDayText, { color: '#64748b' }]}>{od.day}</Text>
+                  <Text style={[styles.dateSubText, { color: '#475569' }]}>{od.month}</Text>
+                  <Text style={[styles.dateStatusBadge, { color: '#64748b' }]}>منتهي</Text>
+                </View>
+              );
+            })}
+          </ScrollView>
+        </View>
       </View>
 
       {/* Available Trips */}
@@ -1413,6 +1537,45 @@ const styles = StyleSheet.create({
   },
   activeDirectionBtnText: {
     color: '#0b0f19',
+  },
+  dateCard: {
+    padding: 10,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
+    minWidth: 95,
+  },
+  dateBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    marginBottom: 4,
+  },
+  dateBadgeText: {
+    fontSize: 8,
+    fontWeight: 'bold',
+    textTransform: 'uppercase',
+  },
+  dateDayText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  dateSubText: {
+    fontSize: 10,
+    color: '#94a3b8',
+    marginTop: 2,
+  },
+  dateStatusBadge: {
+    fontSize: 8,
+    fontWeight: 'bold',
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    borderRadius: 4,
+    marginTop: 4,
+    backgroundColor: 'rgba(148, 163, 184, 0.1)',
+    color: '#94a3b8',
   },
   tripCard: {
     backgroundColor: '#020617',
