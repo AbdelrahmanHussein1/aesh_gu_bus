@@ -72,9 +72,7 @@ export default function RegisterForm({ onSwitchTab }: Props = {}) {
       }
 
       setSuccessNotice(data.messageAr || 'تم إرسال كود التحقق إلى بريدك الجامعي');
-      if (data.devCode) {
-        setVerificationCode(data.devCode);
-      }
+      setVerificationCode('');
       setStep('verify_code');
     } catch (err: any) {
       setError(err.message || 'Failed to verify student credentials');
@@ -269,34 +267,15 @@ export default function RegisterForm({ onSwitchTab }: Props = {}) {
               <span className="material-symbols-outlined text-base">open_in_new</span>
               <span>فتح صندوق بريد Outlook الجامعي (outlook.office.com)</span>
             </a>
-
-            <div className="flex items-center justify-between bg-surface-container-low p-2 rounded-lg border border-border-whisper">
-              <span className="text-[11px] text-text-secondary">كود التجربة السريع: <strong className="text-primary-container font-mono text-xs">123456</strong></span>
-              <button
-                type="button"
-                onClick={() => setVerificationCode('123456')}
-                className="px-2.5 py-1 bg-primary-container text-on-primary-container text-[11px] font-bold rounded-md hover:opacity-90 transition-opacity"
-              >
-                تعبئة تلقائية
-              </button>
-            </div>
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <div className="flex justify-between items-center">
-              <label className="text-xs font-semibold text-text-primary" htmlFor="reg-code">6-Digit Verification Code</label>
-              <button
-                type="button"
-                onClick={() => setVerificationCode('123456')}
-                className="text-[11px] text-primary-container hover:underline font-medium"
-              >
-                استخدام 123456
-              </button>
-            </div>
+            <label className="text-xs font-semibold text-text-primary" htmlFor="reg-code">6-Digit Verification Code (كود التحقق من الإيميل)</label>
             <input
-              id="reg-code" type="text" maxLength={6} required placeholder="123456"
-              value={verificationCode} onChange={e => setVerificationCode(e.target.value)}
-              className="w-full h-12 text-center text-xl tracking-widest font-mono font-bold bg-surface-bright border border-border-whisper rounded-lg text-text-primary focus:outline-none focus:border-primary-container"
+              id="reg-code" type="text" maxLength={6} required placeholder="••••••"
+              value={verificationCode} onChange={e => setVerificationCode(e.target.value.replace(/\D/g, ''))}
+              autoFocus
+              className="w-full h-12 text-center text-2xl tracking-widest font-mono font-bold bg-surface-bright border border-border-whisper rounded-lg text-text-primary focus:outline-none focus:border-primary-container"
             />
           </div>
 

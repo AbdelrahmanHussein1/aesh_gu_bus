@@ -1,34 +1,37 @@
 import nodemailer from 'nodemailer';
 import { Resend } from 'resend';
+import path from 'node:path';
 import dotenv from 'dotenv';
 
 dotenv.config();
+dotenv.config({ path: path.resolve(process.cwd(), '.env') });
+dotenv.config({ path: path.resolve(process.cwd(), 'apps/api/.env') });
 
-const smtpHost = process.env.SMTP_HOST || 'smtp.office365.com';
-const smtpPort = parseInt(process.env.SMTP_PORT || '587', 10);
-const smtpUser = process.env.SMTP_USER || '';
-const smtpPass = process.env.SMTP_PASS || '';
-const smtpSecure = process.env.SMTP_SECURE === 'true' || smtpPort === 465;
-const emailFrom = process.env.EMAIL_FROM || (smtpUser ? `Galala University Bus <${smtpUser}>` : 'Bus Aesh <onboarding@resend.dev>');
-const resendApiKey = process.env.RESEND_API_KEY || '';
+function getTransporter() {
+  const smtpHost = process.env.SMTP_HOST || 'smtp.gmail.com';
+  const smtpPort = parseInt(process.env.SMTP_PORT || '587', 10);
+  const smtpUser = process.env.SMTP_USER || '';
+  const smtpPass = process.env.SMTP_PASS || '';
+  const smtpSecure = process.env.SMTP_SECURE === 'true' || smtpPort === 465;
 
-let transporter: any = null;
-if (smtpUser && smtpPass) {
-  transporter = nodemailer.createTransport({
-    host: smtpHost,
-    port: smtpPort,
-    secure: smtpSecure,
-    auth: {
-      user: smtpUser,
-      pass: smtpPass,
-    },
-    tls: {
-      ciphers: 'SSLv3',
-      rejectUnauthorized: false,
-    },
-  });
+  if (smtpUser && smtpPass) {
+    return nodemailer.createTransport({
+      host: smtpHost,
+      port: smtpPort,
+      secure: smtpSecure,
+      auth: {
+        user: smtpUser,
+        pass: smtpPass,
+      },
+      tls: {
+        rejectUnauthorized: false,
+      },
+    });
+  }
+  return null;
 }
 
+const resendApiKey = process.env.RESEND_API_KEY || '';
 const resend = resendApiKey && resendApiKey !== 're_mock_key' ? new Resend(resendApiKey) : null;
 
 export class MailService {
@@ -96,7 +99,13 @@ export class MailService {
 </html>
     `;
 
-    // 1. Try Microsoft 365 / Outlook SMTP first if configured
+    // 1. Try SMTP first if configured
+    const transporter = getTransporter();
+    const smtpHost = process.env.SMTP_HOST || 'smtp.gmail.com';
+    const smtpPort = parseInt(process.env.SMTP_PORT || '587', 10);
+    const smtpUser = process.env.SMTP_USER || '';
+    const emailFrom = process.env.EMAIL_FROM || (smtpUser ? `Galala University Bus <${smtpUser}>` : 'Bus Aesh <support@gu.edu.eg>');
+
     if (transporter) {
       try {
         console.log(`[MailService] Sending OTP to Outlook email ${email} via SMTP (${smtpHost}:${smtpPort})...`);

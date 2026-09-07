@@ -394,14 +394,10 @@ export default function AppHome() {
         'تم إرسال رمز التحقق (OTP) إلى بريد Outlook الأكاديمي الخاص بك. يرجى مراجعة صندوق الوارد.',
         [{ text: 'متابعة' }]
       );
-      if (data.devCode) {
-        setRegOtp(data.devCode);
-      }
+      setRegOtp('');
       setRegStep('verify_code');
     } catch (err: any) {
-      Alert.alert('Verification Notice', err.message || 'Could not verify student ID. Using demo verification code 123456.');
-      setRegOtp('123456');
-      setRegStep('verify_code');
+      Alert.alert('Verification Error', err.message || 'Could not verify student ID.');
     } finally {
       setRegLoading(false);
     }

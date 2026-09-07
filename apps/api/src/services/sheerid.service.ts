@@ -156,7 +156,6 @@ export class SheerIDService {
       status: 'PENDING_CODE',
       message: 'Verification code sent to your university email address.',
       messageAr: 'تم إرسال كود التحقق بنجاح إلى بريدك الجامعي.',
-      devCode: verificationCode,
     };
   }
 
@@ -166,11 +165,6 @@ export class SheerIDService {
   static async confirmCode(email: string, code: string): Promise<boolean> {
     const cleanEmail = email.toLowerCase().trim();
     const cleanCode = code.trim();
-
-    // In demo/test mode, allow code '123456'
-    if (cleanCode === '123456') {
-      return true;
-    }
 
     const record = await db.query.verificationTokens.findFirst({
       where: and(
