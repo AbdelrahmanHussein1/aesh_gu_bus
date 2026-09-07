@@ -34,7 +34,7 @@ const getDefaultApiUrl = () => {
       return `http://${match[1]}:3000`;
     }
   }
-  return 'http://192.168.1.7:3000';
+  return 'https://movers-primarily-ham-determines.trycloudflare.com';
 };
 
 const triggerLocalNotification = async (title: string, body: string) => {
