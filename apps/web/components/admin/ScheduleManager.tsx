@@ -2,7 +2,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useApp } from '@/hooks/useAppStore';
 import type { Trip, Route, TimeSlot, Direction, PersonnelContact } from '@/lib/types';
-import { getOfflineAllTrips, cloneOfflineSchedule, getAllPersonnel, saveCustomOfflineTrips, getCustomOfflineTrips, addMockAuditLog } from '@/lib/offline';
+import { getOfflineAllTrips, cloneOfflineSchedule, getAllPersonnel, saveCustomOfflineTrips, getCustomOfflineTrips, addMockAuditLog, purgeOfflineShifts, createSingleOfflineTestShift } from '@/lib/offline';
 import { getApiBaseUrl } from '@/lib/api';
 import { getTodayDateString, formatDateString, getScheduleManagerDates } from '@/lib/dateUtils';
 import BusSeatInspectorModal from './BusSeatInspectorModal';
@@ -31,6 +31,9 @@ export default function ScheduleManager() {
   // Modals state
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showCloneModal, setShowCloneModal] = useState(false);
+  const [showPurgeModal, setShowPurgeModal] = useState(false);
+  const [purgeTarget, setPurgeTarget] = useState<'all' | 'date'>('all');
+  const [purging, setPurging] = useState(false);
   const [inspectingTripId, setInspectingTripId] = useState<number | null>(null);
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
@@ -56,8 +59,8 @@ export default function ScheduleManager() {
   const API_URL = getApiBaseUrl();
 
   // Fetch schedules
-  const loadSchedules = useCallback(async () => {
-    setLoading(true);
+  const loadSchedules = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     if (!isOffline) {
       try {
         const res = await fetch(`${API_URL}/api/admin/schedules?date=${selectedDate}${selectedRouteId !== 'all' ? `&routeId=${selectedRouteId}` : ''}`, {
@@ -66,7 +69,7 @@ export default function ScheduleManager() {
         if (res.ok) {
           const data = await res.json();
           setAllSchedules(data);
-          setLoading(false);
+          if (!silent) setLoading(false);
           return;
         }
       } catch (err) {
@@ -76,7 +79,7 @@ export default function ScheduleManager() {
     // Fallback offline trips
     const offlineTrips = getOfflineAllTrips(selectedDate, selectedRouteId === 'all' ? undefined : selectedRouteId);
     setAllSchedules(offlineTrips);
-    setLoading(false);
+    if (!silent) setLoading(false);
   }, [API_URL, isOffline, selectedDate, selectedRouteId, token]);
 
   // Load personnel directory
@@ -89,6 +92,14 @@ export default function ScheduleManager() {
 
   useEffect(() => {
     loadSchedules();
+  }, [loadSchedules]);
+
+  // Background live sync polling every 3.5s
+  useEffect(() => {
+    const timer = setInterval(() => {
+      loadSchedules(true);
+    }, 3500);
+    return () => clearInterval(timer);
   }, [loadSchedules]);
 
   // Filtered schedules
@@ -251,6 +262,72 @@ export default function ScheduleManager() {
     triggerNotice('success', 'Trip removed from schedule.');
   };
 
+  // Handle Purge All Shifts / Clear Roster
+  const handlePurgeShifts = async () => {
+    setPurging(true);
+    const dateParam = purgeTarget === 'date' ? selectedDate : undefined;
+
+    if (!isOffline) {
+      try {
+        const queryStr = dateParam ? `?date=${dateParam}` : '';
+        const res = await fetch(`${API_URL}/api/admin/shifts/purge-all${queryStr}`, {
+          method: 'DELETE',
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (res.ok) {
+          const data = await res.json();
+          triggerNotice('success', data.message || `Successfully purged shifts.`);
+          setShowPurgeModal(false);
+          setPurging(false);
+          loadSchedules();
+          return;
+        }
+      } catch (err) {
+        console.warn('Backend purge failed, using offline purge:', err);
+      }
+    }
+
+    const res = purgeOfflineShifts(dateParam);
+    triggerNotice('success', `Purged ${res.count} shifts from local store.`);
+    setShowPurgeModal(false);
+    setPurging(false);
+    loadSchedules();
+  };
+
+  // Handle Quick Create Single Test Shift
+  const handleQuickCreateTestShift = async () => {
+    const routeIdToUse = selectedRouteId !== 'all' ? Number(selectedRouteId) : 29;
+    if (!isOffline) {
+      try {
+        const res = await fetch(`${API_URL}/api/admin/shifts/create-single-test-shift`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({
+            date: selectedDate,
+            routeId: routeIdToUse,
+            direction: 'to_campus',
+            timeSlot: selectedShift !== 'all' ? selectedShift : 'morning_1',
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          triggerNotice('success', `Clean test shift #${data.trip?.id || 'NEW'} created for ${selectedDate}! Ready for testing.`);
+          loadSchedules();
+          return;
+        }
+      } catch (err) {
+        console.warn('Backend test shift creation failed, using offline fallback:', err);
+      }
+    }
+
+    const result = createSingleOfflineTestShift(selectedDate, routeIdToUse);
+    triggerNotice('success', `Test shift #${result.trip.id} created successfully! Ready for testing.`);
+    loadSchedules();
+  };
+
   return (
     <div className="space-y-6">
       {/* Top Notification */}
@@ -275,7 +352,25 @@ export default function ScheduleManager() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={handleQuickCreateTestShift}
+            className="px-3.5 py-2 rounded-xl bg-primary-container text-on-primary-container hover:opacity-90 font-bold text-xs flex items-center gap-1.5 transition-all shadow-sm"
+            title="Create 1 isolated test shift with 50 empty seats for testing"
+          >
+            <span className="material-symbols-outlined text-base">science</span>
+            <span>Create 1 Test Shift</span>
+          </button>
+
+          <button
+            onClick={() => setShowPurgeModal(true)}
+            className="px-3.5 py-2 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 text-rose-300 font-bold text-xs flex items-center gap-1.5 transition-all shadow-sm"
+            title="Wipe shifts to start clean"
+          >
+            <span className="material-symbols-outlined text-base">delete_sweep</span>
+            <span>Wipe / Purge Shifts</span>
+          </button>
+
           <button
             onClick={() => setShowCloneModal(true)}
             className="px-3.5 py-2 rounded-xl bg-surface-container-high hover:bg-surface-container-highest border border-border-whisper text-text-primary font-bold text-xs flex items-center gap-2 transition-all shadow-sm"
@@ -290,7 +385,7 @@ export default function ScheduleManager() {
               setNewTripDate(selectedDate);
               setShowCreateModal(true);
             }}
-            className="px-4 py-2 rounded-xl bg-primary-container text-on-primary-container hover:opacity-90 font-bold text-xs flex items-center gap-2 transition-all shadow-sm"
+            className="px-4 py-2 rounded-xl bg-surface-container-highest hover:bg-surface border border-border-whisper text-text-primary font-bold text-xs flex items-center gap-2 transition-all shadow-sm"
           >
             <span className="material-symbols-outlined text-base">add</span>
             <span>Create Shift</span>
@@ -776,6 +871,78 @@ export default function ScheduleManager() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Modal: Purge All Shifts */}
+      {showPurgeModal && (
+        <div className="fixed inset-0 z-[999999] flex items-center justify-center p-4 bg-[#060913]/90 backdrop-blur-md">
+          <div className="bg-surface-container border border-rose-500/30 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl animate-in zoom-in-95">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-xl bg-rose-500/20 text-rose-400 flex items-center justify-center shrink-0 border border-rose-500/30">
+                <span className="material-symbols-outlined text-2xl">warning</span>
+              </div>
+              <div>
+                <h4 className="font-bold text-base text-text-primary">Wipe / Purge Operational Shifts</h4>
+                <p className="text-xs text-text-secondary">Clean testing action: reset roster</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-text-secondary leading-relaxed">
+              This action clears the operational shifts schedule, removes test bookings, and wipes Redis seat lock keys so you can test one isolated shift at a time.
+            </p>
+
+            <div className="space-y-2 pt-2">
+              <label className="text-xs font-bold text-text-primary block">Select Purge Scope:</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPurgeTarget('all')}
+                  className={`p-3 rounded-xl border text-left transition-all ${purgeTarget === 'all' ? 'bg-rose-500/20 border-rose-500 text-text-primary font-bold' : 'bg-surface border-border-whisper text-text-secondary'}`}
+                >
+                  <div className="text-xs font-bold">Wipe All Shifts</div>
+                  <div className="text-[10px] text-text-tertiary">All shifts across all dates</div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPurgeTarget('date')}
+                  className={`p-3 rounded-xl border text-left transition-all ${purgeTarget === 'date' ? 'bg-rose-500/20 border-rose-500 text-text-primary font-bold' : 'bg-surface border-border-whisper text-text-secondary'}`}
+                >
+                  <div className="text-xs font-bold">Wipe For Date Only</div>
+                  <div className="text-[10px] text-text-tertiary">Only shifts on {selectedDate}</div>
+                </button>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-4 border-t border-border-whisper">
+              <button
+                type="button"
+                disabled={purging}
+                onClick={() => setShowPurgeModal(false)}
+                className="px-4 py-2 rounded-xl bg-surface border border-border-whisper text-text-secondary hover:text-text-primary text-xs font-bold"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={purging}
+                onClick={handlePurgeShifts}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-lg shadow-rose-600/30"
+              >
+                {purging ? (
+                  <>
+                    <span className="material-symbols-outlined animate-spin text-sm">sync</span>
+                    <span>Purging...</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="material-symbols-outlined text-sm">delete_sweep</span>
+                    <span>Confirm Wipe & Purge</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

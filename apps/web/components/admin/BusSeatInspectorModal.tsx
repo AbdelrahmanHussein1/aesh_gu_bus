@@ -1,7 +1,8 @@
 'use client';
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useApp } from '@/hooks/useAppStore';
-import { getApiBaseUrl } from '@/lib/api';
+import { getApiBaseUrl, getApiUrls } from '@/lib/api';
 
 interface BusSeatInspectorModalProps {
   tripId: number;
@@ -10,18 +11,24 @@ interface BusSeatInspectorModalProps {
 
 export default function BusSeatInspectorModal({ tripId, onClose }: BusSeatInspectorModalProps) {
   const { isOffline, token } = useApp();
+  const [mounted, setMounted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [tripData, setTripData] = useState<any>(null);
   const [seats, setSeats] = useState<any[]>([]);
   const [selectedSeat, setSelectedSeat] = useState<any | null>(null);
   const [notification, setNotification] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | 'booked' | 'held' | 'free'>('all');
+  const [lastSyncTime, setLastSyncTime] = useState<Date>(new Date());
 
   const API_URL = getApiBaseUrl();
 
-  // Load seat details from backend or offline mock
-  const loadSeatDetails = useCallback(async () => {
-    setLoading(true);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Load seat details from backend or offline mock with silent background reload support
+  const loadSeatDetails = useCallback(async (showSpinner = true) => {
+    if (showSpinner) setLoading(true);
     if (!isOffline) {
       try {
         const res = await fetch(`${API_URL}/api/admin/trips/${tripId}/seat-details`, {
@@ -31,9 +38,17 @@ export default function BusSeatInspectorModal({ tripId, onClose }: BusSeatInspec
           const data = await res.json();
           setTripData(data.trip);
           setSeats(data.seats);
-          // Auto-select first booked seat if available
-          const firstBooked = data.seats.find((s: any) => s.status === 'booked');
-          if (firstBooked) setSelectedSeat(firstBooked);
+          setLastSyncTime(new Date());
+
+          // Seamlessly update currently selected seat if its status changed
+          setSelectedSeat((prev: any) => {
+            if (!prev) {
+              return data.seats.find((s: any) => s.status === 'booked') || data.seats[0] || null;
+            }
+            const matching = data.seats.find((s: any) => s.seatNumber === prev.seatNumber);
+            return matching || prev;
+          });
+
           setLoading(false);
           return;
         }
@@ -155,7 +170,57 @@ export default function BusSeatInspectorModal({ tripId, onClose }: BusSeatInspec
   }, [tripId, isOffline, token, API_URL]);
 
   useEffect(() => {
-    loadSeatDetails();
+    loadSeatDetails(true);
+  }, [loadSeatDetails]);
+
+  // 1. Instant WebSocket listener for rider seat locks, unlocks, and bookings
+  useEffect(() => {
+    if (isOffline || typeof window === 'undefined') return;
+    const { wsUrl } = getApiUrls();
+    let socket: WebSocket | null = null;
+    try {
+      socket = new WebSocket(`${wsUrl}/ws/trips/${tripId}/seats`);
+      socket.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          if (['seat_locked', 'seat_unlocked', 'seat_booked', 'booking_cancelled', 'rider_boarded'].includes(msg.type)) {
+            // Instant live sync with 0 delay!
+            loadSeatDetails(false);
+          }
+        } catch {}
+      };
+    } catch (e) {
+      console.warn('Seat inspector WebSocket connection error:', e);
+    }
+
+    return () => {
+      if (socket) socket.close();
+    };
+  }, [tripId, isOffline, loadSeatDetails]);
+
+  // 2. Continuous real-time background polling (every 1.5s) to guarantee instantaneous state synchronization
+  useEffect(() => {
+    const interval = setInterval(() => {
+      loadSeatDetails(false);
+    }, 1500);
+    return () => clearInterval(interval);
+  }, [loadSeatDetails]);
+
+  // 3. Local browser tab synchronization (storage & custom events)
+  useEffect(() => {
+    const handleLocalSync = () => {
+      loadSeatDetails(false);
+    };
+    window.addEventListener('storage', handleLocalSync);
+    window.addEventListener('seat_locked', handleLocalSync);
+    window.addEventListener('seat_unlocked', handleLocalSync);
+    window.addEventListener('booking_created', handleLocalSync);
+    return () => {
+      window.removeEventListener('storage', handleLocalSync);
+      window.removeEventListener('seat_locked', handleLocalSync);
+      window.removeEventListener('seat_unlocked', handleLocalSync);
+      window.removeEventListener('booking_created', handleLocalSync);
+    };
   }, [loadSeatDetails]);
 
   // Handle seat button click
@@ -178,9 +243,11 @@ export default function BusSeatInspectorModal({ tripId, onClose }: BusSeatInspec
   const heldCount = useMemo(() => seats.filter(s => s.status === 'held').length, [seats]);
   const freeCount = useMemo(() => seats.filter(s => s.status === 'free').length, [seats]);
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-black/75 backdrop-blur-md overflow-y-auto">
-      <div className="bg-surface-container border border-border-whisper rounded-2xl w-full max-w-6xl max-h-[92vh] flex flex-col shadow-2xl animate-in fade-in zoom-in-95 duration-200 overflow-hidden">
+  if (!mounted) return null;
+
+  return createPortal(
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center p-2 sm:p-4 md:p-6 bg-[#060913] overflow-y-auto">
+      <div className="bg-surface-container border border-border-whisper rounded-2xl w-full max-w-6xl max-h-[92vh] flex flex-col shadow-2xl animate-in fade-in zoom-in-95 duration-200 overflow-hidden relative">
         {/* Top Header */}
         <div className="p-4 sm:p-5 border-b border-border-whisper bg-surface-container-low flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
@@ -188,12 +255,16 @@ export default function BusSeatInspectorModal({ tripId, onClose }: BusSeatInspec
               <span className="material-symbols-outlined text-2xl">directions_bus</span>
             </div>
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <h3 className="font-bold text-base text-text-primary">
                   {tripData?.bus?.name || `Galala Bus Shift #${tripId}`}
                 </h3>
                 <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-surface border border-border-whisper text-text-secondary">
                   {tripData?.bus?.licensePlate || 'أ ب ج 100'}
+                </span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  Live Sync • متزامن لحظياً
                 </span>
               </div>
               <p className="text-xs text-text-secondary mt-0.5 flex items-center gap-2">
@@ -603,7 +674,8 @@ export default function BusSeatInspectorModal({ tripId, onClose }: BusSeatInspec
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 

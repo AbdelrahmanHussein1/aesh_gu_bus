@@ -20,11 +20,12 @@ export async function tripsRoutes(fastify: FastifyInstance) {
 
   // 2. Fetch active trips by date, route, direction, and optional time slot
   fastify.get('/api/trips', async (request, reply) => {
-    const { date, routeId, direction, timeSlot } = request.query as {
+    const { date, routeId, direction, timeSlot, autoSeed } = request.query as {
       date?: string;
       routeId?: string;
       direction?: string;
       timeSlot?: string;
+      autoSeed?: string;
     };
     if (!date) {
       return reply.status(400).send({ error: 'Missing date query parameter' });
@@ -60,8 +61,11 @@ export async function tripsRoutes(fastify: FastifyInstance) {
       },
     });
 
-    // If no trips exist for this requested date yet, dynamically generate schedules so testing/booking works seamlessly on any date
-    if (activeTrips.length === 0) {
+    // Check if admin has purged trips so we don't automatically regenerate hundreds of shifts
+    const isPurged = await redis.get('admin_purged_trips_flag');
+
+    // Only auto-generate if no trips exist AND admin hasn't explicitly purged the roster
+    if (activeTrips.length === 0 && !isPurged && autoSeed !== 'false') {
       const allRoutes = await db.query.routes.findMany({ where: eq(schema.routes.isActive, true), limit: 10 });
       const [defaultBus] = await db.select().from(schema.buses).limit(1);
       const [defaultSupervisor] = await db.select().from(schema.users).where(eq(schema.users.role, 'supervisor')).limit(1);

@@ -1,7 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { db } from '../db/index.js';
 import * as schema from '../db/schema.js';
-import { eq, and, desc, inArray } from 'drizzle-orm';
+import { eq, and, or, desc, inArray } from 'drizzle-orm';
 import { WebSocketHub } from '../websocket/hub.js';
 import { redis } from '../redis.js';
 import { logSecurityEvent } from '../services/audit.service.js';
@@ -15,14 +15,43 @@ const requireRole = (roles: string[]) => async (request: any, reply: any) => {
 
 export async function adminRoutes(fastify: FastifyInstance) {
   // 1. Dynamic Fleet Status Overview (Live Real-Time Fleet Monitor)
+  // 1. Dynamic Fleet Status Overview (Live Real-Time Fleet Monitor with Full Custom Filtering)
   fastify.get('/api/admin/fleet', {
     preValidation: [(fastify as any).authenticate, requireRole(['admin'])],
   }, async (request: any) => {
-    const { date } = request.query as { date?: string };
-    const targetDate = date || new Date().toISOString().split('T')[0];
+    const {
+      date,
+      routeId,
+      direction,
+      timeSlot,
+      status: filterStatus,
+      search,
+    } = request.query as {
+      date?: string;
+      routeId?: string;
+      direction?: string;
+      timeSlot?: string;
+      status?: string;
+      search?: string;
+    };
 
-    const tripsList = await db.query.trips.findMany({
-      where: eq(schema.trips.tripDate, targetDate),
+    const conditions: any[] = [];
+    if (date && date !== 'all') {
+      conditions.push(eq(schema.trips.tripDate, date));
+    }
+    if (routeId && routeId !== 'all') {
+      const rid = parseInt(routeId);
+      if (!isNaN(rid)) conditions.push(eq(schema.trips.routeId, rid));
+    }
+    if (direction && direction !== 'all') {
+      conditions.push(eq(schema.trips.direction, direction));
+    }
+    if (timeSlot && timeSlot !== 'all') {
+      conditions.push(eq(schema.trips.timeSlot, timeSlot));
+    }
+
+    const activeTrips = await db.query.trips.findMany({
+      where: conditions.length > 0 ? and(...conditions) : undefined,
       with: {
         bus: true,
         route: true,
@@ -30,30 +59,26 @@ export async function adminRoutes(fastify: FastifyInstance) {
         supervisors: { with: { user: true } },
         bookings: {
           where: inArray(schema.bookings.status, ['confirmed', 'swapped']),
+          with: { user: true },
         },
       },
-      orderBy: desc(schema.trips.departureTime),
+      orderBy: [desc(schema.trips.tripDate), schema.trips.departureTime],
     });
 
-    // If no trips on this specific date yet, fallback to active scheduled trips
-    const activeTrips = tripsList.length > 0 ? tripsList : await db.query.trips.findMany({
-      limit: 15,
-      with: {
-        bus: true,
-        route: true,
-        driver: true,
-        supervisors: { with: { user: true } },
-        bookings: {
-          where: inArray(schema.bookings.status, ['confirmed', 'swapped']),
-        },
-      },
-      orderBy: desc(schema.trips.departureTime),
-    });
-
-    return activeTrips.map(trip => {
-      const bookedSeats = trip.bookings.length;
+    const fleetResults = await Promise.all(activeTrips.map(async (trip) => {
       const capacity = trip.bus?.totalSeats || trip.totalSeats || 50;
-      const percent = Math.min(100, Math.round((bookedSeats / capacity) * 100));
+      const bookedSeats = trip.bookings.length;
+
+      // Check live Redis locks for in-progress held seats
+      let heldSeats = 0;
+      try {
+        const lockKeys = Array.from({ length: capacity }, (_, i) => `seat_lock:${trip.id}:${i + 1}`);
+        const locks = await redis.mget(...lockKeys);
+        heldSeats = locks.filter(Boolean).length;
+      } catch {}
+
+      const freeSeats = Math.max(0, capacity - bookedSeats - heldSeats);
+      const percent = Math.min(100, Math.round(((bookedSeats + heldSeats) / capacity) * 100));
 
       const driverName = trip.driver ? (trip.driver.fullNameAr || trip.driver.fullName) : 'محمد صبحي (Mohamed Sobhi)';
       const driverPhone = trip.driver?.phone || '01021561196';
@@ -61,13 +86,13 @@ export async function adminRoutes(fastify: FastifyInstance) {
       const superName = firstSupervisor ? (firstSupervisor.fullNameAr || firstSupervisor.fullName) : 'ممدوح بدران (Mamdouh Badran)';
       const superPhone = firstSupervisor?.phone || '01275467090';
 
-      let status = 'scheduled';
+      let computedStatus = trip.status || 'scheduled';
       if (bookedSeats >= capacity) {
-        status = 'full';
-      } else if (trip.status === 'in_transit') {
-        status = 'in_transit';
-      } else if (trip.status === 'completed') {
-        status = 'completed';
+        computedStatus = 'full';
+      } else if (heldSeats > 0 && percent >= 75) {
+        computedStatus = 'filling_fast';
+      } else if (bookedSeats > 0) {
+        computedStatus = 'boarding';
       }
 
       return {
@@ -86,11 +111,38 @@ export async function adminRoutes(fastify: FastifyInstance) {
         superName,
         superPhone,
         bookedSeats,
+        heldSeats,
+        freeSeats,
         capacity,
         occupancyPercent: percent,
-        status,
+        status: computedStatus,
+        passengersPreview: trip.bookings.slice(0, 5).map(b => ({
+          seatNumber: b.seatNumber,
+          studentName: b.user?.fullName,
+          academicId: b.user?.academicId || (b.user?.email ? b.user.email.split('@')[0] : 'N/A'),
+        })),
       };
-    });
+    }));
+
+    // Post-filter by status or search text if specified
+    let filtered = fleetResults;
+    if (filterStatus && filterStatus !== 'all') {
+      filtered = filtered.filter(f => f.status === filterStatus);
+    }
+    if (search) {
+      const q = search.toLowerCase().trim();
+      filtered = filtered.filter(f =>
+        f.nameAr.toLowerCase().includes(q) ||
+        f.nameEn.toLowerCase().includes(q) ||
+        f.busName.toLowerCase().includes(q) ||
+        f.licensePlate.toLowerCase().includes(q) ||
+        f.driverName.toLowerCase().includes(q) ||
+        f.superName.toLowerCase().includes(q) ||
+        String(f.tripId).includes(q)
+      );
+    }
+
+    return filtered;
   });
 
   // 2. Rich Comprehensive Audit Logs (with search, filter, and student metadata)
@@ -852,5 +904,168 @@ export async function adminRoutes(fastify: FastifyInstance) {
     });
 
     return { success: true, clonedCount, sourceDate, targetDate };
+  });
+
+  // 10. Purge All Shifts / Clear Fleet (Admin Clean Testing Action)
+  fastify.delete('/api/admin/shifts/purge-all', {
+    preValidation: [(fastify as any).authenticate, requireRole(['admin'])],
+  }, async (request: any, reply) => {
+    const body = (request.body || {}) as any;
+    const query = (request.query || {}) as any;
+    const date = body.date || query.date;
+    const allDates = body.allDates === true || query.allDates === 'true' || (!date && !body.date);
+
+    const conditions = [];
+    if (!allDates && date && date !== 'all') {
+      conditions.push(eq(schema.trips.tripDate, date));
+    }
+
+    const targetTrips = await db.query.trips.findMany({
+      where: conditions.length > 0 ? and(...conditions) : undefined,
+      columns: { id: true },
+    });
+
+    const tripIds = targetTrips.map(t => t.id);
+    if (tripIds.length === 0) {
+      return { success: true, purgedShiftsCount: 0, purgedBookingsCount: 0, message: 'No shifts found to purge.' };
+    }
+
+    // 1. Find all bookings on these trips
+    const targetBookings = await db.query.bookings.findMany({
+      where: inArray(schema.bookings.tripId, tripIds),
+      columns: { id: true },
+    });
+    const bookingIds = targetBookings.map(b => b.id);
+
+    // 2. Cascade delete logs and records
+    if (bookingIds.length > 0) {
+      await db.delete(schema.boardingLogs).where(inArray(schema.boardingLogs.bookingId, bookingIds));
+      await db.delete(schema.swapLogs).where(
+        or(
+          inArray(schema.swapLogs.oldBookingId, bookingIds),
+          inArray(schema.swapLogs.newBookingId, bookingIds)
+        )
+      );
+      await db.delete(schema.bookings).where(inArray(schema.bookings.id, bookingIds));
+    }
+
+    await db.delete(schema.tripSupervisors).where(inArray(schema.tripSupervisors.tripId, tripIds));
+    await db.delete(schema.trips).where(inArray(schema.trips.id, tripIds));
+
+    // Clear Redis seat locks for purged trips
+    try {
+      for (const tid of tripIds) {
+        const keys = await redis.keys(`seat_lock:${tid}:*`);
+        if (keys && keys.length > 0) {
+          await redis.del(...keys);
+        }
+      }
+      // Set flag so auto-generator doesn't immediately resurrect 320 shifts
+      await redis.set('admin_purged_trips_flag', '1', 'EX', 86400);
+    } catch {}
+
+    await logSecurityEvent({
+      userId: request.user.id,
+      action: 'ADMIN_PURGED_SHIFTS',
+      entityType: 'trips',
+      entityId: allDates ? 'ALL_DATES' : (date || 'ALL'),
+      details: { purgedShiftsCount: tripIds.length, purgedBookingsCount: bookingIds.length, date: date || 'all' },
+      ipAddress: request.ip,
+    });
+
+    WebSocketHub.broadcastToAll({
+      type: 'FLEET_PURGED',
+      date: date || 'all',
+      messageAr: 'تم حذف الشفتات بنجاح من قبل مسؤول النظام.',
+      messageEn: 'All shifts have been purged by administrator.',
+    });
+
+    return {
+      success: true,
+      purgedShiftsCount: tripIds.length,
+      purgedBookingsCount: bookingIds.length,
+      date: allDates ? 'ALL' : (date || 'ALL'),
+      message: `Successfully purged ${tripIds.length} shifts and ${bookingIds.length} bookings.`,
+    };
+  });
+
+  // 11. Create Single Clean Test Shift (For isolated testing)
+  fastify.post('/api/admin/shifts/create-single-test-shift', {
+    preValidation: [(fastify as any).authenticate, requireRole(['admin'])],
+  }, async (request: any, reply) => {
+    const body = request.body || {};
+    const targetDate = body.date || new Date().toISOString().split('T')[0];
+    const routeId = body.routeId ? parseInt(body.routeId) : 1;
+    const direction = body.direction || 'to_campus';
+    const timeSlot = body.timeSlot || 'morning_1';
+
+    const route = await db.query.routes.findFirst({
+      where: eq(schema.routes.id, routeId),
+    }) || await db.query.routes.findFirst({ where: eq(schema.routes.isActive, true) });
+
+    if (!route) {
+      return reply.status(400).send({ error: 'No active routes available in system' });
+    }
+
+    const [firstBus] = await db.select().from(schema.buses).limit(1);
+    const [supervisorUser] = await db.select().from(schema.users).where(eq(schema.users.role, 'supervisor')).limit(1);
+
+    const depHour = direction === 'to_campus' ? (timeSlot === 'morning_1' ? 7 : 9) : (timeSlot === 'return_1' ? 12 : 14);
+    const depTime = new Date(`${targetDate}T${String(depHour).padStart(2, '0')}:00:00+02:00`);
+    const retTime = new Date(depTime.getTime() + 2 * 60 * 60 * 1000);
+
+    const [newTrip] = await db.insert(schema.trips).values({
+      routeId: route.id,
+      busId: firstBus ? firstBus.id : 1,
+      driverId: supervisorUser?.id || null,
+      tripDate: targetDate,
+      departureTime: depTime,
+      returnTime: retTime,
+      direction,
+      timeSlot,
+      totalSeats: 50,
+      priceEgp: '160.00',
+      status: 'scheduled',
+      cancellationLockHours: 3,
+    }).returning();
+
+    if (supervisorUser) {
+      await db.insert(schema.tripSupervisors).values({
+        tripId: newTrip.id,
+        userId: supervisorUser.id,
+        assignedRole: 'line_supervisor',
+      }).onConflictDoNothing();
+    }
+
+    try {
+      await redis.del('admin_purged_trips_flag');
+    } catch {}
+
+    await logSecurityEvent({
+      userId: request.user.id,
+      action: 'ADMIN_CREATED_SINGLE_TEST_SHIFT',
+      entityType: 'trip',
+      entityId: String(newTrip.id),
+      details: { tripId: newTrip.id, targetDate, routeId: route.id, timeSlot },
+      ipAddress: request.ip,
+    });
+
+    WebSocketHub.broadcastToAll({
+      type: 'NEW_TRIP_ANNOUNCED',
+      tripId: newTrip.id,
+      routeId: newTrip.routeId,
+      routeNameAr: route.nameAr,
+      routeNameEn: route.nameEn,
+      tripDate: newTrip.tripDate,
+      timeSlot: newTrip.timeSlot,
+      messageAr: `📢 تم إنشاء شفت اختباري مخصص: ${route.nameAr} (${newTrip.tripDate})`,
+      messageEn: `📢 Single test shift created: ${route.nameEn} on ${newTrip.tripDate}`,
+    });
+
+    return {
+      success: true,
+      trip: newTrip,
+      message: `Created single test shift #${newTrip.id} on ${route.nameAr} for ${targetDate}`,
+    };
   });
 }

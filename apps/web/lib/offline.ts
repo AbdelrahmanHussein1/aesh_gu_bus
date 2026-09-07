@@ -334,3 +334,52 @@ export function cloneOfflineSchedule(sourceDate: string, targetDate: string, rou
   addMockAuditLog('SCHEDULE_CLONED', `Cloned ${newTrips.length} shifts from ${sourceDate} to ${targetDate}`);
   return { success: true, count: newTrips.length };
 }
+
+export function purgeOfflineShifts(date?: string): { success: boolean; count: number } {
+  if (typeof window === 'undefined') return { success: true, count: 0 };
+  const existingCustom = getCustomOfflineTrips();
+  let remaining: Trip[] = [];
+  if (date && date !== 'all') {
+    remaining = existingCustom.filter(t => t.tripDate !== date);
+  }
+  saveCustomOfflineTrips(remaining);
+  localStorage.setItem('aesh_offline_purged_flag', 'true');
+  addMockAuditLog('SHIFTS_PURGED', `Purged ${existingCustom.length - remaining.length} offline shifts for ${date || 'all dates'}`);
+  return { success: true, count: existingCustom.length - remaining.length };
+}
+
+export function createSingleOfflineTestShift(date?: string, routeId = 1): { success: boolean; trip: Trip } {
+  const targetDate = date || getTodayDateString();
+  const matchedRoute = ERP_ROUTES.find(r => r.id === routeId) || ERP_ROUTES[0];
+  const driver = PERSONNEL_DIRECTORY['01021561196']; // Mohamed Sobhi
+  const supervisor = PERSONNEL_DIRECTORY['01275467090']; // Mamdouh Badran
+
+  const testTrip: Trip = {
+    id: Date.now(),
+    routeId: matchedRoute.id,
+    tripDate: targetDate,
+    direction: 'to_campus',
+    timeSlot: 'morning_1',
+    priceEgp: 160,
+    departureTime: '07:00 AM',
+    status: 'scheduled',
+    totalSeats: 50,
+    bookedSeats: 0,
+    bus: {
+      name: `${matchedRoute.nameEn}/TestBus-101`,
+      licensePlate: `أ ب ج ${100 + matchedRoute.id}`,
+      totalSeats: 50,
+    },
+    route: matchedRoute,
+    driver,
+    supervisors: supervisor ? [supervisor] : [],
+  };
+
+  const existingCustom = getCustomOfflineTrips();
+  saveCustomOfflineTrips([...existingCustom, testTrip]);
+  if (typeof window !== 'undefined') {
+    localStorage.removeItem('aesh_offline_purged_flag');
+  }
+  addMockAuditLog('TEST_SHIFT_CREATED', `Created single test shift #${testTrip.id} on ${matchedRoute.nameEn} for ${targetDate}`);
+  return { success: true, trip: testTrip };
+}
