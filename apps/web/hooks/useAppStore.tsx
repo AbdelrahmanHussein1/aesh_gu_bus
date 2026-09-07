@@ -4,6 +4,9 @@ import type { Route, Trip, Seat, Booking, AuditLog, GroupedBooking, ManifestEntr
 import type { SupervisorCancellationAlertData } from '@/components/booking/SupervisorCancellationModal';
 import { getMockRoutes, generateMockTrips, generateMockSeats, generateRoundTripSeats, generateMockManifest, generateOfflineBooking, addMockAuditLog, getAuditLogs } from '@/lib/offline';
 import { getApiBaseUrl, getApiUrls } from '@/lib/api';
+import { getTodayDateString } from '@/lib/dateUtils';
+
+export { getTodayDateString } from '@/lib/dateUtils';
 
 interface AppState {
   isAuthLoading: boolean;
@@ -143,7 +146,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [routes, setRoutes] = useState<Route[]>([]);
   const [selectedRouteId, setSelectedRouteId] = useState(29);
   const [selectedDirection, setSelectedDirection] = useState<Direction>('to_campus');
-  const [selectedDate, setSelectedDate] = useState('2026-06-04');
+  const [selectedDate, setSelectedDate] = useState<string>(getTodayDateString());
   const [trips, setTrips] = useState<Trip[]>([]);
   const [activeTrip, setActiveTrip] = useState<Trip | null>(null);
   const [activeArrivalTrip, setActiveArrivalTrip] = useState<Trip | null>(null);

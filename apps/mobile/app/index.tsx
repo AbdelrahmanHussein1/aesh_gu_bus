@@ -102,7 +102,10 @@ export default function AppHome() {
   ]);
   const [selectedRouteId, setSelectedRouteId] = useState(1);
   const [selectedDirection, setSelectedDirection] = useState<'to_campus' | 'from_campus'>('to_campus');
-  const [selectedDate, setSelectedDate] = useState('2026-09-07');
+  const [selectedDate, setSelectedDate] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  });
   const [trips, setTrips] = useState<any[]>([]);
   const [activeTrip, setActiveTrip] = useState<any>(null);
   const [isLoadingTrips, setIsLoadingTrips] = useState(false);

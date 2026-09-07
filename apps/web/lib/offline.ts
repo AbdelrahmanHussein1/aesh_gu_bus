@@ -1,5 +1,6 @@
 import type { Route, Trip, Seat, Booking, ManifestEntry, AuditLog, BookingType, Direction, TimeSlot, PersonnelContact } from './types';
 import { generateBoardingCode } from '@bus-aesh/shared';
+import { getTodayDateString } from './dateUtils';
 
 const ERP_ROUTES: Route[] = [
   { id: 29, nameAr: 'بورتوفيق - السويس', nameEn: 'Port Tawfik (Suez)' },
@@ -284,7 +285,7 @@ export function saveCustomOfflineTrips(trips: Trip[]) {
 export function getOfflineAllTrips(date?: string, routeId?: number): Trip[] {
   const routes = ERP_ROUTES;
   let allTrips: Trip[] = [];
-  const targetDate = date || '2026-06-04';
+  const targetDate = date || getTodayDateString();
 
   // Base generated trips for routes
   routes.forEach(r => {

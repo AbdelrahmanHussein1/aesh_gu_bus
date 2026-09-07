@@ -1,5 +1,7 @@
 'use client';
+import { useMemo, useEffect } from 'react';
 import { useApp } from '@/hooks/useAppStore';
+import { getDynamicOperationalDates, getTodayDateString } from '@/lib/dateUtils';
 
 export default function RouteSelector() {
   const {
@@ -11,17 +13,15 @@ export default function RouteSelector() {
     selectedDate, setSelectedDate,
   } = useApp();
 
-  const OPERATIONAL_DATES = [
-    { date: '2026-06-04', day: '4', month: 'Jun', label: 'THU' },
-    { date: '2026-06-06', day: '6', month: 'Jun', label: 'SAT' },
-    { date: '2026-06-07', day: '7', month: 'Jun', label: 'SUN' },
-    { date: '2026-06-08', day: '8', month: 'Jun', label: 'MON' },
-    { date: '2026-06-09', day: '9', month: 'Jun', label: 'TUE' },
-    { date: '2026-06-10', day: '10', month: 'Jun', label: 'WED' },
-    { date: '2026-06-11', day: '11', month: 'Jun', label: 'THU' },
-    { date: '2026-06-13', day: '13', month: 'Jun', label: 'SAT' },
-    { date: '2026-06-14', day: '14', month: 'Jun', label: 'SUN' },
-  ];
+  const todayStr = useMemo(() => getTodayDateString(), []);
+  const operationalDates = useMemo(() => getDynamicOperationalDates(), []);
+
+  // Ensure rider booking is strictly locked to today's date if initialized to an old or unbookable date
+  useEffect(() => {
+    if (!selectedDate || selectedDate !== todayStr) {
+      setSelectedDate(todayStr);
+    }
+  }, [selectedDate, todayStr, setSelectedDate]);
 
   return (
     <section className="grid grid-cols-1 md:grid-cols-12 gap-gutter bg-surface-container p-6 rounded-xl border border-border-whisper shadow-[0_2px_8px_-2px_rgba(15,23,42,0.05)]">
@@ -102,20 +102,70 @@ export default function RouteSelector() {
 
       {/* Date */}
       <div className="col-span-1 md:col-span-12 flex flex-col gap-2 mt-2 pt-4 border-t border-border-whisper">
-        <label className="text-body-sm text-text-secondary uppercase tracking-wider font-semibold">Operational Dates / مواعيد التشغيل</label>
-        <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-thin">
-          {OPERATIONAL_DATES.map(od => (
-            <button key={od.date} onClick={() => setSelectedDate(od.date)}
-              className={`flex-shrink-0 w-20 p-2.5 rounded-lg border flex flex-col items-center justify-center gap-0.5 transition ${selectedDate === od.date ? 'border-primary-container bg-primary-container/10 text-primary-container font-bold shadow-sm' : 'border-border-whisper bg-surface hover:border-text-secondary text-text-secondary'}`}>
-              <span className="font-label-mono text-[9px] uppercase font-bold">{od.label}</span>
-              <span className="text-lg font-bold">{od.day}</span>
-              <span className="text-[10px]">{od.month}</span>
-            </button>
-          ))}
-          <div className="flex-shrink-0 flex items-center bg-surface border border-border-whisper rounded-lg px-3">
-            <span className="material-symbols-outlined text-text-secondary mr-2 text-sm">calendar_month</span>
-            <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)}
-              className="w-full bg-transparent border-none p-0 text-xs font-semibold text-text-primary focus:outline-none focus:ring-0" />
+        <div className="flex items-center justify-between">
+          <label className="text-body-sm text-text-secondary uppercase tracking-wider font-semibold flex items-center gap-2">
+            <span className="material-symbols-outlined text-base text-primary-container">calendar_month</span>
+            Operational Dates / مواعيد التشغيل
+          </label>
+          <span className="inline-flex items-center gap-1.5 text-xs text-emerald-400 font-semibold bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            الحجز متاح لرحلات اليوم فقط (Same-Day Booking)
+          </span>
+        </div>
+
+        <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-thin pt-2">
+          {operationalDates.map(od => {
+            const isSelected = selectedDate === od.date;
+
+            // Today: The active bookable day with green outline
+            if (od.isToday) {
+              return (
+                <button
+                  key={od.date}
+                  type="button"
+                  onClick={() => setSelectedDate(od.date)}
+                  className={`relative flex-shrink-0 min-w-[115px] p-3 rounded-xl border-2 transition-all flex flex-col items-center justify-center gap-1 border-emerald-500 bg-emerald-500/15 text-emerald-300 ring-2 ring-emerald-500/40 shadow-[0_0_16px_rgba(16,185,129,0.35)] scale-[1.02] cursor-pointer`}
+                  title="اليوم - الحجز متاح الآن"
+                >
+                  <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-500 text-slate-950 shadow-sm flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-slate-950 animate-ping"></span>
+                    TODAY • اليوم
+                  </span>
+                  <span className="text-2xl font-black text-emerald-200 mt-0.5">{od.day}</span>
+                  <span className="text-xs font-bold text-emerald-300">{od.month} • {od.weekdayAr}</span>
+                  <span className="text-[10px] text-emerald-400 font-semibold px-2 py-0.5 rounded bg-emerald-500/20 border border-emerald-500/30 mt-0.5">
+                    متاح للحجز
+                  </span>
+                </button>
+              );
+            }
+
+            // Non-bookable dates: Yesterday, Tomorrow, and future dates
+            return (
+              <div
+                key={od.date}
+                className="relative flex-shrink-0 min-w-[110px] p-3 rounded-xl border border-border-whisper bg-surface/30 opacity-40 cursor-not-allowed flex flex-col items-center justify-center gap-1 select-none grayscale-[50%]"
+                title={od.isYesterday ? 'أمس - انتهى موعد الحجز' : od.isTomorrow ? 'غداً - الحجز غير متاح (الحجز في نفس اليوم فقط)' : 'غير متاح'}
+              >
+                <span className="text-[9px] font-bold text-text-tertiary uppercase tracking-wider">
+                  {od.isYesterday ? 'YESTERDAY • أمس' : od.isTomorrow ? 'TOMORROW • غداً' : od.labelAr}
+                </span>
+                <span className="text-xl font-bold text-text-secondary mt-0.5">{od.day}</span>
+                <span className="text-xs text-text-tertiary font-medium">{od.month} • {od.weekday}</span>
+                <span className="text-[10px] text-text-tertiary font-mono px-1.5 py-0.5 rounded bg-surface border border-border-whisper mt-0.5">
+                  {od.statusBadgeAr}
+                </span>
+              </div>
+            );
+          })}
+
+          {/* Current validated date lock badge */}
+          <div className="flex-shrink-0 flex items-center bg-surface border border-border-whisper rounded-xl px-3 py-2 self-center">
+            <span className="material-symbols-outlined text-emerald-400 mr-2 text-base">verified</span>
+            <div className="flex flex-col">
+              <span className="text-[9px] uppercase tracking-wider text-text-tertiary font-semibold">التاريخ النشط</span>
+              <span className="text-xs font-bold text-emerald-400 font-mono">{selectedDate}</span>
+            </div>
           </div>
         </div>
       </div>

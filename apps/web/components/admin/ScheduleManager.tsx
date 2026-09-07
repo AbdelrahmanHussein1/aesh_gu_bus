@@ -4,18 +4,9 @@ import { useApp } from '@/hooks/useAppStore';
 import type { Trip, Route, TimeSlot, Direction, PersonnelContact } from '@/lib/types';
 import { getOfflineAllTrips, cloneOfflineSchedule, getAllPersonnel, saveCustomOfflineTrips, getCustomOfflineTrips, addMockAuditLog } from '@/lib/offline';
 import { getApiBaseUrl } from '@/lib/api';
+import { getTodayDateString, formatDateString, getScheduleManagerDates } from '@/lib/dateUtils';
 
-const JUNE_DATES = [
-  '2026-06-04',
-  '2026-06-06',
-  '2026-06-07',
-  '2026-06-08',
-  '2026-06-09',
-  '2026-06-10',
-  '2026-06-11',
-  '2026-06-13',
-  '2026-06-14',
-];
+const ADMIN_OPERATIONAL_DATES = getScheduleManagerDates(3, 10);
 
 const SHIFT_OPTIONS: { id: TimeSlot | 'all'; labelAr: string; labelEn: string; time: string }[] = [
   { id: 'all', labelAr: 'جميع الشفتات', labelEn: 'All Shifts', time: 'Full Day' },
@@ -28,7 +19,8 @@ const SHIFT_OPTIONS: { id: TimeSlot | 'all'; labelAr: string; labelEn: string; t
 
 export default function ScheduleManager() {
   const { isOffline, routes, token } = useApp();
-  const [selectedDate, setSelectedDate] = useState('2026-06-04');
+  const todayStr = useMemo(() => getTodayDateString(), []);
+  const [selectedDate, setSelectedDate] = useState(() => getTodayDateString());
   const [selectedShift, setSelectedShift] = useState<TimeSlot | 'all'>('all');
   const [selectedRouteId, setSelectedRouteId] = useState<number | 'all'>('all');
   const [allSchedules, setAllSchedules] = useState<Trip[]>([]);
@@ -44,7 +36,7 @@ export default function ScheduleManager() {
   const [newRouteId, setNewRouteId] = useState<number>(29);
   const [newDirection, setNewDirection] = useState<Direction>('to_campus');
   const [newTimeSlot, setNewTimeSlot] = useState<TimeSlot>('morning_1');
-  const [newTripDate, setNewTripDate] = useState('2026-06-04');
+  const [newTripDate, setNewTripDate] = useState(() => getTodayDateString());
   const [newDepartureTime, setNewDepartureTime] = useState('07:00 AM');
   const [newDriverPhone, setNewDriverPhone] = useState('');
   const [newSupervisorPhone, setNewSupervisorPhone] = useState('');
@@ -52,8 +44,12 @@ export default function ScheduleManager() {
   const [newPrice, setNewPrice] = useState(160);
 
   // Clone Form state
-  const [cloneSourceDate, setCloneSourceDate] = useState('2026-06-04');
-  const [cloneTargetDate, setCloneTargetDate] = useState('2026-06-15');
+  const [cloneSourceDate, setCloneSourceDate] = useState(() => getTodayDateString());
+  const [cloneTargetDate, setCloneTargetDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return formatDateString(d);
+  });
 
   const API_URL = getApiBaseUrl();
 
@@ -342,16 +338,26 @@ export default function ScheduleManager() {
           </div>
 
           <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-thin">
-            {JUNE_DATES.map(date => {
+            {ADMIN_OPERATIONAL_DATES.map(date => {
               const isSelected = selectedDate === date;
-              const dayNum = date.split('-')[2];
+              const isToday = date === todayStr;
+              const d = new Date(date + 'T00:00:00');
+              const dayNum = d.getDate();
+              const monthName = d.toLocaleDateString('en-US', { month: 'short' });
               return (
                 <button
                   key={date}
                   onClick={() => setSelectedDate(date)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 ${isSelected ? 'bg-primary-container text-on-primary-container shadow-sm' : 'bg-surface-container-low text-text-secondary hover:text-text-primary border border-border-whisper'}`}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 ${
+                    isSelected
+                      ? 'bg-primary-container text-on-primary-container shadow-sm'
+                      : isToday
+                      ? 'border-2 border-emerald-500 bg-emerald-500/10 text-emerald-400 font-bold'
+                      : 'bg-surface-container-low text-text-secondary hover:text-text-primary border border-border-whisper'
+                  }`}
                 >
-                  <span>{dayNum} June</span>
+                  <span>{dayNum} {monthName}</span>
+                  {isToday && <span className="text-[10px] text-emerald-400 font-extrabold">(اليوم)</span>}
                   {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping"></span>}
                 </button>
               );
