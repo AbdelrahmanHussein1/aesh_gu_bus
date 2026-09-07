@@ -1,0 +1,121 @@
+================================================================================
+  🚌 BUS AESH (GALALA UNIVERSITY) — PRODUCTION COMMANDS CHEAT SHEET
+================================================================================
+
+All commands are designed for Ubuntu / Linux VirtualBox inside ~/aesh_gu_bus.
+
+--------------------------------------------------------------------------------
+1. START / REBUILD / STOP SERVER
+--------------------------------------------------------------------------------
+
+# Start or Update the full stack (1-Click)
+bash start.sh
+
+# Stop all running containers cleanly
+docker compose down
+
+# Restart the API & Web app container only (Fast restart, keeps DB)
+docker compose restart app
+
+# View live real-time logs of the API and Web App
+docker compose logs -f app
+
+# Check status of all containers
+docker compose ps
+
+
+--------------------------------------------------------------------------------
+2. RESET / PURGE TEST ACCOUNT (aes400196@gu.edu.eg)
+--------------------------------------------------------------------------------
+Use this whenever you want to test the student registration flow from scratch.
+It removes your account, bookings, boarding logs, and verification tokens.
+
+# Purge aes400196 account:
+docker compose exec app node scripts/clean-test-user.mjs aes400196
+
+# Purge any other email:
+docker compose exec app node scripts/clean-test-user.mjs any_other_email@gu.edu.eg
+
+# One-liner direct PostgreSQL purge (Alternative):
+docker compose exec postgres psql -U aesh_user -d aesh_db -c "
+DELETE FROM boarding_logs WHERE booking_id IN (SELECT id FROM bookings WHERE user_id IN (SELECT id FROM users WHERE email ILIKE '%aes400196%'));
+DELETE FROM swap_logs WHERE old_booking_id IN (SELECT id FROM bookings WHERE user_id IN (SELECT id FROM users WHERE email ILIKE '%aes400196%')) OR new_booking_id IN (SELECT id FROM bookings WHERE user_id IN (SELECT id FROM users WHERE email ILIKE '%aes400196%'));
+DELETE FROM audit_logs WHERE user_id IN (SELECT id FROM users WHERE email ILIKE '%aes400196%');
+DELETE FROM bookings WHERE user_id IN (SELECT id FROM users WHERE email ILIKE '%aes400196%');
+DELETE FROM verification_tokens WHERE email ILIKE '%aes400196%' OR academic_id ILIKE '%400196%';
+DELETE FROM users WHERE email ILIKE '%aes400196%';
+"
+
+
+--------------------------------------------------------------------------------
+3. RESET ALL BOOKINGS (Clear all seats for fresh testing)
+--------------------------------------------------------------------------------
+Keeps all buses, routes, drivers, and supervisors, but empties all seats.
+
+# Reset all seats to 100% available:
+docker compose exec app node scripts/reset-all-bookings.mjs
+
+
+--------------------------------------------------------------------------------
+4. VIEW PUBLIC CLOUDFLARE DOMAIN & TUNNEL STATUS
+--------------------------------------------------------------------------------
+
+# Get the current online public HTTPS link:
+docker compose logs cloudflared | grep -o 'https://.*\.trycloudflare\.com'
+
+# View full Cloudflare Tunnel connection logs:
+docker compose logs cloudflared
+
+
+--------------------------------------------------------------------------------
+5. DATABASE INSPECTION & DIRECT PSQL ACCESS
+--------------------------------------------------------------------------------
+
+# Open interactive PostgreSQL terminal:
+docker compose exec -it postgres psql -U aesh_user -d aesh_db
+
+# Useful SQL queries inside psql:
+# View all registered users:
+SELECT id, email, full_name, role, academic_id, is_sheerid_verified FROM users;
+
+# View all bookings:
+SELECT id, seat_number, status, boarding_code, payment_status, leg_type FROM bookings;
+
+# Exit psql:
+\q
+
+
+--------------------------------------------------------------------------------
+6. TEST CREDENTIALS & DEMO ACCOUNTS
+--------------------------------------------------------------------------------
+
+- System Admin:
+  Email    : admin@gu.edu.eg
+  Password : password123
+
+- Line Supervisor (مرافق الخط):
+  Email    : super.abdelbary@gu.edu.eg
+  Password : password123
+
+- Driver (سائق):
+  Email    : driver.sobhi@gu.edu.eg
+  Password : password123
+
+- Student Registration (Real Outlook OTP):
+  Academic Email : aes400196@gu.edu.eg
+  Academic ID    : 400196
+  OTP is sent automatically to your Outlook Webmail via verified Gmail SMTP.
+  (In development fallback, OTP is also printed in `docker compose logs -f app` and code 123456 is accepted).
+
+
+--------------------------------------------------------------------------------
+7. RE-DOWNLOAD & UPDATE FROM WINDOWS HOST
+--------------------------------------------------------------------------------
+If you make changes on Windows and want to pull the latest zip into Ubuntu:
+
+cd ~
+wget -O bus-aesh-linux-vbox.zip http://192.168.1.7:9999/bus-aesh-linux-vbox.zip
+unzip -o bus-aesh-linux-vbox.zip -d aesh_gu_bus
+cd aesh_gu_bus
+bash start.sh
+================================================================================
