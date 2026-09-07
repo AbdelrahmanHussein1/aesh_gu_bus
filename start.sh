@@ -44,7 +44,7 @@ fi
 
 if [ -n "$CLOUDFLARE_TUNNEL_TOKEN" ]; then
     echo "🔒 Using permanent Cloudflare Zero Trust Named Tunnel (Stable & Fixed Domain)..."
-    export CLOUDFLARE_TUNNEL_COMMAND="tunnel run --token ${CLOUDFLARE_TUNNEL_TOKEN}"
+    export CLOUDFLARE_TUNNEL_COMMAND="tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}"
 fi
 
 echo "🚀 Building fresh Docker image (no cache)..."

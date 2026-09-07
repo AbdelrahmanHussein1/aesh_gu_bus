@@ -6,6 +6,8 @@ services:
     ports:
       - "3000:3000"
       - "3001:3001"
+    env_file:
+      - apps/api/.env
     environment:
       - NODE_ENV=production
       - PORT=3000
@@ -24,9 +26,9 @@ services:
   cloudflared:
     image: cloudflare/cloudflared:latest
     restart: unless-stopped
-    command: ${CLOUDFLARE_TUNNEL_COMMAND:-tunnel --no-autoupdate --url http://app:3001}
+    command: ${CLOUDFLARE_TUNNEL_COMMAND:-tunnel --no-autoupdate run --token eyJhIjoiMDgwMGRkZjA5ZTI2ODFkZjliZWZiNmE4OTdjZmIyODYiLCJ0IjoiNjZiYjdlYWMtYTUwMi00OGM3LWI1Y2YtYTk2ZmQ1YzVjZDRjIiwicyI6Ik16QTFORE0zWVRZdFptVmxOUzAwTTJWaUxUZzFOV1l0WXpoaVlqZG1ZelptTXpWayJ9}
     environment:
-      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN:-}
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN:-eyJhIjoiMDgwMGRkZjA5ZTI2ODFkZjliZWZiNmE4OTdjZmIyODYiLCJ0IjoiNjZiYjdlYWMtYTUwMi00OGM3LWI1Y2YtYTk2ZmQ1YzVjZDRjIiwicyI6Ik16QTFORE0zWVRZdFptVmxOUzAwTTJWaUxUZzFOV1l0WXpoaVlqZG1ZelptTXpWayJ9}
     depends_on:
       - app
 

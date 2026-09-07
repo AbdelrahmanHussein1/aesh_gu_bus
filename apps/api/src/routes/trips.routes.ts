@@ -45,7 +45,7 @@ export async function tripsRoutes(fastify: FastifyInstance) {
       conditions.push(eq(schema.trips.timeSlot, timeSlot));
     }
 
-    const activeTrips = await db.query.trips.findMany({
+    let activeTrips = await db.query.trips.findMany({
       where: and(...conditions),
       with: {
         bus: true,
@@ -58,6 +58,89 @@ export async function tripsRoutes(fastify: FastifyInstance) {
         },
       },
     });
+
+    // If no trips exist for this requested date yet, dynamically generate schedules so testing/booking works seamlessly on any date
+    if (activeTrips.length === 0) {
+      const allRoutes = await db.query.routes.findMany({ where: eq(schema.routes.isActive, true), limit: 10 });
+      const [defaultBus] = await db.select().from(schema.buses).limit(1);
+      const [defaultSupervisor] = await db.select().from(schema.users).where(eq(schema.users.role, 'supervisor')).limit(1);
+
+      if (defaultBus && allRoutes.length > 0) {
+        for (const r of allRoutes) {
+          // Morning trip (07:00 AM)
+          const depMorning = new Date(`${date}T07:00:00+02:00`);
+          const arrMorning = new Date(`${date}T09:00:00+02:00`);
+          const [mTrip] = await db.insert(schema.trips).values({
+            routeId: r.id,
+            busId: defaultBus.id,
+            driverId: defaultSupervisor?.id || null,
+            tripDate: date,
+            departureTime: depMorning,
+            returnTime: arrMorning,
+            direction: 'to_campus',
+            timeSlot: 'morning_1',
+            totalSeats: 50,
+            status: 'scheduled',
+            cancellationLockHours: 3,
+          }).onConflictDoNothing().returning();
+
+          if (mTrip && defaultSupervisor) {
+            await db.insert(schema.tripSupervisors).values({
+              tripId: mTrip.id,
+              userId: defaultSupervisor.id,
+              assignedRole: 'line_supervisor',
+            }).onConflictDoNothing();
+          }
+
+          // Return trips (12:30, 14:30, 17:30)
+          const returnSlots = [
+            { slot: 'return_1', hour: 12, min: 30 },
+            { slot: 'return_2', hour: 14, min: 30 },
+            { slot: 'return_3', hour: 17, min: 30 },
+          ];
+          for (const ret of returnSlots) {
+            const depRet = new Date(`${date}T${ret.hour}:${ret.min}:00+02:00`);
+            const arrRet = new Date(depRet.getTime() + 2 * 60 * 60 * 1000);
+            const [rTrip] = await db.insert(schema.trips).values({
+              routeId: r.id,
+              busId: defaultBus.id,
+              driverId: defaultSupervisor?.id || null,
+              tripDate: date,
+              departureTime: depRet,
+              returnTime: arrRet,
+              direction: 'from_campus',
+              timeSlot: ret.slot,
+              totalSeats: 50,
+              status: 'scheduled',
+              cancellationLockHours: 3,
+            }).onConflictDoNothing().returning();
+
+            if (rTrip && defaultSupervisor) {
+              await db.insert(schema.tripSupervisors).values({
+                tripId: rTrip.id,
+                userId: defaultSupervisor.id,
+                assignedRole: 'line_supervisor',
+              }).onConflictDoNothing();
+            }
+          }
+        }
+
+        // Re-query with generated trips
+        activeTrips = await db.query.trips.findMany({
+          where: and(...conditions),
+          with: {
+            bus: true,
+            route: true,
+            driver: true,
+            supervisors: {
+              with: {
+                user: true,
+              },
+            },
+          },
+        });
+      }
+    }
 
     return activeTrips.map(t => ({
       id: t.id,
