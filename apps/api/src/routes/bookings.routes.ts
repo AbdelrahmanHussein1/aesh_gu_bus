@@ -7,6 +7,7 @@ import { eq, and, desc, inArray, sql } from 'drizzle-orm';
 import { WebSocketHub } from '../websocket/hub.js';
 import { EmailService } from '../services/email.service.js';
 import { getHoursUntilDeparture, getTripDepartureDateTime } from '../utils/trip-time.js';
+import { CacheService } from '../services/cache.service.js';
 
 const jwtSecret = process.env.JWT_SECRET || 'super-secret-aesh-key';
 const QR_EXPIRY_HOURS = 24;
@@ -135,6 +136,9 @@ export async function bookingsRoutes(fastify: FastifyInstance) {
       tripId,
       seatNumber,
     });
+
+    await CacheService.invalidateSeatCache(tripId);
+    await CacheService.invalidateTripsAndFleetCache(tripId);
 
     // Send confirmation email
     EmailService.sendConfirmationEmail(userEmail, userName, trip, seatNumber, qrToken, legType, bookingType, booking.paymentId!).catch(err => {
@@ -312,6 +316,10 @@ export async function bookingsRoutes(fastify: FastifyInstance) {
 
     WebSocketHub.broadcastToTripRoom(toCampusTripId, { type: 'seat_booked', tripId: toCampusTripId, seatNumber: toCampusSeatNumber });
     WebSocketHub.broadcastToTripRoom(fromCampusTripId, { type: 'seat_booked', tripId: fromCampusTripId, seatNumber: fromCampusSeatNumber });
+
+    await CacheService.invalidateSeatCache(toCampusTripId);
+    await CacheService.invalidateSeatCache(fromCampusTripId);
+    await CacheService.invalidateTripsAndFleetCache();
 
     EmailService.sendRoundTripEmailConfirmation(
       userEmail,
@@ -557,8 +565,12 @@ export async function bookingsRoutes(fastify: FastifyInstance) {
             bookingId: pairedBooking.id,
             seatNumber: pairedBooking.seatNumber,
           });
+          await CacheService.invalidateSeatCache(pairedBooking.tripId);
         }
       }
+
+      await CacheService.invalidateSeatCache(booking.tripId);
+      await CacheService.invalidateTripsAndFleetCache();
 
       return {
         success: true,
@@ -628,8 +640,12 @@ export async function bookingsRoutes(fastify: FastifyInstance) {
           bookingId: pairedBooking.id,
           seatNumber: pairedBooking.seatNumber,
         });
+        await CacheService.invalidateSeatCache(pairedBooking.tripId);
       }
     }
+
+    await CacheService.invalidateSeatCache(booking.tripId);
+    await CacheService.invalidateTripsAndFleetCache();
 
     return { success: true };
   });

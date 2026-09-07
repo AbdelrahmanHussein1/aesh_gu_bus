@@ -47,6 +47,45 @@ class MemoryRedis {
     return count;
   }
 
+  async keys(pattern: string = '*'): Promise<string[]> {
+    const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*');
+    const regex = new RegExp(`^${escaped}$`);
+    const now = Date.now();
+    const matched: string[] = [];
+    for (const [k, item] of this.store.entries()) {
+      if (item.expiresAt && now > item.expiresAt) {
+        this.store.delete(k);
+        continue;
+      }
+      if (regex.test(k)) {
+        matched.push(k);
+      }
+    }
+    return matched;
+  }
+
+  async ttl(key: string): Promise<number> {
+    const item = this.store.get(key);
+    if (!item) return -2;
+    if (!item.expiresAt) return -1;
+    const diff = item.expiresAt - Date.now();
+    if (diff <= 0) {
+      this.store.delete(key);
+      return -2;
+    }
+    return Math.ceil(diff / 1000);
+  }
+
+  async exists(key: string): Promise<number> {
+    const val = await this.get(key);
+    return val !== null ? 1 : 0;
+  }
+
+  async flushall(): Promise<string> {
+    this.store.clear();
+    return 'OK';
+  }
+
   async quit(): Promise<string> {
     this.store.clear();
     return 'OK';

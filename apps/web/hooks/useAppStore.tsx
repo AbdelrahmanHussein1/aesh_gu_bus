@@ -366,6 +366,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!isOffline && tid) {
       try {
         const res = await fetch(`${apiUrl}/api/trips/${tid}/seats`);
+        if (res.status === 404) {
+          console.warn(`[useAppStore] Trip #${tid} no longer exists on server (404). Clearing stale reference.`);
+          setActiveTrip(null);
+          setActiveArrivalTrip(null);
+          setSeats([]);
+          return;
+        }
         if (res.ok) {
           const data: Seat[] = await res.json();
           setSeats(data);
@@ -401,10 +408,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
     loadSeatMap();
 
     if (!isOffline) {
-      const interval = setInterval(loadSeatMap, 5000);
-      return () => clearInterval(interval);
+      const interval = setInterval(() => {
+        if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+          loadSeatMap();
+        }
+      }, 20000);
+
+      const handleVisibility = () => {
+        if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+          loadSeatMap();
+        }
+      };
+      document.addEventListener('visibilitychange', handleVisibility);
+
+      return () => {
+        clearInterval(interval);
+        document.removeEventListener('visibilitychange', handleVisibility);
+      };
     }
-  }, [user, activeTrip?.id, activeArrivalTrip?.id, isOffline]);
+  }, [user, activeTrip?.id, activeArrivalTrip?.id, isOffline, loadSeatMap]);
 
   useEffect(() => {
     if (!heldExpiresAt) return;
@@ -617,8 +639,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (user && role === 'supervisor') {
       loadSupervisorManifest();
-      const interval = setInterval(loadSupervisorManifest, 3000);
-      return () => clearInterval(interval);
+      const interval = setInterval(() => {
+        if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+          loadSupervisorManifest();
+        }
+      }, 15000);
+
+      const handleVisibility = () => {
+        if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+          loadSupervisorManifest();
+        }
+      };
+      document.addEventListener('visibilitychange', handleVisibility);
+
+      return () => {
+        clearInterval(interval);
+        document.removeEventListener('visibilitychange', handleVisibility);
+      };
     }
   }, [user, role, loadSupervisorManifest]);
 

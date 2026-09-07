@@ -49,6 +49,8 @@ export default function FleetStatus() {
 
   const API_URL = getApiBaseUrl();
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
+  const inFlightRef = useRef(false);
+  const [pollingDisabled, setPollingDisabled] = useState(false);
 
   const showToast = (type: 'success' | 'error', message: string) => {
     setNotification({ type, message });
@@ -57,10 +59,15 @@ export default function FleetStatus() {
 
   // Load fleet data with full filtering support
   const loadFleetData = useCallback(async (silent = false) => {
+    if (inFlightRef.current) return;
     if (!silent) setLoading(true);
     else setSilentRefreshing(true);
 
-    if (!isOffline) {
+    // 1. Guard against unauthorized request loops: if no token, do not call admin live API
+    if (!token || isOffline) {
+      // Fall straight through to offline data without network request
+    } else {
+      inFlightRef.current = true;
       try {
         const params = new URLSearchParams();
         if (selectedDate && selectedDate !== 'all') params.set('date', selectedDate);
@@ -71,9 +78,13 @@ export default function FleetStatus() {
         if (searchQuery.trim()) params.set('search', searchQuery.trim());
 
         const res = await fetch(`${API_URL}/api/admin/fleet?${params.toString()}`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          headers: { Authorization: `Bearer ${token}` },
         });
-        if (res.ok) {
+
+        if (res.status === 401 || res.status === 403) {
+          console.warn('[FleetStatus] 401/403 Unauthorized: stopping fleet polling.');
+          setPollingDisabled(true);
+        } else if (res.ok) {
           const data = await res.json();
           setFleetList(Array.isArray(data) ? data : []);
           setLoading(false);
@@ -82,6 +93,8 @@ export default function FleetStatus() {
         }
       } catch (err) {
         console.warn('Live fleet fetch failed, falling back to simulated fleet store:', err);
+      } finally {
+        inFlightRef.current = false;
       }
     }
 
@@ -187,16 +200,34 @@ export default function FleetStatus() {
     loadFleetData();
   }, [loadFleetData]);
 
-  // Live auto-polling every 3.5 seconds
+  // Visibility-aware background sync (every 25s, pauses when tab is hidden, immediate upon refocus)
   useEffect(() => {
+    if (pollingDisabled || !token || isOffline) return;
+
     pollingRef.current = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        loadFleetData(true);
+      }
+    }, 25000);
+
+    const handleVisibility = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        loadFleetData(true);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    const handleScheduleUpdated = () => {
       loadFleetData(true);
-    }, 3500);
+    };
+    window.addEventListener('schedule_updated', handleScheduleUpdated);
 
     return () => {
       if (pollingRef.current) clearInterval(pollingRef.current);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('schedule_updated', handleScheduleUpdated);
     };
-  }, [loadFleetData]);
+  }, [loadFleetData, pollingDisabled, token, isOffline]);
 
   // Handle Purge Action
   const handlePurgeShifts = async () => {

@@ -6,6 +6,7 @@ import { eq, and, desc, inArray, or, sql } from 'drizzle-orm';
 import { WebSocketHub } from '../websocket/hub.js';
 import { EmailService } from '../services/email.service.js';
 import { getHoursUntilDeparture, getTripDepartureDateTime } from '../utils/trip-time.js';
+import { CacheService } from '../services/cache.service.js';
 
 const jwtSecret = process.env.JWT_SECRET || 'super-secret-aesh-key';
 const QR_EXPIRY_HOURS = 24;
@@ -132,6 +133,10 @@ export async function supervisorRoutes(fastify: FastifyInstance) {
     ).catch(err => {
       console.error('Swap email notification failed:', err.message);
     });
+
+    await CacheService.invalidateSeatCache(oldBooking.tripId);
+    await CacheService.invalidateSeatCache(targetTripId);
+    await CacheService.invalidateTripsAndFleetCache();
 
     return { success: true, newQrToken };
   });
@@ -267,6 +272,9 @@ export async function supervisorRoutes(fastify: FastifyInstance) {
 
     WebSocketHub.broadcastToTripRoom(booking.tripId, boardedEvent);
     WebSocketHub.sendToUser(booking.userId, boardedEvent);
+
+    await CacheService.invalidateSeatCache(booking.tripId);
+    await CacheService.invalidateTripsAndFleetCache(booking.tripId);
 
     return {
       success: true,
@@ -482,8 +490,12 @@ export async function supervisorRoutes(fastify: FastifyInstance) {
           bookingId: pairedBooking.id,
           seatNumber: pairedBooking.seatNumber,
         });
+        await CacheService.invalidateSeatCache(pairedBooking.tripId);
       }
     }
+
+    await CacheService.invalidateSeatCache(booking.tripId);
+    await CacheService.invalidateTripsAndFleetCache();
 
     return {
       success: true,

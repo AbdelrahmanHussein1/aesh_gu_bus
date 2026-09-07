@@ -5,6 +5,7 @@ import { eq, and, or, desc, inArray } from 'drizzle-orm';
 import { WebSocketHub } from '../websocket/hub.js';
 import { redis } from '../redis.js';
 import { logSecurityEvent } from '../services/audit.service.js';
+import { CacheService } from '../services/cache.service.js';
 
 const requireRole = (roles: string[]) => async (request: any, reply: any) => {
   const user = request.user;
@@ -34,6 +35,12 @@ export async function adminRoutes(fastify: FastifyInstance) {
       status?: string;
       search?: string;
     };
+
+    const cacheKey = `cache:fleet:${date || 'all'}:${routeId || 'all'}:${direction || 'all'}:${timeSlot || 'all'}:${filterStatus || 'all'}:${search || 'none'}`;
+    const cached = await CacheService.getCache<any[]>(cacheKey);
+    if (cached) {
+      return cached;
+    }
 
     const conditions: any[] = [];
     if (date && date !== 'all') {
@@ -142,6 +149,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
       );
     }
 
+    await CacheService.setCache(cacheKey, filtered, 30);
     return filtered;
   });
 
@@ -208,6 +216,12 @@ export async function adminRoutes(fastify: FastifyInstance) {
     const tid = parseInt(tripId);
     if (isNaN(tid)) {
       return reply.status(400).send({ error: 'Invalid tripId' });
+    }
+
+    const cacheKey = `cache:seat_details:${tid}`;
+    const cached = await CacheService.getCache<any>(cacheKey);
+    if (cached) {
+      return cached;
     }
 
     const trip = await db.query.trips.findFirst({
@@ -343,7 +357,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
       }
     });
 
-    return {
+    const responsePayload = {
       trip: {
         id: trip.id,
         tripDate: trip.tripDate,
@@ -386,6 +400,9 @@ export async function adminRoutes(fastify: FastifyInstance) {
       },
       seats: seatDetails,
     };
+
+    await CacheService.setCache(cacheKey, responsePayload, 5);
+    return responsePayload;
   });
 
   // 2.2. Database Explorer: Users
@@ -521,6 +538,8 @@ export async function adminRoutes(fastify: FastifyInstance) {
       ipAddress: request.ip,
     });
 
+    await CacheService.invalidateTripsAndFleetCache();
+
     return { success: true, message: `Successfully cleaned ${email} and all associated test records.` };
   });
 
@@ -577,6 +596,13 @@ export async function adminRoutes(fastify: FastifyInstance) {
     preValidation: [(fastify as any).authenticate, requireRole(['admin'])],
   }, async (request: any) => {
     const { date, routeId } = request.query as { date?: string; routeId?: string };
+
+    const cacheKey = `cache:schedules:${date || 'all'}:${routeId || 'all'}`;
+    const cached = await CacheService.getCache<any[]>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
     const conditions: any[] = [];
     if (date) conditions.push(eq(schema.trips.tripDate, date));
     if (routeId) {
@@ -613,7 +639,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
       countMap.set(b.tripId, (countMap.get(b.tripId) || 0) + 1);
     }
 
-    return allTrips.map(t => ({
+    const result = allTrips.map(t => ({
       id: t.id,
       routeId: t.routeId,
       tripDate: t.tripDate,
@@ -641,6 +667,9 @@ export async function adminRoutes(fastify: FastifyInstance) {
         phone: s.user.phone || '',
       })) || [],
     }));
+
+    await CacheService.setCache(cacheKey, result, 60);
+    return result;
   });
 
   // 5. Personnel
@@ -740,6 +769,8 @@ export async function adminRoutes(fastify: FastifyInstance) {
       console.warn('[Admin] Failed to broadcast new trip notification:', e);
     }
 
+    await CacheService.invalidateTripsAndFleetCache(newTrip.id);
+
     return { success: true, trip: newTrip };
   });
 
@@ -786,6 +817,8 @@ export async function adminRoutes(fastify: FastifyInstance) {
       details: updateData,
     });
 
+    await CacheService.invalidateTripsAndFleetCache(tripId);
+
     return { success: true };
   });
 
@@ -819,6 +852,8 @@ export async function adminRoutes(fastify: FastifyInstance) {
       entityId: String(tripId),
       details: { tripId, activeBookingsCount: existingBookings.length },
     });
+
+    await CacheService.invalidateTripsAndFleetCache(tripId);
 
     return { success: true };
   });
@@ -903,6 +938,8 @@ export async function adminRoutes(fastify: FastifyInstance) {
       });
     });
 
+    await CacheService.invalidateTripsAndFleetCache();
+
     return { success: true, clonedCount, sourceDate, targetDate };
   });
 
@@ -979,6 +1016,8 @@ export async function adminRoutes(fastify: FastifyInstance) {
       messageAr: 'تم حذف الشفتات بنجاح من قبل مسؤول النظام.',
       messageEn: 'All shifts have been purged by administrator.',
     });
+
+    await CacheService.invalidateTripsAndFleetCache();
 
     return {
       success: true,
@@ -1061,6 +1100,8 @@ export async function adminRoutes(fastify: FastifyInstance) {
       messageAr: `📢 تم إنشاء شفت اختباري مخصص: ${route.nameAr} (${newTrip.tripDate})`,
       messageEn: `📢 Single test shift created: ${route.nameEn} on ${newTrip.tripDate}`,
     });
+
+    await CacheService.invalidateTripsAndFleetCache(newTrip.id);
 
     return {
       success: true,

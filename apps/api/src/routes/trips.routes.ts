@@ -5,6 +5,7 @@ import { redis } from '../redis.js';
 import { eq, and, inArray } from 'drizzle-orm';
 import { WebSocketHub } from '../websocket/hub.js';
 import { logSecurityEvent } from '../services/audit.service.js';
+import { CacheService } from '../services/cache.service.js';
 
 export async function tripsRoutes(fastify: FastifyInstance) {
   // 1. Fetch routes and stops
@@ -29,6 +30,12 @@ export async function tripsRoutes(fastify: FastifyInstance) {
     };
     if (!date) {
       return reply.status(400).send({ error: 'Missing date query parameter' });
+    }
+
+    const cacheKey = `cache:trips:${date}:${routeId || 'all'}:${direction || 'all'}:${timeSlot || 'all'}`;
+    const cached = await CacheService.getCache<any[]>(cacheKey);
+    if (cached) {
+      return cached;
     }
 
     const conditions = [
@@ -147,7 +154,7 @@ export async function tripsRoutes(fastify: FastifyInstance) {
       }
     }
 
-    return activeTrips.map(t => ({
+    const result = activeTrips.map(t => ({
       id: t.id,
       routeId: t.routeId,
       tripDate: t.tripDate,
@@ -172,6 +179,9 @@ export async function tripsRoutes(fastify: FastifyInstance) {
         phone: s.user.phone || '',
       })) || [],
     }));
+
+    await CacheService.setCache(cacheKey, result, 60);
+    return result;
   });
 
   // 3. Fetch live seat map for a trip (DB confirmed + Redis temporary locks)
@@ -180,6 +190,12 @@ export async function tripsRoutes(fastify: FastifyInstance) {
     const id = parseInt(tripId);
     if (isNaN(id)) {
       return reply.status(400).send({ error: 'Invalid tripId' });
+    }
+
+    const cacheKey = `cache:trip_seats:${id}`;
+    const cached = await CacheService.getCache<any[]>(cacheKey);
+    if (cached) {
+      return cached;
     }
 
     const trip = await db.query.trips.findFirst({
@@ -216,6 +232,7 @@ export async function tripsRoutes(fastify: FastifyInstance) {
       }
     });
 
+    await CacheService.setCache(cacheKey, seatMap, 5);
     return seatMap;
   });
 
@@ -268,6 +285,8 @@ export async function tripsRoutes(fastify: FastifyInstance) {
         ipAddress: request.ip,
       });
 
+      await CacheService.invalidateSeatCache(tid);
+
       return { success: true, expiresAt: Date.now() + 300000 };
     } else {
       return reply.status(409).send({
@@ -310,6 +329,8 @@ export async function tripsRoutes(fastify: FastifyInstance) {
         details: { tripId: tid, seatNumber: sn },
         ipAddress: request.ip,
       });
+
+      await CacheService.invalidateSeatCache(tid);
 
       return { success: true };
     } else {

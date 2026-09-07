@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useApp } from '@/hooks/useAppStore';
 import { getApiBaseUrl, getApiUrls } from '@/lib/api';
@@ -19,6 +19,9 @@ export default function BusSeatInspectorModal({ tripId, onClose }: BusSeatInspec
   const [notification, setNotification] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | 'booked' | 'held' | 'free'>('all');
   const [lastSyncTime, setLastSyncTime] = useState<Date>(new Date());
+  const [pollingDisabled, setPollingDisabled] = useState(false);
+  const [tripNotFound, setTripNotFound] = useState(false);
+  const inFlightRef = useRef(false);
 
   const API_URL = getApiBaseUrl();
 
@@ -28,12 +31,33 @@ export default function BusSeatInspectorModal({ tripId, onClose }: BusSeatInspec
 
   // Load seat details from backend or offline mock with silent background reload support
   const loadSeatDetails = useCallback(async (showSpinner = true) => {
+    if (inFlightRef.current) return;
     if (showSpinner) setLoading(true);
-    if (!isOffline) {
+
+    if (!token || isOffline) {
+      // offline simulation fallback below
+    } else {
+      inFlightRef.current = true;
       try {
         const res = await fetch(`${API_URL}/api/admin/trips/${tripId}/seat-details`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          headers: { Authorization: `Bearer ${token}` },
         });
+
+        if (res.status === 404) {
+          console.warn(`[SeatInspector] Trip #${tripId} not found (404). Stopping polling.`);
+          setTripNotFound(true);
+          setPollingDisabled(true);
+          setLoading(false);
+          return;
+        }
+
+        if (res.status === 401 || res.status === 403) {
+          console.warn('[SeatInspector] Unauthorized (401/403). Stopping polling.');
+          setPollingDisabled(true);
+          setLoading(false);
+          return;
+        }
+
         if (res.ok) {
           const data = await res.json();
           setTripData(data.trip);
@@ -54,6 +78,8 @@ export default function BusSeatInspectorModal({ tripId, onClose }: BusSeatInspec
         }
       } catch (err) {
         console.warn('Live seat details fetch failed, falling back to offline simulation:', err);
+      } finally {
+        inFlightRef.current = false;
       }
     }
 
@@ -198,13 +224,28 @@ export default function BusSeatInspectorModal({ tripId, onClose }: BusSeatInspec
     };
   }, [tripId, isOffline, loadSeatDetails]);
 
-  // 2. Continuous real-time background polling (every 1.5s) to guarantee instantaneous state synchronization
+  // 2. Visibility-aware background fallback sync (every 20s; real-time push arrives via WebSockets in 0ms)
   useEffect(() => {
+    if (pollingDisabled || tripNotFound || isOffline) return;
+
     const interval = setInterval(() => {
-      loadSeatDetails(false);
-    }, 1500);
-    return () => clearInterval(interval);
-  }, [loadSeatDetails]);
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        loadSeatDetails(false);
+      }
+    }, 20000);
+
+    const handleVisibility = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        loadSeatDetails(false);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [loadSeatDetails, pollingDisabled, tripNotFound, isOffline]);
 
   // 3. Local browser tab synchronization (storage & custom events)
   useEffect(() => {
@@ -346,6 +387,22 @@ export default function BusSeatInspectorModal({ tripId, onClose }: BusSeatInspec
               className="text-emerald-400/70 hover:text-emerald-300 text-xs font-bold"
             >
               إغلاق
+            </button>
+          </div>
+        )}
+
+        {/* Purged / Not Found Warning */}
+        {tripNotFound && (
+          <div className="px-4 py-3 bg-amber-500/15 border-b border-amber-500/30 text-amber-200 text-xs font-semibold flex items-center justify-between animate-in slide-in-from-top-2 duration-200">
+            <div className="flex items-center gap-2">
+              <span className="material-symbols-outlined text-base text-amber-400">warning</span>
+              <span>⚠️ هذه الرحلة لم تعد متوفرة في جدول التشغيل (تم مسحها أو إلغاؤها) • This trip is no longer active in the roster.</span>
+            </div>
+            <button
+              onClick={onClose}
+              className="px-2.5 py-1 bg-amber-500 text-black rounded text-[11px] font-bold hover:bg-amber-400"
+            >
+              إغلاق النافذة
             </button>
           </div>
         )}

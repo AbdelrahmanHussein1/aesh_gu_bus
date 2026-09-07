@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useApp } from '@/hooks/useAppStore';
 import type { Trip, Route, TimeSlot, Direction, PersonnelContact } from '@/lib/types';
 import { getOfflineAllTrips, cloneOfflineSchedule, getAllPersonnel, saveCustomOfflineTrips, getCustomOfflineTrips, addMockAuditLog, purgeOfflineShifts, createSingleOfflineTestShift } from '@/lib/offline';
@@ -36,6 +36,8 @@ export default function ScheduleManager() {
   const [purging, setPurging] = useState(false);
   const [inspectingTripId, setInspectingTripId] = useState<number | null>(null);
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [pollingDisabled, setPollingDisabled] = useState(false);
+  const inFlightRef = useRef(false);
 
   // New Trip Form state
   const [newRouteId, setNewRouteId] = useState<number>(29);
@@ -60,26 +62,46 @@ export default function ScheduleManager() {
 
   // Fetch schedules
   const loadSchedules = useCallback(async (silent = false) => {
+    if (inFlightRef.current) return;
     if (!silent) setLoading(true);
-    if (!isOffline) {
-      try {
-        const res = await fetch(`${API_URL}/api/admin/schedules?date=${selectedDate}${selectedRouteId !== 'all' ? `&routeId=${selectedRouteId}` : ''}`, {
-          headers: token ? { 'Authorization': `Bearer ${token}` } : {},
-        });
-        if (res.ok) {
-          const data = await res.json();
-          setAllSchedules(data);
-          if (!silent) setLoading(false);
-          return;
-        }
-      } catch (err) {
-        console.warn('Live API fetch failed, using offline fallback', err);
-      }
+
+    // 1. Guard against unauthorized request loops: if no token, do not call admin live API
+    if (!token || isOffline) {
+      const offlineTrips = getOfflineAllTrips(selectedDate, selectedRouteId === 'all' ? undefined : selectedRouteId);
+      setAllSchedules(offlineTrips);
+      if (!silent) setLoading(false);
+      return;
     }
+
+    inFlightRef.current = true;
+    try {
+      const res = await fetch(`${API_URL}/api/admin/schedules?date=${selectedDate}${selectedRouteId !== 'all' ? `&routeId=${selectedRouteId}` : ''}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (res.status === 401 || res.status === 403) {
+        console.warn('[ScheduleManager] 401/403 Unauthorized: halting polling loop.');
+        setPollingDisabled(true);
+        const offlineTrips = getOfflineAllTrips(selectedDate, selectedRouteId === 'all' ? undefined : selectedRouteId);
+        setAllSchedules(offlineTrips);
+        return;
+      }
+
+      if (res.ok) {
+        const data = await res.json();
+        setAllSchedules(Array.isArray(data) ? data : []);
+        return;
+      }
+    } catch (err) {
+      console.warn('Live API fetch failed, using offline fallback', err);
+    } finally {
+      inFlightRef.current = false;
+      if (!silent) setLoading(false);
+    }
+
     // Fallback offline trips
     const offlineTrips = getOfflineAllTrips(selectedDate, selectedRouteId === 'all' ? undefined : selectedRouteId);
     setAllSchedules(offlineTrips);
-    if (!silent) setLoading(false);
   }, [API_URL, isOffline, selectedDate, selectedRouteId, token]);
 
   // Load personnel directory
@@ -94,13 +116,34 @@ export default function ScheduleManager() {
     loadSchedules();
   }, [loadSchedules]);
 
-  // Background live sync polling every 3.5s
+  // Visibility-aware background sync (every 25s, pauses when tab is hidden, immediate upon refocus)
   useEffect(() => {
+    if (pollingDisabled || !token || isOffline) return;
+
     const timer = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        loadSchedules(true);
+      }
+    }, 25000);
+
+    const handleVisibility = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        loadSchedules(true);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    const handleScheduleUpdated = () => {
       loadSchedules(true);
-    }, 3500);
-    return () => clearInterval(timer);
-  }, [loadSchedules]);
+    };
+    window.addEventListener('schedule_updated', handleScheduleUpdated);
+
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('schedule_updated', handleScheduleUpdated);
+    };
+  }, [loadSchedules, pollingDisabled, token, isOffline]);
 
   // Filtered schedules
   const filteredTrips = useMemo(() => {
