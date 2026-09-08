@@ -73,7 +73,12 @@ console.log('🗜️ Compressing Linux VBox release archive...');
 const zipFile = path.join(distReleaseDir, `${releaseName}.zip`);
 
 if (process.platform === 'win32') {
-  execSync(`powershell -Command "Compress-Archive -Path '${stageDir}\\*' -DestinationPath '${zipFile}' -Force"`, { stdio: 'inherit' });
+  try {
+    if (fs.existsSync(zipFile)) fs.unlinkSync(zipFile);
+    execSync(`tar -a -c -f "${zipFile}" -C "${stageDir}" .`, { stdio: 'inherit' });
+  } catch {
+    execSync(`powershell -Command "Compress-Archive -Path '${stageDir}\\*' -DestinationPath '${zipFile}' -Force"`, { stdio: 'inherit' });
+  }
 } else {
   execSync(`cd "${distReleaseDir}" && zip -r "${releaseName}.zip" "${releaseName}"`, { stdio: 'inherit' });
 }

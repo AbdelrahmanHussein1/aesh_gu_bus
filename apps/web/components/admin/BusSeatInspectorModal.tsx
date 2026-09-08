@@ -3,6 +3,9 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useApp } from '@/hooks/useAppStore';
 import { getApiBaseUrl, getApiUrls } from '@/lib/api';
+import BoardingManifestPdfModal from '../supervisor/BoardingManifestPdfModal';
+import { checkManifestUnlock } from '@/lib/manifest-unlock';
+import type { ManifestItem } from '@/lib/types';
 
 interface BusSeatInspectorModalProps {
   tripId: number;
@@ -21,6 +24,7 @@ export default function BusSeatInspectorModal({ tripId, onClose }: BusSeatInspec
   const [lastSyncTime, setLastSyncTime] = useState<Date>(new Date());
   const [pollingDisabled, setPollingDisabled] = useState(false);
   const [tripNotFound, setTripNotFound] = useState(false);
+  const [showPdfModal, setShowPdfModal] = useState(false);
   const inFlightRef = useRef(false);
 
   const API_URL = getApiBaseUrl();
@@ -284,6 +288,33 @@ export default function BusSeatInspectorModal({ tripId, onClose }: BusSeatInspec
   const heldCount = useMemo(() => seats.filter(s => s.status === 'held').length, [seats]);
   const freeCount = useMemo(() => seats.filter(s => s.status === 'free').length, [seats]);
 
+  const inspectorManifest: ManifestItem[] = useMemo(() => {
+    return seats
+      .filter(s => s.booking)
+      .map(s => ({
+        bookingId: s.booking.id,
+        seatNumber: s.seatNumber,
+        status: 'confirmed',
+        bookingType: s.booking.bookingType || 'one_way',
+        legType: s.booking.legType || 'to_campus',
+        paymentStatus: s.booking.paymentStatus || 'paid',
+        receiptRef: s.booking.receiptRef || '—',
+        riderName: s.booking.student?.name || s.booking.riderName || 'Galala Student',
+        riderEmail: s.booking.student?.email || s.booking.riderEmail || 'student@gu.edu.eg',
+        academicId: s.booking.student?.academicId || '—',
+        faculty: s.booking.student?.faculty || '—',
+        phone: s.booking.student?.phone || '—',
+        boardingCode: s.booking.boardingCode || ('GU-' + s.seatNumber),
+        isBoarded: Boolean(s.booking.isBoarded || s.booking.boardingStatus === 'boarded' || s.booking.qrUsedAt),
+        boardedAt: s.booking.boardedAt || s.booking.qrUsedAt || null,
+      }));
+  }, [seats]);
+
+  const unlockStatus = useMemo(() => {
+    const boardedCount = inspectorManifest.filter(m => m.isBoarded).length;
+    return checkManifestUnlock(tripData, boardedCount);
+  }, [tripData, inspectorManifest]);
+
   if (!mounted) return null;
 
   return createPortal(
@@ -328,6 +359,28 @@ export default function BusSeatInspectorModal({ tripId, onClose }: BusSeatInspec
                 </div>
               </div>
             )}
+            {/* Official Boarding Manifest PDF Button */}
+            <button
+              type="button"
+              onClick={() => setShowPdfModal(true)}
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-sm cursor-pointer ${
+                unlockStatus.isUnlocked
+                  ? 'bg-blue-600 hover:bg-blue-700 text-white active:scale-95'
+                  : 'bg-surface text-text-secondary border border-border-whisper hover:border-blue-500/50'
+              }`}
+              title={unlockStatus.isUnlocked ? unlockStatus.reasonEn : unlockStatus.reasonAr}
+            >
+              <span className="material-symbols-outlined text-base">
+                {unlockStatus.isUnlocked ? 'picture_as_pdf' : 'lock'}
+              </span>
+              <span>{unlockStatus.isUnlocked ? 'Boarding PDF' : 'Boarding PDF'}</span>
+              {!unlockStatus.isUnlocked && (
+                <span className="text-[10px] bg-amber-500/15 text-amber-400 px-1 rounded font-mono font-normal">
+                  {unlockStatus.unlockTimeFormatted}
+                </span>
+              )}
+            </button>
+
             <button
               onClick={onClose}
               className="w-9 h-9 rounded-xl hover:bg-surface-container-high text-text-secondary hover:text-text-primary flex items-center justify-center transition-colors border border-border-whisper"
@@ -731,6 +784,16 @@ export default function BusSeatInspectorModal({ tripId, onClose }: BusSeatInspec
           </div>
         </div>
       </div>
+
+      {showPdfModal && (
+        <BoardingManifestPdfModal
+          trip={tripData}
+          manifest={inspectorManifest}
+          onClose={() => setShowPdfModal(false)}
+          supervisorName={tripData?.supervisors?.[0]?.nameEn || tripData?.supervisors?.[0]?.nameAr || 'Galala Line Supervisor'}
+          supervisorEmail={tripData?.supervisors?.[0]?.email || 'supervisor@gu.edu.eg'}
+        />
+      )}
     </div>,
     document.body
   );

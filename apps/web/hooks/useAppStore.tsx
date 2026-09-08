@@ -393,7 +393,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setSeats(generateMockSeats(activeTrip.id, user?.id || ''));
       } else { setSeats([]); }
     }
-  }, [user, activeTrip, activeArrivalTrip, activeReturnTrip, bookingType, isOffline]);
+  }, [user?.id, activeTrip?.id, activeArrivalTrip?.id, activeReturnTrip?.id, bookingType, isOffline]);
 
   useEffect(() => {
     if (!user) {
@@ -408,11 +408,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     loadSeatMap();
 
     if (!isOffline) {
+      // Relaxed heartbeat fallback: real-time updates arrive instantly via WebSocket
       const interval = setInterval(() => {
         if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
           loadSeatMap();
         }
-      }, 20000);
+      }, 45000);
 
       const handleVisibility = () => {
         if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
@@ -426,7 +427,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         document.removeEventListener('visibilitychange', handleVisibility);
       };
     }
-  }, [user, activeTrip?.id, activeArrivalTrip?.id, isOffline, loadSeatMap]);
+  }, [user?.id, activeTrip?.id, activeArrivalTrip?.id, isOffline]);
 
   useEffect(() => {
     if (!heldExpiresAt) return;
@@ -634,7 +635,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } else {
       setSupervisorManifest(generateMockManifest(tid));
     }
-  }, [activeTrip, activeArrivalTrip, isOffline, token]);
+  }, [activeTrip?.id, activeArrivalTrip?.id, isOffline, token]);
 
   useEffect(() => {
     if (user && role === 'supervisor') {
@@ -643,7 +644,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
           loadSupervisorManifest();
         }
-      }, 15000);
+      }, 45000);
 
       const handleVisibility = () => {
         if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
@@ -657,7 +658,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         document.removeEventListener('visibilitychange', handleVisibility);
       };
     }
-  }, [user, role, loadSupervisorManifest]);
+  }, [user?.id, role, activeTrip?.id, activeArrivalTrip?.id, isOffline, token]);
 
   // Fetch real user bookings from database
   const getUserBookings = useCallback(async () => {

@@ -42,7 +42,7 @@ export default function SideNavBar() {
       </div>
 
       <div className="flex-1 overflow-y-auto px-3 py-4 space-y-4 scrollbar-thin">
-        {!sidebarCollapsed && (
+        {!sidebarCollapsed && role === 'rider' && (
           <Link href="/rider" className="bg-primary-container text-on-primary-container font-headline-sm py-3 rounded-lg w-full flex justify-center items-center gap-2 hover:opacity-90 transition-opacity">
             <span className="material-symbols-outlined icon-fill text-[20px]">add</span>
             New Booking

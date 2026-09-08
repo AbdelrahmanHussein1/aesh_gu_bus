@@ -73,7 +73,7 @@ export async function tripsRoutes(fastify: FastifyInstance) {
 
     // Only auto-generate if no trips exist AND admin hasn't explicitly purged the roster
     if (activeTrips.length === 0 && !isPurged && autoSeed !== 'false') {
-      const allRoutes = await db.query.routes.findMany({ where: eq(schema.routes.isActive, true), limit: 10 });
+      const allRoutes = await db.query.routes.findMany({ where: eq(schema.routes.isActive, true) });
       const [defaultBus] = await db.select().from(schema.buses).limit(1);
       const [defaultSupervisor] = await db.select().from(schema.users).where(eq(schema.users.role, 'supervisor')).limit(1);
 

@@ -64,10 +64,7 @@ export default function LoginForm({ onSwitchTab }: Props) {
       </div>
 
       <div className="flex flex-col gap-2">
-        <div className="flex justify-between items-center">
-          <label className="font-body-sm text-body-sm text-text-primary font-medium" htmlFor="password">Password</label>
-          <button type="button" onClick={() => onSwitchTab('forgot-password')} className="font-body-sm text-body-sm text-primary-container hover:underline">Forgot password?</button>
-        </div>
+        <label className="font-body-sm text-body-sm text-text-primary font-medium" htmlFor="password">Password</label>
         <div className="relative">
           <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary text-lg">lock</span>
           <input

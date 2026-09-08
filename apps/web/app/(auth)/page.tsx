@@ -2,10 +2,9 @@
 import { useState, useEffect } from 'react';
 import LoginForm from '@/components/auth/LoginForm';
 import RegisterForm from '@/components/auth/RegisterForm';
-import ForgotPasswordForm from '@/components/auth/ForgotPasswordForm';
 import { useApp } from '@/hooks/useAppStore';
 
-type AuthView = 'login' | 'register' | 'forgot';
+type AuthView = 'login' | 'register';
 
 export default function AuthPage() {
   const { user, isAuthLoading } = useApp();
@@ -38,38 +37,35 @@ export default function AuthPage() {
         </div>
 
         <div className="bg-surface-container rounded-xl border border-border-whisper p-6 shadow-[0_2px_8px_-2px_rgba(15,23,42,0.05)]">
-          {authView !== 'forgot' && (
-            <div className="grid grid-cols-2 gap-2 p-1.5 bg-surface-container-low rounded-xl border border-border-whisper mb-6">
-              <button
-                type="button"
-                onClick={() => setAuthView('login')}
-                className={`py-2.5 px-3 text-xs rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                  authView === 'login'
-                    ? 'bg-primary-container text-on-primary-container font-bold shadow-md ring-1 ring-primary-container/50'
-                    : 'bg-surface-bright text-text-primary font-semibold hover:bg-surface-container-high border border-border-whisper hover:border-primary-container/40'
-                }`}
-              >
-                <span className="material-symbols-outlined text-base">login</span>
-                <span>Sign In (دخول)</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setAuthView('register')}
-                className={`py-2.5 px-3 text-xs rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                  authView === 'register'
-                    ? 'bg-primary-container text-on-primary-container font-bold shadow-md ring-1 ring-primary-container/50'
-                    : 'bg-surface-bright text-text-primary font-semibold hover:bg-surface-container-high border border-border-whisper hover:border-primary-container/40'
-                }`}
-              >
-                <span className="material-symbols-outlined text-base">person_add</span>
-                <span>New Student (تسجيل طالب جديد)</span>
-              </button>
-            </div>
-          )}
+          <div className="grid grid-cols-2 gap-2 p-1.5 bg-surface-container-low rounded-xl border border-border-whisper mb-6">
+            <button
+              type="button"
+              onClick={() => setAuthView('login')}
+              className={`py-2.5 px-3 text-xs rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                authView === 'login'
+                  ? 'bg-primary-container text-on-primary-container font-bold shadow-md ring-1 ring-primary-container/50'
+                  : 'bg-surface-bright text-text-primary font-semibold hover:bg-surface-container-high border border-border-whisper hover:border-primary-container/40'
+              }`}
+            >
+              <span className="material-symbols-outlined text-base">login</span>
+              <span>Sign In (دخول)</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setAuthView('register')}
+              className={`py-2.5 px-3 text-xs rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                authView === 'register'
+                  ? 'bg-primary-container text-on-primary-container font-bold shadow-md ring-1 ring-primary-container/50'
+                  : 'bg-surface-bright text-text-primary font-semibold hover:bg-surface-container-high border border-border-whisper hover:border-primary-container/40'
+              }`}
+            >
+              <span className="material-symbols-outlined text-base">person_add</span>
+              <span>New Student (تسجيل طالب جديد)</span>
+            </button>
+          </div>
 
           {authView === 'login' && <LoginForm onSwitchTab={(t) => setAuthView(t as AuthView)} />}
           {authView === 'register' && <RegisterForm onSwitchTab={(t) => setAuthView(t as AuthView)} />}
-          {authView === 'forgot' && <ForgotPasswordForm onBack={() => setAuthView('login')} />}
         </div>
 
         <div className="mt-6 text-center">

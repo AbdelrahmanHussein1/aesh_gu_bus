@@ -113,10 +113,16 @@ export interface ManifestEntry {
   receiptRef: string;
   riderName: string;
   riderEmail: string;
+  academicId?: string;
+  faculty?: string;
+  phone?: string;
   boardingCode?: string;
   isBoarded: boolean;
   boardedAt: string | null;
 }
+
+export type ManifestItem = ManifestEntry;
+
 
 export interface AuditLog {
   id: number;

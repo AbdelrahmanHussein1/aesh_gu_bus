@@ -5,6 +5,7 @@ import { getApiBaseUrl } from '@/lib/api';
 import { getTodayDateString, getScheduleManagerDates } from '@/lib/dateUtils';
 import { purgeOfflineShifts, createSingleOfflineTestShift } from '@/lib/offline';
 import BusSeatInspectorModal from './BusSeatInspectorModal';
+import BoardingManifestPdfModal from '../supervisor/BoardingManifestPdfModal';
 
 const SHIFT_OPTIONS = [
   { id: 'all', label: 'All Shifts / جميع الشفتات' },
@@ -47,6 +48,9 @@ export default function FleetStatus() {
   const [testDirection, setTestDirection] = useState<'to_campus' | 'from_campus'>('to_campus');
   const [testTimeSlot, setTestTimeSlot] = useState<string>('morning_1');
 
+  const [pdfTripData, setPdfTripData] = useState<any | null>(null);
+  const [pdfManifestData, setPdfManifestData] = useState<any[]>([]);
+
   const API_URL = getApiBaseUrl();
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
   const inFlightRef = useRef(false);
@@ -55,6 +59,41 @@ export default function FleetStatus() {
   const showToast = (type: 'success' | 'error', message: string) => {
     setNotification({ type, message });
     setTimeout(() => setNotification(null), 5000);
+  };
+
+  const handleOpenFleetPdf = async (bus: any) => {
+    const tripObj = {
+      id: bus.tripId,
+      tripDate: bus.tripDate || selectedDate,
+      departureTime: bus.departureTime || '09:00 AM',
+      direction: bus.direction,
+      bus: {
+        name: bus.busName,
+        licensePlate: bus.licensePlate,
+        totalSeats: bus.capacity || 50,
+      },
+      route: {
+        nameAr: bus.routeNameAr,
+        nameEn: bus.routeNameEn,
+      },
+      supervisors: bus.supervisors || (bus.supervisorName ? [{ nameAr: bus.supervisorName, nameEn: bus.supervisorName }] : []),
+      driver: bus.driver || (bus.driverName ? { nameAr: bus.driverName, nameEn: bus.driverName } : null),
+    };
+    setPdfTripData(tripObj);
+
+    try {
+      const res = await fetch(`${API_URL}/api/trips/${bus.tripId}/manifest`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setPdfManifestData(Array.isArray(data) ? data : []);
+      } else {
+        setPdfManifestData([]);
+      }
+    } catch {
+      setPdfManifestData([]);
+    }
   };
 
   // Load fleet data with full filtering support
@@ -736,13 +775,25 @@ export default function FleetStatus() {
                       )}
                     </div>
                   </td>
-                  <td className="p-3 text-right">
+                  <td className="p-3 text-right flex items-center justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleOpenFleetPdf(bus);
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-blue-600/15 hover:bg-blue-600 text-blue-400 hover:text-white border border-blue-500/30 text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+                      title="Download / Print Official Boarding PDF"
+                    >
+                      <span className="material-symbols-outlined text-xs">picture_as_pdf</span>
+                      PDF
+                    </button>
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         setInspectingTripId(bus.tripId);
                       }}
-                      className="px-2.5 py-1 rounded-lg bg-surface border border-border-whisper hover:border-primary-container text-text-primary text-xs font-bold"
+                      className="px-2.5 py-1 rounded-lg bg-surface border border-border-whisper hover:border-primary-container text-text-primary text-xs font-bold cursor-pointer"
                     >
                       Inspect
                     </button>
@@ -759,6 +810,16 @@ export default function FleetStatus() {
         <BusSeatInspectorModal
           tripId={inspectingTripId}
           onClose={() => setInspectingTripId(null)}
+        />
+      )}
+
+      {/* Official Boarding Manifest PDF Modal from Fleet Row */}
+      {pdfTripData !== null && (
+        <BoardingManifestPdfModal
+          trip={pdfTripData}
+          manifest={pdfManifestData}
+          onClose={() => setPdfTripData(null)}
+          supervisorName={pdfTripData?.supervisors?.[0]?.nameEn || pdfTripData?.supervisors?.[0]?.nameAr}
         />
       )}
 

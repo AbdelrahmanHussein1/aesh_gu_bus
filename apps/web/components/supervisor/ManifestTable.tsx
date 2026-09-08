@@ -1,11 +1,14 @@
 'use client';
 import { useState, useMemo } from 'react';
 import { useApp } from '@/hooks/useAppStore';
+import BoardingManifestPdfModal from './BoardingManifestPdfModal';
+import { checkManifestUnlock } from '@/lib/manifest-unlock';
 
 export default function ManifestTable() {
-  const { supervisorManifest, activeTrip, setSwapBookingTarget, handleSupervisorCancel } = useApp();
+  const { supervisorManifest, activeTrip, setSwapBookingTarget, handleSupervisorCancel, user } = useApp();
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'boarded' | 'pending'>('all');
+  const [showPdfModal, setShowPdfModal] = useState(false);
 
   const stats = useMemo(() => {
     const total = supervisorManifest.length;
@@ -14,6 +17,10 @@ export default function ManifestTable() {
     const percentage = total > 0 ? Math.round((boarded / total) * 100) : 0;
     return { total, boarded, pending, percentage };
   }, [supervisorManifest]);
+
+  const unlockStatus = useMemo(() => {
+    return checkManifestUnlock(activeTrip, stats.boarded);
+  }, [activeTrip, stats.boarded]);
 
   const filteredManifest = useMemo(() => {
     return supervisorManifest.filter(row => {
@@ -54,18 +61,42 @@ export default function ManifestTable() {
           </p>
         </div>
 
-        {/* Boarding Progress Pill */}
-        <div className="bg-surface-container-low px-4 py-2 rounded-lg border border-border-whisper min-w-[200px]">
-          <div className="flex items-center justify-between text-xs mb-1.5 font-semibold">
-            <span className="text-text-secondary">Boarding Progress</span>
-            <span className="text-primary-container font-bold">{stats.boarded}/{stats.total} ({stats.percentage}%)</span>
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Boarding Progress Pill */}
+          <div className="bg-surface-container-low px-4 py-2 rounded-lg border border-border-whisper min-w-[200px]">
+            <div className="flex items-center justify-between text-xs mb-1.5 font-semibold">
+              <span className="text-text-secondary">Boarding Progress</span>
+              <span className="text-primary-container font-bold">{stats.boarded}/{stats.total} ({stats.percentage}%)</span>
+            </div>
+            <div className="w-full bg-border-whisper rounded-full h-2 overflow-hidden">
+              <div
+                className="bg-success-galala h-full transition-all duration-300 rounded-full"
+                style={{ width: `${stats.percentage}%` }}
+              />
+            </div>
           </div>
-          <div className="w-full bg-border-whisper rounded-full h-2 overflow-hidden">
-            <div
-              className="bg-success-galala h-full transition-all duration-300 rounded-full"
-              style={{ width: `${stats.percentage}%` }}
-            />
-          </div>
+
+          {/* Official Boarding PDF Action Button */}
+          <button
+            type="button"
+            onClick={() => setShowPdfModal(true)}
+            className={`px-3.5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 transition shadow-sm cursor-pointer ${
+              unlockStatus.isUnlocked
+                ? 'bg-blue-600 hover:bg-blue-700 text-white active:scale-95 ring-2 ring-blue-400/30'
+                : 'bg-surface-container-low text-text-secondary border border-border-whisper hover:border-blue-500/40'
+            }`}
+            title={unlockStatus.isUnlocked ? unlockStatus.reasonEn : unlockStatus.reasonAr}
+          >
+            <span className="material-symbols-outlined text-base text-white">
+              {unlockStatus.isUnlocked ? 'picture_as_pdf' : 'lock'}
+            </span>
+            <span>{unlockStatus.isUnlocked ? 'Export Boarding PDF' : 'Boarding PDF'}</span>
+            {!unlockStatus.isUnlocked && (
+              <span className="text-[10px] bg-amber-500/15 text-amber-500 px-1.5 py-0.5 rounded font-mono font-normal">
+                {unlockStatus.unlockTimeFormatted}
+              </span>
+            )}
+          </button>
         </div>
       </div>
 
@@ -187,6 +218,16 @@ export default function ManifestTable() {
           </tbody>
         </table>
       </div>
+
+      {showPdfModal && (
+        <BoardingManifestPdfModal
+          trip={activeTrip}
+          manifest={supervisorManifest}
+          onClose={() => setShowPdfModal(false)}
+          supervisorName={user?.fullName}
+          supervisorEmail={user?.email}
+        />
+      )}
     </div>
   );
 }

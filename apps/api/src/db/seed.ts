@@ -102,6 +102,7 @@ async function seed() {
       30: 'El Salam & El Mostakbal',
       33: 'Suez (Nabi Allah Dawoud)',
       35: 'El Shorouk & Badr',
+      91: '91 Road Suez - Khat Mojamma Agaza (Summer)',
       61: 'Cairo',
       66: 'Suez',
     };

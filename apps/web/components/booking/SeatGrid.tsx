@@ -1,5 +1,5 @@
 'use client';
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '@/hooks/useAppStore';
 
 export default function SeatGrid() {
@@ -9,8 +9,22 @@ export default function SeatGrid() {
     handleSeatClick, setShowCheckout, user,
   } = useApp();
 
+  const [now, setNow] = useState<number>(Date.now());
+
+  useEffect(() => {
+    if (!heldExpiresAt) return;
+    setNow(Date.now());
+    const interval = setInterval(() => {
+      setNow(Date.now());
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [heldExpiresAt]);
+
   const hasActiveTrip = bookingType === 'round_trip' ? (activeArrivalTrip && activeReturnTrip) : activeTrip;
-  const holdTimeLeft = heldExpiresAt ? Math.max(0, Math.floor((heldExpiresAt - Date.now()) / 1000)) : 0;
+  const holdTimeLeft = heldExpiresAt ? Math.max(0, Math.floor((heldExpiresAt - now) / 1000)) : 0;
+  const holdMins = Math.floor(holdTimeLeft / 60);
+  const holdSecs = holdTimeLeft % 60;
+  const countdownFormatted = holdMins > 0 ? `${holdMins}m ${holdSecs}s` : `${holdSecs}s`;
 
   return (
     <div className="bg-surface-container border border-border-whisper rounded-xl p-6 flex flex-col items-center shadow-[0_2px_8px_-2px_rgba(15,23,42,0.05)] h-fit">
@@ -79,7 +93,12 @@ export default function SeatGrid() {
         <div className="w-full mt-6 bg-primary-container/5 border border-border-whisper p-4 rounded-xl flex flex-col gap-3">
           <div className="flex justify-between items-center text-xs">
             <span className="text-text-secondary font-medium">Seat {selectedSeat} Reserved</span>
-            {heldExpiresAt && <span className="text-[10px] text-destructive-asu font-mono">Expires: {holdTimeLeft}s</span>}
+            {heldExpiresAt && (
+              <span className={`text-[11px] font-mono font-bold flex items-center gap-1 ${holdTimeLeft < 60 ? 'text-rose-500 animate-pulse' : 'text-amber-500'}`}>
+                <span className="material-symbols-outlined text-xs">timer</span>
+                Expires: {countdownFormatted} ({holdTimeLeft}s)
+              </span>
+            )}
           </div>
           <button onClick={() => setShowCheckout(true)}
             className="w-full py-2.5 bg-primary-container text-on-primary-container rounded-lg text-xs font-bold hover:opacity-95 transition flex justify-center items-center gap-2">
