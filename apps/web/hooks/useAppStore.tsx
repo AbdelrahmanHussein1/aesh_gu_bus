@@ -584,6 +584,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
             handleRiderBoardedNotification(msg);
           } else if (msg.type === 'SUPERVISOR_CANCELLED_TICKET') {
             handleSupervisorCancelledNotification(msg);
+          } else if (msg.type === 'NEW_TRIP_ANNOUNCED' || msg.type === 'TRIP_CANCELLED' || msg.type === 'SCHEDULE_CLONED' || msg.type === 'SCHEDULE_UPDATED') {
+            window.dispatchEvent(new CustomEvent('schedule_updated', { detail: msg }));
           }
         } catch {}
       };

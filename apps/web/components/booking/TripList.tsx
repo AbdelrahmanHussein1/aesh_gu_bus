@@ -1,5 +1,6 @@
 'use client';
 import { useApp } from '@/hooks/useAppStore';
+import { formatShiftDisplay } from '@/lib/routes-config';
 
 export default function TripList() {
   const {
@@ -24,27 +25,45 @@ export default function TripList() {
             {arrivalTrips.length === 0 ? (
               <p className="text-xs text-text-secondary italic py-2">No active arrival trips scheduled.</p>
             ) : (
-              arrivalTrips.map(trip => (
-                <button key={trip.id} onClick={() => setActiveArrivalTrip(trip)}
-                  className={`w-full p-4 rounded-xl text-left border transition-all flex justify-between items-center ${activeArrivalTrip?.id === trip.id ? 'bg-primary-container/5 border-primary-container text-text-primary shadow-sm' : 'bg-surface border-border-whisper text-text-secondary hover:border-text-primary'}`}>
-                  <div>
-                    <h4 className="font-semibold text-sm text-text-primary">{trip.bus.name}</h4>
-                    <p className="text-xs text-text-secondary mt-1 flex items-center gap-1 font-mono">
-                      <span className="material-symbols-outlined text-sm text-text-secondary">schedule</span> {trip.departureTime}
-                    </p>
-                    {trip.driver && (
-                      <p className="text-[11px] text-primary-container mt-1 font-medium flex items-center gap-1">
-                        <span className="material-symbols-outlined text-[13px]">person</span> {trip.driver.nameAr}
-                        <span className="text-text-secondary font-mono text-[10px]">({trip.driver.phone})</span>
+              arrivalTrips.map(trip => {
+                const shiftInfo = formatShiftDisplay(trip);
+                const isSelected = activeArrivalTrip?.id === trip.id;
+                return (
+                  <button
+                    key={trip.id}
+                    onClick={() => setActiveArrivalTrip(trip)}
+                    className={`w-full p-4 rounded-xl text-left border transition-all flex justify-between items-center ${
+                      isSelected ? 'bg-primary-container/10 border-primary-container text-text-primary shadow-sm ring-1 ring-primary-container/30' : 'bg-surface border-border-whisper text-text-secondary hover:border-text-primary'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h4 className="font-bold text-sm text-text-primary">{shiftInfo.shortTitleAr}</h4>
+                        <span className="text-[9px] px-1.5 py-0.5 rounded font-bold bg-primary-container/10 text-primary-container border border-primary-container/20">
+                          {shiftInfo.categoryLabelAr}
+                        </span>
+                      </div>
+                      <p className="text-xs text-text-secondary mt-1 flex items-center gap-1 font-medium">
+                        <span>خط {shiftInfo.routeNameAr}</span>
+                        <span>•</span>
+                        <span className="font-mono flex items-center gap-1">
+                          <span className="material-symbols-outlined text-xs">schedule</span> {shiftInfo.departureDisplay}
+                        </span>
                       </p>
-                    )}
-                  </div>
-                  <div className="text-right font-mono text-xs">
-                    <span className="font-bold text-primary-container">{trip.priceEgp} EGP</span>
-                    <p className="text-[9px] text-text-secondary mt-1">{trip.bus.licensePlate}</p>
-                  </div>
-                </button>
-              ))
+                      {trip.driver && (
+                        <p className="text-[11px] text-primary-container mt-1 font-medium flex items-center gap-1">
+                          <span className="material-symbols-outlined text-[13px]">person</span> {trip.driver.nameAr}
+                          <span className="text-text-secondary font-mono text-[10px]">({trip.driver.phone})</span>
+                        </p>
+                      )}
+                    </div>
+                    <div className="text-right font-mono text-xs">
+                      <span className="font-bold text-primary-container text-sm">{trip.priceEgp} EGP</span>
+                      <p className="text-[10px] text-text-secondary mt-1">{shiftInfo.licensePlate}</p>
+                    </div>
+                  </button>
+                );
+              })
             )}
           </div>
 
@@ -53,27 +72,45 @@ export default function TripList() {
             {returnTrips.length === 0 ? (
               <p className="text-xs text-text-secondary italic py-2">No active return trips scheduled.</p>
             ) : (
-              returnTrips.map(trip => (
-                <button key={trip.id} onClick={() => setActiveReturnTrip(trip)}
-                  className={`w-full p-4 rounded-xl text-left border transition-all flex justify-between items-center ${activeReturnTrip?.id === trip.id ? 'bg-primary-container/5 border-primary-container text-text-primary shadow-sm' : 'bg-surface border-border-whisper text-text-secondary hover:border-text-primary'}`}>
-                  <div>
-                    <h4 className="font-semibold text-sm text-text-primary">{trip.bus.name}</h4>
-                    <p className="text-xs text-text-secondary mt-1 flex items-center gap-1 font-mono">
-                      <span className="material-symbols-outlined text-sm text-text-secondary">schedule</span> {trip.departureTime}
-                    </p>
-                    {trip.driver && (
-                      <p className="text-[11px] text-primary-container mt-1 font-medium flex items-center gap-1">
-                        <span className="material-symbols-outlined text-[13px]">person</span> {trip.driver.nameAr}
-                        <span className="text-text-secondary font-mono text-[10px]">({trip.driver.phone})</span>
+              returnTrips.map(trip => {
+                const shiftInfo = formatShiftDisplay(trip);
+                const isSelected = activeReturnTrip?.id === trip.id;
+                return (
+                  <button
+                    key={trip.id}
+                    onClick={() => setActiveReturnTrip(trip)}
+                    className={`w-full p-4 rounded-xl text-left border transition-all flex justify-between items-center ${
+                      isSelected ? 'bg-primary-container/10 border-primary-container text-text-primary shadow-sm ring-1 ring-primary-container/30' : 'bg-surface border-border-whisper text-text-secondary hover:border-text-primary'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h4 className="font-bold text-sm text-text-primary">{shiftInfo.shortTitleAr}</h4>
+                        <span className="text-[9px] px-1.5 py-0.5 rounded font-bold bg-primary-container/10 text-primary-container border border-primary-container/20">
+                          {shiftInfo.categoryLabelAr}
+                        </span>
+                      </div>
+                      <p className="text-xs text-text-secondary mt-1 flex items-center gap-1 font-medium">
+                        <span>خط {shiftInfo.routeNameAr}</span>
+                        <span>•</span>
+                        <span className="font-mono flex items-center gap-1">
+                          <span className="material-symbols-outlined text-xs">schedule</span> {shiftInfo.departureDisplay}
+                        </span>
                       </p>
-                    )}
-                  </div>
-                  <div className="text-right font-mono text-xs">
-                    <span className="font-bold text-primary-container">{trip.priceEgp} EGP</span>
-                    <p className="text-[9px] text-text-secondary mt-1">{trip.bus.licensePlate}</p>
-                  </div>
-                </button>
-              ))
+                      {trip.driver && (
+                        <p className="text-[11px] text-primary-container mt-1 font-medium flex items-center gap-1">
+                          <span className="material-symbols-outlined text-[13px]">person</span> {trip.driver.nameAr}
+                          <span className="text-text-secondary font-mono text-[10px]">({trip.driver.phone})</span>
+                        </p>
+                      )}
+                    </div>
+                    <div className="text-right font-mono text-xs">
+                      <span className="font-bold text-primary-container text-sm">{trip.priceEgp} EGP</span>
+                      <p className="text-[10px] text-text-secondary mt-1">{shiftInfo.licensePlate}</p>
+                    </div>
+                  </button>
+                );
+              })
             )}
           </div>
         </div>
@@ -96,27 +133,45 @@ export default function TripList() {
         <p className="text-xs text-text-secondary italic py-2">No active trips scheduled for this search context.</p>
       ) : (
         <div className="space-y-3">
-          {filteredTrips.map(trip => (
-            <button key={trip.id} onClick={() => setActiveTrip(trip)}
-              className={`w-full p-4 rounded-xl text-left border transition-all flex justify-between items-center ${activeTrip?.id === trip.id ? 'bg-primary-container/5 border-primary-container text-text-primary shadow-sm' : 'bg-surface border-border-whisper text-text-secondary hover:border-text-primary'}`}>
-              <div>
-                <h4 className="font-semibold text-sm text-text-primary">{trip.bus.name}</h4>
-                <p className="text-xs text-text-secondary mt-1 flex items-center gap-1 font-mono">
-                  <span className="material-symbols-outlined text-sm text-text-secondary">schedule</span> {trip.departureTime}
-                </p>
-                {trip.driver && (
-                  <p className="text-[11px] text-primary-container mt-1 font-medium flex items-center gap-1">
-                    <span className="material-symbols-outlined text-[13px]">person</span> {trip.driver.nameAr}
-                    <span className="text-text-secondary font-mono text-[10px]">({trip.driver.phone})</span>
+          {filteredTrips.map(trip => {
+            const shiftInfo = formatShiftDisplay(trip);
+            const isSelected = activeTrip?.id === trip.id;
+            return (
+              <button
+                key={trip.id}
+                onClick={() => setActiveTrip(trip)}
+                className={`w-full p-4 rounded-xl text-left border transition-all flex justify-between items-center ${
+                  isSelected ? 'bg-primary-container/10 border-primary-container text-text-primary shadow-sm ring-1 ring-primary-container/30' : 'bg-surface border-border-whisper text-text-secondary hover:border-text-primary'
+                }`}
+              >
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h4 className="font-bold text-sm text-text-primary">{shiftInfo.shortTitleAr}</h4>
+                    <span className="text-[9px] px-1.5 py-0.5 rounded font-bold bg-primary-container/10 text-primary-container border border-primary-container/20">
+                      {shiftInfo.categoryLabelAr}
+                    </span>
+                  </div>
+                  <p className="text-xs text-text-secondary mt-1 flex items-center gap-1 font-medium">
+                    <span>خط {shiftInfo.routeNameAr}</span>
+                    <span>•</span>
+                    <span className="font-mono flex items-center gap-1">
+                      <span className="material-symbols-outlined text-xs">schedule</span> {shiftInfo.departureDisplay}
+                    </span>
                   </p>
-                )}
-              </div>
-              <div className="text-right font-mono text-xs">
-                <span className="font-bold text-primary-container">{trip.priceEgp} EGP</span>
-                <p className="text-[9px] text-text-secondary mt-1">{trip.bus.licensePlate}</p>
-              </div>
-            </button>
-          ))}
+                  {trip.driver && (
+                    <p className="text-[11px] text-primary-container mt-1 font-medium flex items-center gap-1">
+                      <span className="material-symbols-outlined text-[13px]">person</span> {trip.driver.nameAr}
+                      <span className="text-text-secondary font-mono text-[10px]">({trip.driver.phone})</span>
+                    </p>
+                  )}
+                </div>
+                <div className="text-right font-mono text-xs">
+                  <span className="font-bold text-primary-container text-sm">{trip.priceEgp} EGP</span>
+                  <p className="text-[10px] text-text-secondary mt-1">{shiftInfo.licensePlate}</p>
+                </div>
+              </button>
+            );
+          })}
         </div>
       )}
     </div>

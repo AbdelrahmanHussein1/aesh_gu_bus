@@ -8,6 +8,7 @@ export type TripStatus = 'scheduled' | 'active' | 'completed' | 'cancelled';
 export type BookingStatus = 'confirmed' | 'cancelled' | 'swapped';
 
 export interface PersonnelContact {
+  id?: string;
   nameAr: string;
   nameEn: string;
   phone: string;

@@ -5,6 +5,13 @@ import type { Trip, Route, TimeSlot, Direction, PersonnelContact } from '@/lib/t
 import { getOfflineAllTrips, cloneOfflineSchedule, getAllPersonnel, saveCustomOfflineTrips, getCustomOfflineTrips, addMockAuditLog, purgeOfflineShifts, createSingleOfflineTestShift } from '@/lib/offline';
 import { getApiBaseUrl } from '@/lib/api';
 import { getTodayDateString, formatDateString, getScheduleManagerDates } from '@/lib/dateUtils';
+import {
+  ROUTE_CATEGORIES,
+  RouteCategoryKey,
+  getRouteCategory,
+  formatShiftDisplay,
+  PREDEFINED_ROUTES,
+} from '@/lib/routes-config';
 import BusSeatInspectorModal from './BusSeatInspectorModal';
 
 const ADMIN_OPERATIONAL_DATES = getScheduleManagerDates(3, 10);
@@ -23,6 +30,7 @@ export default function ScheduleManager() {
   const todayStr = useMemo(() => getTodayDateString(), []);
   const [selectedDate, setSelectedDate] = useState(() => getTodayDateString());
   const [selectedShift, setSelectedShift] = useState<TimeSlot | 'all'>('all');
+  const [selectedCategory, setSelectedCategory] = useState<'all' | RouteCategoryKey>('all');
   const [selectedRouteId, setSelectedRouteId] = useState<number | 'all'>('all');
   const [allSchedules, setAllSchedules] = useState<Trip[]>([]);
   const [loading, setLoading] = useState(false);
@@ -30,6 +38,7 @@ export default function ScheduleManager() {
 
   // Modals state
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [modalCategory, setModalCategory] = useState<RouteCategoryKey>('suez');
   const [showCloneModal, setShowCloneModal] = useState(false);
   const [showPurgeModal, setShowPurgeModal] = useState(false);
   const [purgeTarget, setPurgeTarget] = useState<'all' | 'date'>('all');
@@ -145,13 +154,29 @@ export default function ScheduleManager() {
     };
   }, [loadSchedules, pollingDisabled, token, isOffline]);
 
+  // Filtered routes by selected category for the main selector
+  const filteredRoutes = useMemo(() => {
+    if (selectedCategory === 'all') return routes;
+    const catIds = new Set(PREDEFINED_ROUTES.filter(r => r.category === selectedCategory).map(r => r.id));
+    return routes.filter(r => catIds.has(r.id));
+  }, [routes, selectedCategory]);
+
+  // Filtered routes by modal category for the Create Shift modal
+  const modalRoutes = useMemo(() => {
+    const catIds = new Set(PREDEFINED_ROUTES.filter(r => r.category === modalCategory).map(r => r.id));
+    const inLoaded = routes.filter(r => catIds.has(r.id));
+    if (inLoaded.length > 0) return inLoaded;
+    return PREDEFINED_ROUTES.filter(r => r.category === modalCategory);
+  }, [routes, modalCategory]);
+
   // Filtered schedules
   const filteredTrips = useMemo(() => {
     return allSchedules.filter(t => {
       if (selectedShift !== 'all' && t.timeSlot !== selectedShift) return false;
+      if (selectedCategory !== 'all' && getRouteCategory(t.routeId) !== selectedCategory) return false;
       return true;
     });
-  }, [allSchedules, selectedShift]);
+  }, [allSchedules, selectedShift, selectedCategory]);
 
   // Stats
   const stats = useMemo(() => {
@@ -207,9 +232,10 @@ export default function ScheduleManager() {
           },
           body: JSON.stringify({
             routeId: newRouteId,
-            driverId: driver ? driver.phone : null,
+            driverId: driver ? (driver.id || driver.phone) : null,
+            supervisorIds: supervisor ? [(supervisor.id || supervisor.phone)] : [],
             tripDate: newTripDate,
-            departureTime: new Date(`${newTripDate} ${newDepartureTime}`).toISOString(),
+            departureTime: newDepartureTime,
             direction: newDirection,
             timeSlot: newTimeSlot,
             totalSeats: newTotalSeats,
@@ -221,8 +247,14 @@ export default function ScheduleManager() {
           setShowCreateModal(false);
           loadSchedules();
           return;
+        } else {
+          const errData = await res.json().catch(() => ({}));
+          triggerNotice('error', errData.error || 'Failed to create shift on server');
+          return;
         }
-      } catch {}
+      } catch (err) {
+        console.warn('Network error creating shift, falling back to offline:', err);
+      }
     }
 
     // Save offline
@@ -263,8 +295,14 @@ export default function ScheduleManager() {
           setSelectedDate(cloneTargetDate);
           loadSchedules();
           return;
+        } else {
+          const errData = await res.json().catch(() => ({}));
+          triggerNotice('error', errData.error || 'Failed to clone schedule on server');
+          return;
         }
-      } catch {}
+      } catch (err) {
+        console.warn('Network error cloning schedule, falling back to offline:', err);
+      }
     }
 
     // Offline clone
@@ -505,6 +543,52 @@ export default function ScheduleManager() {
           </div>
         </div>
 
+        {/* Regional Category Filter Tabs */}
+        <div className="pt-3 border-t border-border-whisper">
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin">
+            <span className="text-[11px] font-bold text-text-secondary uppercase shrink-0">
+              المنطقة / Region:
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedCategory('all');
+                setSelectedRouteId('all');
+              }}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold shrink-0 transition-all flex items-center gap-1.5 ${
+                selectedCategory === 'all'
+                  ? 'bg-primary-container text-on-primary-container shadow-sm'
+                  : 'bg-surface-container-low text-text-secondary hover:text-text-primary border border-border-whisper'
+              }`}
+            >
+              <span className="material-symbols-outlined text-sm">hub</span>
+              <span>جميع المناطق (All)</span>
+            </button>
+            {ROUTE_CATEGORIES.map(cat => {
+              const isSel = selectedCategory === cat.key;
+              return (
+                <button
+                  key={cat.key}
+                  type="button"
+                  onClick={() => {
+                    setSelectedCategory(cat.key);
+                    setSelectedRouteId('all');
+                  }}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold shrink-0 transition-all flex items-center gap-1.5 ${
+                    isSel
+                      ? 'bg-primary-container text-on-primary-container shadow-sm'
+                      : 'bg-surface-container-low text-text-secondary hover:text-text-primary border border-border-whisper'
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-sm">{cat.icon}</span>
+                  <span>{cat.labelAr}</span>
+                  <span className="text-[10px] opacity-75">({cat.count} خط)</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         {/* Shift Filter Pills */}
         <div className="pt-3 border-t border-border-whisper">
           <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin">
@@ -532,8 +616,8 @@ export default function ScheduleManager() {
             onChange={(e) => setSelectedRouteId(e.target.value === 'all' ? 'all' : parseInt(e.target.value))}
             className="text-xs px-3 py-1.5 rounded-lg bg-surface-container-low border border-border-whisper text-text-primary focus:outline-none focus:ring-1 focus:ring-primary-container font-medium"
           >
-            <option value="all">All Lines (بورتوفيق، نبي الله، السلام...)</option>
-            {routes.map(r => (
+            <option value="all">All Lines {selectedCategory !== 'all' ? `(${selectedCategory === 'cairo' ? 'القاهرة' : selectedCategory === 'suez' ? 'السويس' : 'الشروق وبدر'})` : ''}</option>
+            {filteredRoutes.map(r => (
               <option key={r.id} value={r.id}>{r.nameEn} — {r.nameAr}</option>
             ))}
           </select>
@@ -580,6 +664,7 @@ export default function ScheduleManager() {
               const booked = trip.bookedSeats || 0;
               const total = trip.totalSeats || trip.bus.totalSeats || 50;
               const percent = Math.min(100, Math.round((booked / total) * 100));
+              const shiftInfo = formatShiftDisplay(trip);
 
               return (
                 <div
@@ -592,18 +677,23 @@ export default function ScheduleManager() {
                   <div>
                     <div className="flex items-start justify-between gap-2">
                       <div>
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${trip.direction === 'to_campus' ? 'bg-primary-container/10 text-primary-container' : 'bg-secondary-fixed/30 text-amber-800'}`}>
-                          {trip.direction === 'to_campus' ? 'To University / ذهاب' : 'Return Home / عودة'}
-                        </span>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${trip.direction === 'to_campus' ? 'bg-primary-container/10 text-primary-container' : 'bg-secondary-fixed/30 text-amber-800'}`}>
+                            {shiftInfo.directionAr}
+                          </span>
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-primary-container/15 text-primary-container">
+                            {shiftInfo.categoryLabelAr}
+                          </span>
+                        </div>
                         <h4 className="font-bold text-sm text-text-primary mt-1.5 font-arabic group-hover:text-primary-container transition-colors">
-                          {trip.route?.nameAr || trip.bus.name.split('/')[0]}
+                          {shiftInfo.shortTitleAr}
                         </h4>
-                        <p className="text-[11px] text-text-secondary">{trip.route?.nameEn || 'Galala Route'}</p>
+                        <p className="text-[11px] text-text-secondary font-medium">خط {shiftInfo.routeNameAr} ({shiftInfo.routeNameEn})</p>
                       </div>
 
                       <div className="text-right">
-                        <span className="font-mono font-bold text-xs text-text-primary block">{trip.departureTime}</span>
-                        <span className="text-[10px] text-text-secondary uppercase">{trip.timeSlot}</span>
+                        <span className="font-mono font-bold text-xs text-text-primary block">{shiftInfo.departureDisplay}</span>
+                        <span className="text-[10px] text-text-secondary uppercase">{shiftInfo.timeBadgeAr}</span>
                       </div>
                     </div>
                   </div>
@@ -711,15 +801,41 @@ export default function ScheduleManager() {
             </div>
 
             <form onSubmit={handleCreateTrip} className="p-5 space-y-4 text-xs">
+              {/* Region Category Selector */}
+              <div>
+                <label className="font-bold text-text-primary block mb-1">المنطقة / Region Category</label>
+                <div className="flex rounded-lg border border-border-whisper overflow-hidden bg-surface-container">
+                  {ROUTE_CATEGORIES.map(cat => (
+                    <button
+                      key={cat.key}
+                      type="button"
+                      onClick={() => {
+                        setModalCategory(cat.key);
+                        const first = PREDEFINED_ROUTES.find(r => r.category === cat.key);
+                        if (first) setNewRouteId(first.id);
+                      }}
+                      className={`flex-1 py-1.5 text-center text-xs font-bold transition flex items-center justify-center gap-1 ${
+                        modalCategory === cat.key ? 'bg-primary-container text-white' : 'text-text-secondary hover:text-text-primary'
+                      }`}
+                    >
+                      <span className="material-symbols-outlined text-sm">{cat.icon}</span>
+                      <span>{cat.labelAr} ({cat.count})</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="font-bold text-text-primary block mb-1">Route / الخط</label>
+                  <label className="font-bold text-text-primary block mb-1">
+                    Route / الخط ({modalCategory === 'cairo' ? 'القاهرة' : modalCategory === 'suez' ? 'السويس' : 'الشروق وبدر'})
+                  </label>
                   <select
                     value={newRouteId}
                     onChange={(e) => setNewRouteId(parseInt(e.target.value))}
                     className="w-full px-3 py-2 rounded-lg bg-surface-container-low border border-border-whisper text-text-primary font-medium focus:ring-1 focus:ring-primary-container"
                   >
-                    {routes.map(r => (
+                    {modalRoutes.map(r => (
                       <option key={r.id} value={r.id}>{r.nameAr} ({r.nameEn})</option>
                     ))}
                   </select>

@@ -4,6 +4,13 @@ import { useApp } from '@/hooks/useAppStore';
 import { getApiBaseUrl } from '@/lib/api';
 import { getTodayDateString, getScheduleManagerDates } from '@/lib/dateUtils';
 import { purgeOfflineShifts, createSingleOfflineTestShift } from '@/lib/offline';
+import {
+  ROUTE_CATEGORIES,
+  RouteCategoryKey,
+  getRouteCategory,
+  formatShiftDisplay,
+  PREDEFINED_ROUTES,
+} from '@/lib/routes-config';
 import BusSeatInspectorModal from './BusSeatInspectorModal';
 import BoardingManifestPdfModal from '../supervisor/BoardingManifestPdfModal';
 
@@ -28,6 +35,7 @@ export default function FleetStatus() {
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   // Filters state
+  const [selectedCategory, setSelectedCategory] = useState<'all' | RouteCategoryKey>('all');
   const [selectedDate, setSelectedDate] = useState<string>(todayStr);
   const [selectedRouteId, setSelectedRouteId] = useState<string>('all');
   const [selectedDirection, setSelectedDirection] = useState<string>('all');
@@ -342,20 +350,43 @@ export default function FleetStatus() {
     loadFleetData();
   };
 
-  // Summary Metrics
+  const [testCategory, setTestCategory] = useState<RouteCategoryKey>('suez');
+
+  // Filtered routes by selected category for the main selector
+  const filteredRoutes = useMemo(() => {
+    if (selectedCategory === 'all') return routes;
+    const catIds = new Set(PREDEFINED_ROUTES.filter(r => r.category === selectedCategory).map(r => r.id));
+    return routes.filter(r => catIds.has(r.id));
+  }, [routes, selectedCategory]);
+
+  const testRoutes = useMemo(() => {
+    const catIds = new Set(PREDEFINED_ROUTES.filter(r => r.category === testCategory).map(r => r.id));
+    const inLoaded = routes.filter(r => catIds.has(r.id));
+    if (inLoaded.length > 0) return inLoaded;
+    return PREDEFINED_ROUTES.filter(r => r.category === testCategory);
+  }, [routes, testCategory]);
+
+  // Displayed fleet filtered by category
+  const displayedFleet = useMemo(() => {
+    if (selectedCategory === 'all') return fleetList;
+    return fleetList.filter(f => getRouteCategory(Number(f.routeId)) === selectedCategory);
+  }, [fleetList, selectedCategory]);
+
+  // Summary Metrics based on displayedFleet
   const metrics = useMemo(() => {
-    const totalFleet = fleetList.length;
-    const totalCap = fleetList.reduce((acc, f) => acc + (f.capacity || 50), 0);
-    const totalBooked = fleetList.reduce((acc, f) => acc + (f.bookedSeats || 0), 0);
-    const totalHeld = fleetList.reduce((acc, f) => acc + (f.heldSeats || 0), 0);
-    const totalFree = fleetList.reduce((acc, f) => acc + (f.freeSeats || Math.max(0, (f.capacity || 50) - (f.bookedSeats || 0) - (f.heldSeats || 0))), 0);
+    const totalFleet = displayedFleet.length;
+    const totalCap = displayedFleet.reduce((acc, f) => acc + (f.capacity || 50), 0);
+    const totalBooked = displayedFleet.reduce((acc, f) => acc + (f.bookedSeats || 0), 0);
+    const totalHeld = displayedFleet.reduce((acc, f) => acc + (f.heldSeats || 0), 0);
+    const totalFree = displayedFleet.reduce((acc, f) => acc + (f.freeSeats || Math.max(0, (f.capacity || 50) - (f.bookedSeats || 0) - (f.heldSeats || 0))), 0);
     const avgOccupancy = totalCap > 0 ? Math.round(((totalBooked + totalHeld) / totalCap) * 100) : 0;
     return { totalFleet, totalCap, totalBooked, totalHeld, totalFree, avgOccupancy };
-  }, [fleetList]);
+  }, [displayedFleet]);
 
-  const hasActiveFilters = selectedDate !== todayStr || selectedRouteId !== 'all' || selectedDirection !== 'all' || selectedTimeSlot !== 'all' || selectedOccupancy !== 'all' || searchQuery.trim() !== '';
+  const hasActiveFilters = selectedCategory !== 'all' || selectedDate !== todayStr || selectedRouteId !== 'all' || selectedDirection !== 'all' || selectedTimeSlot !== 'all' || selectedOccupancy !== 'all' || searchQuery.trim() !== '';
 
   const resetFilters = () => {
+    setSelectedCategory('all');
     setSelectedDate(todayStr);
     setSelectedRouteId('all');
     setSelectedDirection('all');
@@ -500,6 +531,46 @@ export default function FleetStatus() {
           </div>
         </div>
 
+        {/* Regional Category Filter Tabs */}
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none border-b border-border-whisper/60">
+          <span className="text-[11px] font-bold text-text-secondary uppercase shrink-0 pl-1">
+            المنطقة / Region:
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              setSelectedCategory('all');
+              setSelectedRouteId('all');
+            }}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition shrink-0 flex items-center gap-1.5 ${
+              selectedCategory === 'all'
+                ? 'bg-primary-container text-white shadow-sm'
+                : 'bg-surface text-text-secondary hover:text-text-primary border border-border-whisper'
+            }`}
+          >
+            <span className="material-symbols-outlined text-sm">hub</span>
+            جميع المناطق (All)
+          </button>
+          {ROUTE_CATEGORIES.map(cat => (
+            <button
+              key={cat.key}
+              type="button"
+              onClick={() => {
+                setSelectedCategory(cat.key);
+                setSelectedRouteId('all');
+              }}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition shrink-0 flex items-center gap-1.5 ${
+                selectedCategory === cat.key
+                  ? 'bg-primary-container text-white shadow-sm'
+                  : 'bg-surface text-text-secondary hover:text-text-primary border border-border-whisper'
+              }`}
+            >
+              <span className="material-symbols-outlined text-sm">{cat.icon}</span>
+              {cat.labelAr} ({cat.count} خط)
+            </button>
+          ))}
+        </div>
+
         {/* Filter Controls Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5 text-xs">
           {/* Date Filter */}
@@ -521,14 +592,16 @@ export default function FleetStatus() {
 
           {/* Route / Line Filter */}
           <div>
-            <label className="block text-[10px] font-bold text-text-secondary uppercase mb-1">Route / Line</label>
+            <label className="block text-[10px] font-bold text-text-secondary uppercase mb-1">
+              Route / Line {selectedCategory !== 'all' ? `(${selectedCategory === 'cairo' ? 'القاهرة' : selectedCategory === 'suez' ? 'السويس' : 'الشروق وبدر'})` : ''}
+            </label>
             <select
               value={selectedRouteId}
               onChange={(e) => setSelectedRouteId(e.target.value)}
               className="w-full px-2.5 py-1.5 rounded-lg bg-surface border border-border-whisper text-text-primary text-xs focus:border-primary-container focus:outline-none"
             >
               <option value="all">All Routes / جميع الخطوط</option>
-              {routes.map((r) => (
+              {filteredRoutes.map((r) => (
                 <option key={r.id} value={r.id}>
                   {r.nameAr} ({r.nameEn})
                 </option>
@@ -620,109 +693,122 @@ export default function FleetStatus() {
       ) : viewMode === 'cards' ? (
         /* Cards View */
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-          {fleetList.map((bus) => (
-            <div
-              key={bus.tripId}
-              onClick={() => setInspectingTripId(bus.tripId)}
-              className="p-4 rounded-xl bg-surface-container-low border border-border-whisper hover:border-primary-container/60 hover:shadow-md transition-all cursor-pointer flex flex-col justify-between gap-3 group"
-              title="Click to inspect real-time seat locks and passenger list"
-            >
-              {/* Header Info */}
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-primary-container/15 text-primary-container flex items-center justify-center font-black group-hover:scale-105 transition-transform shrink-0">
-                    <span className="material-symbols-outlined text-2xl">directions_bus</span>
+          {displayedFleet.map((bus) => {
+            const shiftInfo = formatShiftDisplay({
+              routeId: bus.routeId,
+              departureTime: bus.departureTime,
+              timeSlot: bus.timeSlot,
+              direction: bus.direction,
+              bus: { name: bus.busName, licensePlate: bus.licensePlate, totalSeats: bus.capacity },
+            });
+
+            return (
+              <div
+                key={bus.tripId}
+                onClick={() => setInspectingTripId(bus.tripId)}
+                className="p-4 rounded-xl bg-surface-container-low border border-border-whisper hover:border-primary-container/60 hover:shadow-md transition-all cursor-pointer flex flex-col justify-between gap-3 group"
+                title="Click to inspect real-time seat locks and passenger list"
+              >
+                {/* Header Info */}
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-primary-container/15 text-primary-container flex items-center justify-center font-black group-hover:scale-105 transition-transform shrink-0">
+                      <span className="material-symbols-outlined text-2xl">directions_bus</span>
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h4 className="font-bold text-sm text-text-primary group-hover:text-primary-container transition-colors">
+                          {shiftInfo.shortTitleAr}
+                        </h4>
+                        <span className="font-mono text-[10px] px-2 py-0.5 rounded bg-surface border border-border-whisper text-text-secondary font-bold">
+                          {shiftInfo.licensePlate}
+                        </span>
+                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase flex items-center gap-1 ${bus.direction === 'to_campus' ? 'bg-primary-container/15 text-primary-container border border-primary-container/30' : 'bg-amber-500/15 text-amber-300 border border-amber-500/30'}`}>
+                          <span className="material-symbols-outlined text-[11px]">{bus.direction === 'to_campus' ? 'north_east' : 'south_west'}</span>
+                          <span>{shiftInfo.directionAr}</span>
+                        </span>
+                        <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-primary-container/10 text-primary-container border border-primary-container/20">
+                          {shiftInfo.categoryLabelAr}
+                        </span>
+                      </div>
+                      <p className="text-xs text-text-secondary mt-0.5 flex items-center gap-2 flex-wrap">
+                        <span>خط {shiftInfo.routeNameAr} ({shiftInfo.routeNameEn})</span>
+                        <span>•</span>
+                        <span className="font-mono text-primary-container font-semibold">{shiftInfo.departureDisplay}</span>
+                        <span>•</span>
+                        <span>{bus.tripDate}</span>
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h4 className="font-bold text-sm text-text-primary group-hover:text-primary-container transition-colors">
-                        {bus.nameAr}
-                      </h4>
-                      <span className="font-mono text-[10px] px-2 py-0.5 rounded bg-surface border border-border-whisper text-text-secondary font-bold">
-                        {bus.licensePlate}
+
+                  <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase shrink-0 ${bus.status === 'full' ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' : bus.heldSeats > 0 ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : bus.status === 'boarding' ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'}`}>
+                    {bus.status === 'full' ? 'Full' : bus.heldSeats > 0 ? 'Holding' : bus.status === 'boarding' ? 'Boarding' : 'Scheduled'}
+                  </span>
+                </div>
+
+                {/* Personnel Contacts */}
+                <div className="grid grid-cols-2 gap-2 text-[11px] bg-surface p-2 rounded-lg border border-border-whisper">
+                  <div className="flex items-center gap-1.5 text-text-secondary truncate">
+                    <span className="material-symbols-outlined text-sm text-text-tertiary">sports_motorsports</span>
+                    <span className="truncate">سائق: <strong className="text-text-primary">{bus.driverName}</strong></span>
+                  </div>
+                  <div className="flex items-center gap-1.5 text-text-secondary truncate">
+                    <span className="material-symbols-outlined text-sm text-text-tertiary">supervised_user_circle</span>
+                    <span className="truncate">مشرف: <strong className="text-text-primary">{bus.superName}</strong></span>
+                  </div>
+                </div>
+
+                {/* Tri-Color Occupancy Bar (Booked Blue / Held Orange / Free Slate) */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between text-[11px]">
+                    <div className="flex items-center gap-2.5">
+                      <span className="flex items-center gap-1 text-blue-400 font-bold">
+                        <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                        {bus.bookedSeats} Booked
                       </span>
-                      <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase flex items-center gap-1 ${bus.direction === 'to_campus' ? 'bg-primary-container/15 text-primary-container border border-primary-container/30' : 'bg-amber-500/15 text-amber-300 border border-amber-500/30'}`}>
-                        <span className="material-symbols-outlined text-[11px]">{bus.direction === 'to_campus' ? 'north_east' : 'south_west'}</span>
-                        <span>{bus.direction === 'to_campus' ? 'To Campus' : 'From Campus'}</span>
+                      {bus.heldSeats > 0 && (
+                        <span className="flex items-center gap-1 text-amber-400 font-bold">
+                          <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+                          {bus.heldSeats} Held
+                        </span>
+                      )}
+                      <span className="flex items-center gap-1 text-text-tertiary">
+                        <span className="w-2 h-2 rounded-full bg-surface-container-highest border border-border-whisper"></span>
+                        {bus.freeSeats} Free
                       </span>
                     </div>
-                    <p className="text-xs text-text-secondary mt-0.5 flex items-center gap-2 flex-wrap">
-                      <span>{bus.nameEn}</span>
-                      <span>•</span>
-                      <span className="font-mono text-primary-container font-semibold">{bus.departureTime}</span>
-                      <span>•</span>
-                      <span>{bus.tripDate}</span>
-                    </p>
+                    <span className="font-mono font-bold text-text-primary">{bus.occupancyPercent}% ({bus.bookedSeats + bus.heldSeats}/{bus.capacity})</span>
+                  </div>
+
+                  {/* Progress multi-segment */}
+                  <div className="w-full h-2.5 bg-surface rounded-full overflow-hidden border border-border-whisper flex">
+                    <div
+                      className="bg-blue-600 h-full transition-all"
+                      style={{ width: `${Math.round(((bus.bookedSeats || 0) / (bus.capacity || 50)) * 100)}%` }}
+                      title={`Booked: ${bus.bookedSeats}`}
+                    />
+                    <div
+                      className="bg-amber-500 h-full transition-all animate-pulse"
+                      style={{ width: `${Math.round(((bus.heldSeats || 0) / (bus.capacity || 50)) * 100)}%` }}
+                      title={`Held: ${bus.heldSeats}`}
+                    />
                   </div>
                 </div>
 
-                <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase shrink-0 ${bus.status === 'full' ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' : bus.heldSeats > 0 ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : bus.status === 'boarding' ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'}`}>
-                  {bus.status === 'full' ? 'Full' : bus.heldSeats > 0 ? 'Holding' : bus.status === 'boarding' ? 'Boarding' : 'Scheduled'}
-                </span>
-              </div>
-
-              {/* Personnel Contacts */}
-              <div className="grid grid-cols-2 gap-2 text-[11px] bg-surface p-2 rounded-lg border border-border-whisper">
-                <div className="flex items-center gap-1.5 text-text-secondary truncate">
-                  <span className="material-symbols-outlined text-sm text-text-tertiary">sports_motorsports</span>
-                  <span className="truncate">سائق: <strong className="text-text-primary">{bus.driverName}</strong></span>
-                </div>
-                <div className="flex items-center gap-1.5 text-text-secondary truncate">
-                  <span className="material-symbols-outlined text-sm text-text-tertiary">supervised_user_circle</span>
-                  <span className="truncate">مشرف: <strong className="text-text-primary">{bus.superName}</strong></span>
+                {/* Action Link Footer */}
+                <div className="pt-2 border-t border-border-whisper/50 flex items-center justify-between text-xs text-text-secondary">
+                  <span className="flex items-center gap-1 text-[11px]">
+                    <span className="material-symbols-outlined text-sm text-emerald-400">sync</span>
+                    <span>Instant live sync active</span>
+                  </span>
+                  <span className="font-bold text-primary-container group-hover:underline flex items-center gap-0.5">
+                    <span>Inspect Seat Map</span>
+                    <span className="material-symbols-outlined text-sm">chevron_right</span>
+                  </span>
                 </div>
               </div>
-
-              {/* Tri-Color Occupancy Bar (Booked Blue / Held Orange / Free Slate) */}
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between text-[11px]">
-                  <div className="flex items-center gap-2.5">
-                    <span className="flex items-center gap-1 text-blue-400 font-bold">
-                      <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-                      {bus.bookedSeats} Booked
-                    </span>
-                    {bus.heldSeats > 0 && (
-                      <span className="flex items-center gap-1 text-amber-400 font-bold">
-                        <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
-                        {bus.heldSeats} Held
-                      </span>
-                    )}
-                    <span className="flex items-center gap-1 text-text-tertiary">
-                      <span className="w-2 h-2 rounded-full bg-surface-container-highest border border-border-whisper"></span>
-                      {bus.freeSeats} Free
-                    </span>
-                  </div>
-                  <span className="font-mono font-bold text-text-primary">{bus.occupancyPercent}% ({bus.bookedSeats + bus.heldSeats}/{bus.capacity})</span>
-                </div>
-
-                {/* Progress multi-segment */}
-                <div className="w-full h-2.5 bg-surface rounded-full overflow-hidden border border-border-whisper flex">
-                  <div
-                    className="bg-blue-600 h-full transition-all"
-                    style={{ width: `${Math.round(((bus.bookedSeats || 0) / (bus.capacity || 50)) * 100)}%` }}
-                    title={`Booked: ${bus.bookedSeats}`}
-                  />
-                  <div
-                    className="bg-amber-500 h-full transition-all animate-pulse"
-                    style={{ width: `${Math.round(((bus.heldSeats || 0) / (bus.capacity || 50)) * 100)}%` }}
-                    title={`Held: ${bus.heldSeats}`}
-                  />
-                </div>
-              </div>
-
-              {/* Action Link Footer */}
-              <div className="pt-2 border-t border-border-whisper/50 flex items-center justify-between text-xs text-text-secondary">
-                <span className="flex items-center gap-1 text-[11px]">
-                  <span className="material-symbols-outlined text-sm text-emerald-400">sync</span>
-                  <span>Instant live sync active</span>
-                </span>
-                <span className="font-bold text-primary-container group-hover:underline flex items-center gap-0.5">
-                  <span>Inspect Seat Map</span>
-                  <span className="material-symbols-outlined text-sm">chevron_right</span>
-                </span>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       ) : (
         /* Table View */
@@ -730,7 +816,7 @@ export default function FleetStatus() {
           <table className="w-full text-left text-xs text-text-secondary border-collapse">
             <thead className="bg-surface-container-low text-[10px] uppercase font-bold text-text-tertiary border-b border-border-whisper">
               <tr>
-                <th className="p-3">Route / Line</th>
+                <th className="p-3">Shift & Route</th>
                 <th className="p-3">Vehicle Plate</th>
                 <th className="p-3">Direction</th>
                 <th className="p-3">Departure</th>
@@ -740,66 +826,81 @@ export default function FleetStatus() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border-whisper">
-              {fleetList.map((bus) => (
-                <tr
-                  key={bus.tripId}
-                  onClick={() => setInspectingTripId(bus.tripId)}
-                  className="hover:bg-surface-container-high/50 cursor-pointer transition-colors"
-                >
-                  <td className="p-3">
-                    <div className="font-bold text-text-primary">{bus.nameAr}</div>
-                    <div className="text-[10px] text-text-secondary">{bus.nameEn}</div>
-                  </td>
-                  <td className="p-3 font-mono font-bold text-text-primary">
-                    {bus.licensePlate}
-                  </td>
-                  <td className="p-3">
-                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${bus.direction === 'to_campus' ? 'bg-primary-container/15 text-primary-container' : 'bg-amber-500/15 text-amber-300'}`}>
-                      {bus.direction === 'to_campus' ? 'Arrival' : 'Return'}
-                    </span>
-                  </td>
-                  <td className="p-3 font-mono text-text-primary">
-                    {bus.departureTime}
-                  </td>
-                  <td className="p-3 text-[11px]">
-                    <div>سائق: {bus.driverName}</div>
-                    <div className="text-[10px] text-text-tertiary">مشرف: {bus.superName}</div>
-                  </td>
-                  <td className="p-3">
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono font-bold text-text-primary">{bus.bookedSeats}/{bus.capacity}</span>
-                      {bus.heldSeats > 0 && (
-                        <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 text-[10px] font-bold">
-                          +{bus.heldSeats} held
+              {displayedFleet.map((bus) => {
+                const shiftInfo = formatShiftDisplay({
+                  routeId: bus.routeId,
+                  departureTime: bus.departureTime,
+                  timeSlot: bus.timeSlot,
+                  direction: bus.direction,
+                  bus: { name: bus.busName, licensePlate: bus.licensePlate, totalSeats: bus.capacity },
+                });
+
+                return (
+                  <tr
+                    key={bus.tripId}
+                    onClick={() => setInspectingTripId(bus.tripId)}
+                    className="hover:bg-surface-container-high/50 cursor-pointer transition-colors"
+                  >
+                    <td className="p-3">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-bold text-text-primary">{shiftInfo.shortTitleAr}</span>
+                        <span className="text-[9px] px-1.5 py-0.5 rounded font-bold bg-primary-container/10 text-primary-container border border-primary-container/20">
+                          {shiftInfo.categoryLabelAr}
                         </span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="p-3 text-right flex items-center justify-end gap-2">
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleOpenFleetPdf(bus);
-                      }}
-                      className="px-2.5 py-1 rounded-lg bg-blue-600/15 hover:bg-blue-600 text-blue-400 hover:text-white border border-blue-500/30 text-xs font-bold transition flex items-center gap-1 cursor-pointer"
-                      title="Download / Print Official Boarding PDF"
-                    >
-                      <span className="material-symbols-outlined text-xs">picture_as_pdf</span>
-                      PDF
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setInspectingTripId(bus.tripId);
-                      }}
-                      className="px-2.5 py-1 rounded-lg bg-surface border border-border-whisper hover:border-primary-container text-text-primary text-xs font-bold cursor-pointer"
-                    >
-                      Inspect
-                    </button>
-                  </td>
-                </tr>
-              ))}
+                      </div>
+                      <div className="text-[11px] text-text-secondary mt-0.5">خط {shiftInfo.routeNameAr} ({shiftInfo.routeNameEn})</div>
+                    </td>
+                    <td className="p-3 font-mono font-bold text-text-primary">
+                      {shiftInfo.licensePlate}
+                    </td>
+                    <td className="p-3">
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${bus.direction === 'to_campus' ? 'bg-primary-container/15 text-primary-container' : 'bg-amber-500/15 text-amber-300'}`}>
+                        {shiftInfo.directionAr}
+                      </span>
+                    </td>
+                    <td className="p-3 font-mono text-text-primary">
+                      {shiftInfo.departureDisplay}
+                    </td>
+                    <td className="p-3 text-[11px]">
+                      <div>سائق: {bus.driverName}</div>
+                      <div className="text-[10px] text-text-tertiary">مشرف: {bus.superName}</div>
+                    </td>
+                    <td className="p-3">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono font-bold text-text-primary">{bus.bookedSeats}/{bus.capacity}</span>
+                        {bus.heldSeats > 0 && (
+                          <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 text-[10px] font-bold">
+                            +{bus.heldSeats} held
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="p-3 text-right flex items-center justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenFleetPdf(bus);
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-blue-600/15 hover:bg-blue-600 text-blue-400 hover:text-white border border-blue-500/30 text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+                        title="Download / Print Official Boarding PDF"
+                      >
+                        <span className="material-symbols-outlined text-xs">picture_as_pdf</span>
+                        PDF
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setInspectingTripId(bus.tripId);
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-surface border border-border-whisper hover:border-primary-container text-text-primary text-xs font-bold cursor-pointer"
+                      >
+                        Inspect
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -931,13 +1032,38 @@ export default function FleetStatus() {
               </div>
 
               <div>
-                <label className="block font-bold text-text-primary mb-1">Select Route</label>
+                <label className="block font-bold text-text-primary mb-1">المنطقة / Region Category</label>
+                <div className="flex rounded-lg border border-border-whisper overflow-hidden bg-surface mb-2">
+                  {ROUTE_CATEGORIES.map(cat => (
+                    <button
+                      key={cat.key}
+                      type="button"
+                      onClick={() => {
+                        setTestCategory(cat.key);
+                        const first = PREDEFINED_ROUTES.find(r => r.category === cat.key);
+                        if (first) setTestRouteId(first.id);
+                      }}
+                      className={`flex-1 py-1.5 text-center text-xs font-bold transition flex items-center justify-center gap-1 ${
+                        testCategory === cat.key ? 'bg-primary-container text-white' : 'text-text-secondary hover:text-text-primary'
+                      }`}
+                    >
+                      <span className="material-symbols-outlined text-sm">{cat.icon}</span>
+                      <span>{cat.labelAr}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-text-primary mb-1">
+                  Select Route ({testCategory === 'cairo' ? 'القاهرة' : testCategory === 'suez' ? 'السويس' : 'الشروق وبدر'})
+                </label>
                 <select
                   value={testRouteId}
                   onChange={(e) => setTestRouteId(Number(e.target.value))}
                   className="w-full px-3 py-2 rounded-xl bg-surface border border-border-whisper text-text-primary focus:border-primary-container focus:outline-none"
                 >
-                  {routes.map((r) => (
+                  {testRoutes.map((r) => (
                     <option key={r.id} value={r.id}>
                       {r.nameAr} - {r.nameEn}
                     </option>

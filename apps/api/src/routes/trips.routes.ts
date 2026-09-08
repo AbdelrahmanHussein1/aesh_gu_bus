@@ -2,7 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { db } from '../db/index.js';
 import * as schema from '../db/schema.js';
 import { redis } from '../redis.js';
-import { eq, and, inArray } from 'drizzle-orm';
+import { eq, and, inArray, ne } from 'drizzle-orm';
 import { WebSocketHub } from '../websocket/hub.js';
 import { logSecurityEvent } from '../services/audit.service.js';
 import { CacheService } from '../services/cache.service.js';
@@ -40,6 +40,7 @@ export async function tripsRoutes(fastify: FastifyInstance) {
 
     const conditions = [
       eq(schema.trips.tripDate, date),
+      ne(schema.trips.status, 'cancelled'),
     ];
     if (routeId && routeId !== 'all') {
       const rid = parseInt(routeId);

@@ -1,7 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { db } from '../db/index.js';
 import * as schema from '../db/schema.js';
-import { eq, and, or, desc, inArray } from 'drizzle-orm';
+import { eq, and, or, desc, inArray, ne } from 'drizzle-orm';
 import { WebSocketHub } from '../websocket/hub.js';
 import { redis } from '../redis.js';
 import { logSecurityEvent } from '../services/audit.service.js';
@@ -603,7 +603,9 @@ export async function adminRoutes(fastify: FastifyInstance) {
       return cached;
     }
 
-    const conditions: any[] = [];
+    const conditions: any[] = [
+      ne(schema.trips.status, 'cancelled'),
+    ];
     if (date) conditions.push(eq(schema.trips.tripDate, date));
     if (routeId) {
       const rid = parseInt(routeId);
@@ -712,19 +714,78 @@ export async function adminRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: 'routeId, tripDate, and departureTime are required' });
     }
 
-    let assignedBusId = busId;
-    if (!assignedBusId) {
+    // Helper to safely parse date & time
+    const parseTimeSafe = (dateStr: string, timeInput: any, defaultHour = 7, defaultMin = 0): Date => {
+      if (!timeInput) return new Date(`${dateStr}T${String(defaultHour).padStart(2, '0')}:${String(defaultMin).padStart(2, '0')}:00+02:00`);
+      if (timeInput instanceof Date) return timeInput;
+      const str = String(timeInput).trim();
+      const ampmMatch = str.match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+      if (ampmMatch) {
+        let hours = parseInt(ampmMatch[1], 10);
+        const mins = parseInt(ampmMatch[2], 10);
+        const mer = ampmMatch[3]?.toUpperCase();
+        if (mer === 'PM' && hours < 12) hours += 12;
+        if (mer === 'AM' && hours === 12) hours = 0;
+        const hh = String(hours).padStart(2, '0');
+        const mm = String(mins).padStart(2, '0');
+        return new Date(`${dateStr}T${hh}:${mm}:00+02:00`);
+      }
+      const parsed = new Date(str);
+      if (!isNaN(parsed.getTime())) return parsed;
+      return new Date(`${dateStr}T${String(defaultHour).padStart(2, '0')}:${String(defaultMin).padStart(2, '0')}:00+02:00`);
+    };
+
+    const depDate = parseTimeSafe(tripDate, departureTime, 7, 0);
+    const retDate = returnTime ? parseTimeSafe(tripDate, returnTime, 14, 30) : null;
+
+    let assignedBusId = busId ? parseInt(busId) : null;
+    if (!assignedBusId || isNaN(assignedBusId)) {
       const firstBus = await db.query.buses.findFirst();
       assignedBusId = firstBus?.id || 1;
+    }
+
+    // Resolve driverId (UUID or phone fallback)
+    let resolvedDriverId: string | null = null;
+    if (driverId) {
+      const uById = await db.query.users.findFirst({
+        where: eq(schema.users.id, String(driverId)),
+      });
+      if (uById) {
+        resolvedDriverId = uById.id;
+      } else {
+        const uByPhone = await db.query.users.findFirst({
+          where: eq(schema.users.phone, String(driverId)),
+        });
+        if (uByPhone) {
+          resolvedDriverId = uByPhone.id;
+        }
+      }
+    }
+
+    // Resolve supervisorIds (UUIDs or phones fallback)
+    const resolvedSupervisorIds: string[] = [];
+    if (Array.isArray(supervisorIds) && supervisorIds.length > 0) {
+      for (const sId of supervisorIds) {
+        if (!sId) continue;
+        const sUser = await db.query.users.findFirst({
+          where: or(
+            eq(schema.users.id, String(sId)),
+            eq(schema.users.phone, String(sId))
+          ),
+        });
+        if (sUser && !resolvedSupervisorIds.includes(sUser.id)) {
+          resolvedSupervisorIds.push(sUser.id);
+        }
+      }
     }
 
     const [newTrip] = await db.insert(schema.trips).values({
       routeId: parseInt(routeId),
       busId: assignedBusId,
-      driverId: driverId || null,
+      driverId: resolvedDriverId,
       tripDate,
-      departureTime: new Date(departureTime),
-      returnTime: returnTime ? new Date(returnTime) : null,
+      departureTime: depDate,
+      returnTime: retDate,
       direction: direction || 'to_campus',
       timeSlot: timeSlot || 'morning_1',
       totalSeats: totalSeats ? parseInt(totalSeats) : 50,
@@ -732,9 +793,9 @@ export async function adminRoutes(fastify: FastifyInstance) {
       status: 'scheduled',
     }).returning();
 
-    if (Array.isArray(supervisorIds) && supervisorIds.length > 0) {
+    if (resolvedSupervisorIds.length > 0) {
       await db.insert(schema.tripSupervisors).values(
-        supervisorIds.map((uid: string) => ({
+        resolvedSupervisorIds.map((uid: string) => ({
           tripId: newTrip.id,
           userId: uid,
           assignedRole: 'line_supervisor',
@@ -762,8 +823,8 @@ export async function adminRoutes(fastify: FastifyInstance) {
         routeNameEn: route?.nameEn || 'New Route',
         tripDate: newTrip.tripDate,
         timeSlot: newTrip.timeSlot,
-        messageAr: `📢 باص جديد متاح الآن! تمت إضافة حافلة على خط ${route?.nameAr || ''} لتاريخ ${newTrip.tripDate}. الحجز متاح الآن!`,
-        messageEn: `📢 New bus available! Route: ${route?.nameEn || ''} on ${newTrip.tripDate}. Booking is now open!`,
+        messageAr: `📢 شفت جديد متاح الآن! تمت إضافة حافلة على خط ${route?.nameAr || ''} لتاريخ ${newTrip.tripDate}.`,
+        messageEn: `📢 New shift available! Route: ${route?.nameEn || ''} on ${newTrip.tripDate}.`,
       });
     } catch (e) {
       console.warn('[Admin] Failed to broadcast new trip notification:', e);
@@ -853,6 +914,17 @@ export async function adminRoutes(fastify: FastifyInstance) {
       details: { tripId, activeBookingsCount: existingBookings.length },
     });
 
+    try {
+      WebSocketHub.broadcastToAll({
+        type: 'TRIP_CANCELLED',
+        tripId,
+        messageAr: `تم إلغاء الشفت / الرحلة #${tripId}`,
+        messageEn: `Shift #${tripId} has been cancelled`,
+      });
+    } catch (e) {
+      console.warn('[Admin] Failed to broadcast trip cancellation:', e);
+    }
+
     await CacheService.invalidateTripsAndFleetCache(tripId);
 
     return { success: true };
@@ -879,6 +951,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
     const sourceTrips = await db.query.trips.findMany({
       where: and(
         eq(schema.trips.tripDate, sourceDate),
+        ne(schema.trips.status, 'cancelled'),
         routeIds && routeIds.length > 0 ? inArray(schema.trips.routeId, routeIds) : undefined
       ),
       with: {
@@ -937,6 +1010,19 @@ export async function adminRoutes(fastify: FastifyInstance) {
         details: { sourceDate, targetDate, clonedCount },
       });
     });
+
+    try {
+      WebSocketHub.broadcastToAll({
+        type: 'SCHEDULE_CLONED',
+        sourceDate,
+        targetDate,
+        clonedCount,
+        messageAr: `تم نسخ جدول الرحلات إلى ${targetDate} بنجاح (${clonedCount} رحلة)`,
+        messageEn: `Schedule cloned to ${targetDate} (${clonedCount} trips)`,
+      });
+    } catch (e) {
+      console.warn('[Admin] Failed to broadcast schedule cloned event:', e);
+    }
 
     await CacheService.invalidateTripsAndFleetCache();
 
