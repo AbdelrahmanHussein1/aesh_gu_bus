@@ -279,6 +279,8 @@ export async function supervisorRoutes(fastify: FastifyInstance) {
     return {
       success: true,
       result: 'valid',
+      bookingId: booking.id,
+      tripId: booking.tripId,
       riderName: booking.user.fullName,
       seatNumber: booking.seatNumber,
       route: booking.trip.route.nameEn,
@@ -326,9 +328,129 @@ export async function supervisorRoutes(fastify: FastifyInstance) {
       faculty: b.user.faculty || '—',
       phone: b.user.phone || '—',
       boardingCode: b.boardingCode || ('GU-' + b.id.substring(0, 4).toUpperCase()),
-      isBoarded: b.boardingLogs.some(log => log.scanResult === 'valid'),
-      boardedAt: b.boardingLogs.find(log => log.scanResult === 'valid')?.scannedAt || null,
+      isBoarded: b.qrUsedAt !== null || Boolean(b.boardingLogs?.some(log => log.scanResult === 'valid')),
+      boardedAt: b.qrUsedAt || b.boardingLogs?.find(log => log.scanResult === 'valid')?.scannedAt || null,
     }));
+  });
+
+  // 3b. Manual Board Single Passenger by Supervisor
+  fastify.post('/api/supervisor/board-passenger', {
+    preValidation: [(fastify as any).authenticate, requireRole(['supervisor', 'admin'])],
+  }, async (request: any, reply) => {
+    const { bookingId } = request.body as { bookingId: string };
+    if (!bookingId) {
+      return reply.status(400).send({ error: 'bookingId is required' });
+    }
+
+    const booking = await db.query.bookings.findFirst({
+      where: eq(schema.bookings.id, bookingId),
+      with: { user: true, trip: true, boardingLogs: true },
+    });
+
+    if (!booking) {
+      return reply.status(404).send({ error: 'Booking not found' });
+    }
+
+    const isAlreadyBoarded = booking.qrUsedAt !== null || booking.boardingLogs.some(l => l.scanResult === 'valid');
+    if (!isAlreadyBoarded) {
+      const now = new Date();
+      await db.update(schema.bookings)
+        .set({ qrUsedAt: now, updatedAt: now })
+        .where(eq(schema.bookings.id, booking.id));
+
+      await db.insert(schema.boardingLogs).values({
+        bookingId: booking.id,
+        scannedBy: request.user.id,
+        scanResult: 'valid',
+        deviceInfo: 'Supervisor Manual Roster Boarding',
+      });
+
+      const boardedEvent = {
+        type: 'rider_boarded',
+        bookingId: booking.id,
+        userId: booking.userId,
+        riderName: booking.user.fullName,
+        seatNumber: booking.seatNumber,
+        legType: booking.legType,
+        scannedAt: now.toISOString(),
+      };
+
+      WebSocketHub.broadcastToTripRoom(booking.tripId, boardedEvent);
+      WebSocketHub.sendToUser(booking.userId, boardedEvent);
+
+      await CacheService.invalidateSeatCache(booking.tripId);
+      await CacheService.invalidateTripsAndFleetCache(booking.tripId);
+    }
+
+    return {
+      success: true,
+      bookingId: booking.id,
+      seatNumber: booking.seatNumber,
+      isBoarded: true,
+      boardedAt: new Date().toISOString(),
+      riderName: booking.user.fullName,
+    };
+  });
+
+  // 3c. Manual Board All Pending Passengers for Trip
+  fastify.post('/api/supervisor/board-all-passengers', {
+    preValidation: [(fastify as any).authenticate, requireRole(['supervisor', 'admin'])],
+  }, async (request: any, reply) => {
+    const { tripId } = request.body as { tripId: number };
+    if (!tripId) {
+      return reply.status(400).send({ error: 'tripId is required' });
+    }
+
+    const tripBookings = await db.query.bookings.findMany({
+      where: and(
+        eq(schema.bookings.tripId, tripId),
+        inArray(schema.bookings.status, ['confirmed', 'swapped'])
+      ),
+      with: { user: true, boardingLogs: true },
+    });
+
+    const now = new Date();
+    const boardedIds: string[] = [];
+
+    for (const b of tripBookings) {
+      const isAlreadyBoarded = b.qrUsedAt !== null || b.boardingLogs.some(l => l.scanResult === 'valid');
+      if (!isAlreadyBoarded) {
+        await db.update(schema.bookings)
+          .set({ qrUsedAt: now, updatedAt: now })
+          .where(eq(schema.bookings.id, b.id));
+
+        await db.insert(schema.boardingLogs).values({
+          bookingId: b.id,
+          scannedBy: request.user.id,
+          scanResult: 'valid',
+          deviceInfo: 'Supervisor Bulk Board All',
+        });
+
+        const boardedEvent = {
+          type: 'rider_boarded',
+          bookingId: b.id,
+          userId: b.userId,
+          riderName: b.user.fullName,
+          seatNumber: b.seatNumber,
+          legType: b.legType,
+          scannedAt: now.toISOString(),
+        };
+
+        WebSocketHub.broadcastToTripRoom(tripId, boardedEvent);
+        WebSocketHub.sendToUser(b.userId, boardedEvent);
+        boardedIds.push(b.id);
+      }
+    }
+
+    await CacheService.invalidateSeatCache(tripId);
+    await CacheService.invalidateTripsAndFleetCache(tripId);
+
+    return {
+      success: true,
+      tripId,
+      boardedCount: boardedIds.length,
+      boardedIds,
+    };
   });
 
   // 4. Supervisor Cancel Booking (Must be before boarding + 5-hour departure limit + Refund)

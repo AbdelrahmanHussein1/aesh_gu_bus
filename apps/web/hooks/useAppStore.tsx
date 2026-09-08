@@ -103,6 +103,8 @@ interface AppActions {
   setMobileSidebarOpen: (v: boolean) => void;
   setIsOffline: (v: boolean) => void;
   refreshTrips: () => Promise<void>;
+  handleManualBoardPassenger: (bookingId: string, tripId?: number) => Promise<void>;
+  handleManualBoardAll: (tripId: number) => Promise<void>;
 }
 
 const AppContext = createContext<(AppState & AppActions) | null>(null);
@@ -1019,7 +1021,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const data = await res.json();
         setScanResult(data);
         setIsScanning(false);
-        loadSupervisorManifest();
+        if (data.success && data.result === 'valid') {
+          playSuccessChime();
+          if (data.bookingId) {
+            setJustBoardedBookingIds(prev => new Set(prev).add(data.bookingId));
+          }
+          if (typeof window !== 'undefined') {
+            import('canvas-confetti').then(mod => {
+              mod.default({
+                particleCount: 140,
+                spread: 85,
+                origin: { y: 0.55 },
+                colors: ['#22c55e', '#16a34a', '#4ade80', '#38bdf8', '#fbbf24'],
+              });
+            }).catch(() => {});
+            window.dispatchEvent(new CustomEvent('rider_boarded_event', { detail: { bookingId: data.bookingId, tripId: data.tripId || activeTrip?.id } }));
+            window.dispatchEvent(new CustomEvent('schedule_updated', { detail: { tripId: data.tripId || activeTrip?.id } }));
+          }
+          await loadSupervisorManifest();
+          await refreshTrips();
+        } else {
+          loadSupervisorManifest();
+        }
         return;
       } catch (err) {
         console.warn('API verify failed, falling back to local verify:', err);
@@ -1077,6 +1100,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setJustBoardedBookingIds(prev => new Set(prev).add(target.id));
     playSuccessChime();
     if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('rider_boarded_event', { detail: { bookingId: target.id, tripId: target.tripId } }));
+      window.dispatchEvent(new CustomEvent('schedule_updated', { detail: { tripId: target.tripId } }));
       import('canvas-confetti').then(mod => {
         mod.default({
           particleCount: 140,
@@ -1090,7 +1115,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setScanResult({ success: true, result: 'valid', riderName: target.riderName, seatNumber: target.seatNumber, route: target.routeAr, time: checkInTime });
     setIsScanning(false);
     loadSupervisorManifest();
-  }, [activeTrip, isOffline, token, loadSupervisorManifest]);
+  }, [activeTrip, isOffline, token, loadSupervisorManifest, refreshTrips]);
 
   const handleSimulatedScan = useCallback(() => {
     verifyScanToken(scanInputToken);
@@ -1239,6 +1264,110 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return grouped;
   }, [myBookings]);
 
+  const handleManualBoardPassenger = useCallback(async (bookingId: string, tripId?: number) => {
+    if (!bookingId) return;
+    const apiUrl = getApiBaseUrl();
+    if (!isOffline && token) {
+      try {
+        const res = await fetch(`${apiUrl}/api/supervisor/board-passenger`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ bookingId }),
+        });
+        if (res.ok) {
+          playSuccessChime();
+          setJustBoardedBookingIds(prev => new Set(prev).add(bookingId));
+          setSupervisorManifest(prev => prev.map(m => m.bookingId === bookingId ? { ...m, isBoarded: true, boardedAt: new Date().toLocaleTimeString() } : m));
+          setMyBookings(prev => prev.map(b => b.id === bookingId ? { ...b, isBoarded: true, qrUsedAt: new Date().toISOString() } : b));
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('rider_boarded_event', { detail: { bookingId, tripId } }));
+            window.dispatchEvent(new CustomEvent('schedule_updated', { detail: { tripId } }));
+          }
+          await loadSupervisorManifest();
+          await refreshTrips();
+          return;
+        }
+      } catch (err) {
+        console.warn('Backend manual board failed, falling back to local:', err);
+      }
+    }
+
+    // Local / offline fallback
+    const all: Booking[] = JSON.parse(localStorage.getItem('aesh_bookings') || '[]');
+    const target = all.find(b => b.id === bookingId);
+    if (target) {
+      target.isBoarded = true;
+      target.boardedAt = new Date().toLocaleTimeString();
+      target.qrUsedAt = new Date().toISOString();
+      localStorage.setItem('aesh_bookings', JSON.stringify(all));
+      setMyBookings(all);
+      setJustBoardedBookingIds(prev => new Set(prev).add(bookingId));
+      playSuccessChime();
+    }
+    setSupervisorManifest(prev => prev.map(m => m.bookingId === bookingId ? { ...m, isBoarded: true, boardedAt: new Date().toLocaleTimeString() } : m));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('rider_boarded_event', { detail: { bookingId, tripId } }));
+      window.dispatchEvent(new CustomEvent('schedule_updated', { detail: { tripId } }));
+    }
+    loadSupervisorManifest();
+  }, [isOffline, token, loadSupervisorManifest, refreshTrips]);
+
+  const handleManualBoardAll = useCallback(async (tripId: number) => {
+    if (!tripId) return;
+    const confirmBoardAll = window.confirm('هل أنت متأكد من تسجيل صعود جميع الركاب المتبقين في هذه الحافلة؟');
+    if (!confirmBoardAll) return;
+
+    const apiUrl = getApiBaseUrl();
+    if (!isOffline && token) {
+      try {
+        const res = await fetch(`${apiUrl}/api/supervisor/board-all-passengers`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ tripId }),
+        });
+        if (res.ok) {
+          playSuccessChime();
+          if (typeof window !== 'undefined') {
+            import('canvas-confetti').then(mod => {
+              mod.default({
+                particleCount: 140,
+                spread: 85,
+                origin: { y: 0.55 },
+                colors: ['#22c55e', '#16a34a', '#4ade80', '#38bdf8', '#fbbf24'],
+              });
+            }).catch(() => {});
+            window.dispatchEvent(new CustomEvent('rider_boarded_event', { detail: { tripId } }));
+            window.dispatchEvent(new CustomEvent('schedule_updated', { detail: { tripId } }));
+          }
+          await loadSupervisorManifest();
+          await refreshTrips();
+          return;
+        }
+      } catch (err) {
+        console.warn('Backend board all failed, falling back to local:', err);
+      }
+    }
+
+    // Local / offline fallback
+    const all: Booking[] = JSON.parse(localStorage.getItem('aesh_bookings') || '[]');
+    const updated = all.map(b => b.tripId === tripId && b.status === 'confirmed' ? { ...b, isBoarded: true, boardedAt: new Date().toLocaleTimeString(), qrUsedAt: new Date().toISOString() } : b);
+    localStorage.setItem('aesh_bookings', JSON.stringify(updated));
+    setMyBookings(updated);
+    setSupervisorManifest(prev => prev.map(m => ({ ...m, isBoarded: true, boardedAt: new Date().toLocaleTimeString() })));
+    playSuccessChime();
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('rider_boarded_event', { detail: { tripId } }));
+      window.dispatchEvent(new CustomEvent('schedule_updated', { detail: { tripId } }));
+    }
+    loadSupervisorManifest();
+  }, [isOffline, token, loadSupervisorManifest, refreshTrips]);
+
   const value = {
     isAuthLoading, token, user, role, isOffline, routes, selectedRouteId, selectedDirection, selectedDate, trips,
     isTripsLoading, lastTripsRefreshTime, refreshTrips,
@@ -1252,6 +1381,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     handleSeatClick, setShowCheckout, setPaymentMethod, setCardNumber, setReceiptRef,
     handleCheckoutSubmit, handleCancelBooking, setExpandedTicketId, setSwapBookingTarget, setSwapBookingTargetOpen,
     setSwapTripId, setSwapSeatNumber, handleSupervisorSwapSubmit, handleSupervisorCancel, dismissSupervisorCancelAlert, supervisorCancelAlert,
+    handleManualBoardPassenger, handleManualBoardAll,
     setScanInputToken, setScanResult, setIsCameraActive, setCameraError, setShowCameraPermissionGuide,
     handleSimulatedScan, startCameraScan, stopCameraScan, setCancelLockHours,
     setIsScanning, setIsSwapping, getGroupedBookings, toggleSidebar, setMobileSidebarOpen, setIsOffline,

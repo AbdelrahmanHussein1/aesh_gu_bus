@@ -15,6 +15,7 @@ export default function TripSelector() {
   const {
     selectedDate, setSelectedDate,
     routes, activeTrip, setActiveTrip,
+    supervisorManifest, handleManualBoardPassenger, handleManualBoardAll,
   } = useApp();
 
   const [selectedCategory, setSelectedCategory] = useState<'all' | RouteCategoryKey>('all');
@@ -129,10 +130,33 @@ export default function TripSelector() {
     return availableTrips.find(t => t.id === selectedRosterTrip.id) || selectedRosterTrip;
   }, [selectedRosterTrip, availableTrips]);
 
+  // Live passenger roster merging live supervisorManifest for active trip
+  const livePassengers = useMemo(() => {
+    if (!currentRosterTrip) return [];
+    const base = currentRosterTrip.passengers || [];
+    if (activeTrip?.id === currentRosterTrip.id && supervisorManifest && supervisorManifest.length > 0) {
+      const manifestMap = new Map(supervisorManifest.map(m => [m.bookingId, m]));
+      return base.map(p => {
+        const live = manifestMap.get(p.bookingId);
+        if (live) {
+          const isBoarded = Boolean(p.isBoarded || live.isBoarded);
+          const boardedAt = p.boardedAt || live.boardedAt || (isBoarded ? new Date().toISOString() : null);
+          return {
+            ...p,
+            isBoarded,
+            boardedAt,
+          };
+        }
+        return p;
+      });
+    }
+    return base;
+  }, [currentRosterTrip, activeTrip?.id, supervisorManifest]);
+
   // Filtered passengers for the roster modal
   const filteredPassengers = useMemo(() => {
-    if (!currentRosterTrip || !currentRosterTrip.passengers) return [];
-    return currentRosterTrip.passengers.filter(p => {
+    if (!livePassengers || livePassengers.length === 0) return [];
+    return livePassengers.filter(p => {
       if (rosterFilter === 'pending' && p.isBoarded) return false;
       if (rosterFilter === 'boarded' && !p.isBoarded) return false;
       if (rosterSearch.trim()) {
@@ -145,7 +169,7 @@ export default function TripSelector() {
       }
       return true;
     });
-  }, [currentRosterTrip, rosterFilter, rosterSearch]);
+  }, [livePassengers, rosterFilter, rosterSearch]);
 
   const activeTripInfo = activeTrip ? formatShiftDisplay(activeTrip) : null;
 
@@ -477,9 +501,9 @@ export default function TripSelector() {
       {currentRosterTrip && (() => {
         const modalShiftInfo = formatShiftDisplay(currentRosterTrip);
         const modalTotalSeats = currentRosterTrip.bus?.totalSeats || currentRosterTrip.totalSeats || 50;
-        const modalBookedCount = currentRosterTrip.bookedSeats ?? (currentRosterTrip.passengers?.length || 0);
-        const modalBoardedCount = currentRosterTrip.boardedSeats ?? (currentRosterTrip.passengers?.filter(p => p.isBoarded).length || 0);
-        const modalPendingCount = currentRosterTrip.pendingSeats ?? Math.max(0, modalBookedCount - modalBoardedCount);
+        const modalBookedCount = livePassengers.length || currentRosterTrip.bookedSeats || 0;
+        const modalBoardedCount = livePassengers.filter(p => p.isBoarded).length;
+        const modalPendingCount = Math.max(0, modalBookedCount - modalBoardedCount);
         const isCurrentActive = activeTrip?.id === currentRosterTrip.id;
 
         return (
@@ -508,14 +532,28 @@ export default function TripSelector() {
                   </div>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => setSelectedRosterTrip(null)}
-                  className="p-1.5 text-text-secondary hover:text-text-primary rounded-lg hover:bg-surface-container-high transition"
-                  title="إغلاق"
-                >
-                  <span className="material-symbols-outlined text-xl">close</span>
-                </button>
+                <div className="flex items-center gap-2">
+                  {modalPendingCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => handleManualBoardAll(currentRosterTrip.id)}
+                      className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm cursor-pointer active:scale-95 transition"
+                      title="تسجيل صعود جميع الركاب المتبقين دفعة واحدة"
+                    >
+                      <span className="material-symbols-outlined text-sm">done_all</span>
+                      <span className="hidden sm:inline">صعود الجميع</span>
+                      <span>({modalPendingCount})</span>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setSelectedRosterTrip(null)}
+                    className="p-1.5 text-text-secondary hover:text-text-primary rounded-lg hover:bg-surface-container-high transition cursor-pointer"
+                    title="إغلاق"
+                  >
+                    <span className="material-symbols-outlined text-xl">close</span>
+                  </button>
+                </div>
               </div>
 
               {/* KPI Summary Cards */}
@@ -645,11 +683,11 @@ export default function TripSelector() {
                             </div>
                           </div>
 
-                          {/* Boarding Status Pill */}
-                          <div className="shrink-0 text-right">
+                          {/* Boarding Status Pill & Manual Action */}
+                          <div className="shrink-0 text-right flex items-center gap-2">
                             {p.isBoarded ? (
                               <div className="flex flex-col items-end">
-                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-600 border border-emerald-500/30">
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-600 border border-emerald-500/30">
                                   <span className="material-symbols-outlined text-xs">check_circle</span>
                                   تم الصعود
                                 </span>
@@ -660,10 +698,21 @@ export default function TripSelector() {
                                 )}
                               </div>
                             ) : (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-600 border border-amber-500/30">
-                                <span className="material-symbols-outlined text-xs animate-spin">hourglass_top</span>
-                                لم يصعد بعد
-                              </span>
+                              <div className="flex items-center gap-2">
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-600 border border-amber-500/30">
+                                  <span className="material-symbols-outlined text-xs animate-spin">hourglass_top</span>
+                                  لم يصعد بعد
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleManualBoardPassenger(p.bookingId, currentRosterTrip.id)}
+                                  className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition flex items-center gap-1 shadow-xs cursor-pointer active:scale-95"
+                                  title="تسجيل صعود الطالب يدوياً"
+                                >
+                                  <span className="material-symbols-outlined text-xs">how_to_reg</span>
+                                  <span>تسجيل صعود</span>
+                                </button>
+                              </div>
                             )}
                           </div>
                         </div>

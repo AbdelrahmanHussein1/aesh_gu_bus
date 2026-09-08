@@ -5,7 +5,7 @@ import BoardingManifestPdfModal from './BoardingManifestPdfModal';
 import { checkManifestUnlock } from '@/lib/manifest-unlock';
 
 export default function ManifestTable() {
-  const { supervisorManifest, activeTrip, setSwapBookingTarget, handleSupervisorCancel, user } = useApp();
+  const { supervisorManifest, activeTrip, setSwapBookingTarget, handleSupervisorCancel, handleManualBoardPassenger, handleManualBoardAll, user } = useApp();
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'boarded' | 'pending'>('all');
   const [showPdfModal, setShowPdfModal] = useState(false);
@@ -75,6 +75,18 @@ export default function ManifestTable() {
               />
             </div>
           </div>
+
+          {stats.pending > 0 && activeTrip && (
+            <button
+              type="button"
+              onClick={() => handleManualBoardAll(activeTrip.id)}
+              className="px-3.5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-sm bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer active:scale-95"
+              title="Board all pending passengers on this bus"
+            >
+              <span className="material-symbols-outlined text-base">done_all</span>
+              <span>Board All ({stats.pending})</span>
+            </button>
+          )}
 
           {/* Official Boarding PDF Action Button */}
           <button
@@ -191,6 +203,15 @@ export default function ManifestTable() {
                   <td className="py-3.5 px-4 text-right space-x-2">
                     {row.status !== 'cancelled' && (
                       <>
+                        {!row.isBoarded && (
+                          <button
+                            onClick={() => handleManualBoardPassenger(row.bookingId, activeTrip?.id)}
+                            className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg transition font-medium cursor-pointer"
+                            title="Confirm passenger boarded"
+                          >
+                            Board
+                          </button>
+                        )}
                         <button
                           onClick={() => setSwapBookingTarget(row)}
                           className="text-xs bg-surface-container-low hover:bg-surface-container-high text-text-primary px-3 py-1.5 rounded-lg border border-border-whisper transition font-medium"
