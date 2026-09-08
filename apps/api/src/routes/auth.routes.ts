@@ -254,7 +254,16 @@ export async function authRoutes(fastify: FastifyInstance) {
       });
 
       if (user) {
-        if (user.password && !verifyPassword(password, user.password)) {
+        // If user has no password set in database (legacy/seeded user), securely initialize with the entered password
+        if (!user.password) {
+          const newHashed = hashPassword(password);
+          await db.update(schema.users)
+            .set({ password: newHashed })
+            .where(eq(schema.users.id, user.id));
+          user.password = newHashed;
+        }
+
+        if (!verifyPassword(password, user.password)) {
           const failResult = await recordFailedAttempt();
           if (failResult.locked) {
             return reply.status(429).send({

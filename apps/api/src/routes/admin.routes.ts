@@ -14,6 +14,9 @@ const requireRole = (roles: string[]) => async (request: any, reply: any) => {
   }
 };
 
+const isUuid = (val: unknown): boolean =>
+  typeof val === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val.trim());
+
 export async function adminRoutes(fastify: FastifyInstance) {
   // 1. Dynamic Fleet Status Overview (Live Real-Time Fleet Monitor)
   // 1. Dynamic Fleet Status Overview (Live Real-Time Fleet Monitor with Full Custom Filtering)
@@ -703,184 +706,253 @@ export async function adminRoutes(fastify: FastifyInstance) {
   fastify.post('/api/admin/trips', {
     preValidation: [(fastify as any).authenticate, requireRole(['admin'])],
   }, async (request: any, reply) => {
-    const body = request.body as any;
-    const {
-      routeId, busId, driverId, supervisorIds,
-      tripDate, departureTime, returnTime, direction,
-      timeSlot, totalSeats, priceEgp
-    } = body;
-
-    if (!routeId || !tripDate || !departureTime) {
-      return reply.status(400).send({ error: 'routeId, tripDate, and departureTime are required' });
-    }
-
-    // Helper to safely parse date & time
-    const parseTimeSafe = (dateStr: string, timeInput: any, defaultHour = 7, defaultMin = 0): Date => {
-      if (!timeInput) return new Date(`${dateStr}T${String(defaultHour).padStart(2, '0')}:${String(defaultMin).padStart(2, '0')}:00+02:00`);
-      if (timeInput instanceof Date) return timeInput;
-      const str = String(timeInput).trim();
-      const ampmMatch = str.match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
-      if (ampmMatch) {
-        let hours = parseInt(ampmMatch[1], 10);
-        const mins = parseInt(ampmMatch[2], 10);
-        const mer = ampmMatch[3]?.toUpperCase();
-        if (mer === 'PM' && hours < 12) hours += 12;
-        if (mer === 'AM' && hours === 12) hours = 0;
-        const hh = String(hours).padStart(2, '0');
-        const mm = String(mins).padStart(2, '0');
-        return new Date(`${dateStr}T${hh}:${mm}:00+02:00`);
-      }
-      const parsed = new Date(str);
-      if (!isNaN(parsed.getTime())) return parsed;
-      return new Date(`${dateStr}T${String(defaultHour).padStart(2, '0')}:${String(defaultMin).padStart(2, '0')}:00+02:00`);
-    };
-
-    const depDate = parseTimeSafe(tripDate, departureTime, 7, 0);
-    const retDate = returnTime ? parseTimeSafe(tripDate, returnTime, 14, 30) : null;
-
-    let assignedBusId = busId ? parseInt(busId) : null;
-    if (!assignedBusId || isNaN(assignedBusId)) {
-      const firstBus = await db.query.buses.findFirst();
-      assignedBusId = firstBus?.id || 1;
-    }
-
-    // Resolve driverId (UUID or phone fallback)
-    let resolvedDriverId: string | null = null;
-    if (driverId) {
-      const uById = await db.query.users.findFirst({
-        where: eq(schema.users.id, String(driverId)),
-      });
-      if (uById) {
-        resolvedDriverId = uById.id;
-      } else {
-        const uByPhone = await db.query.users.findFirst({
-          where: eq(schema.users.phone, String(driverId)),
-        });
-        if (uByPhone) {
-          resolvedDriverId = uByPhone.id;
-        }
-      }
-    }
-
-    // Resolve supervisorIds (UUIDs or phones fallback)
-    const resolvedSupervisorIds: string[] = [];
-    if (Array.isArray(supervisorIds) && supervisorIds.length > 0) {
-      for (const sId of supervisorIds) {
-        if (!sId) continue;
-        const sUser = await db.query.users.findFirst({
-          where: or(
-            eq(schema.users.id, String(sId)),
-            eq(schema.users.phone, String(sId))
-          ),
-        });
-        if (sUser && !resolvedSupervisorIds.includes(sUser.id)) {
-          resolvedSupervisorIds.push(sUser.id);
-        }
-      }
-    }
-
-    const [newTrip] = await db.insert(schema.trips).values({
-      routeId: parseInt(routeId),
-      busId: assignedBusId,
-      driverId: resolvedDriverId,
-      tripDate,
-      departureTime: depDate,
-      returnTime: retDate,
-      direction: direction || 'to_campus',
-      timeSlot: timeSlot || 'morning_1',
-      totalSeats: totalSeats ? parseInt(totalSeats) : 50,
-      priceEgp: priceEgp ? String(priceEgp) : '160.00',
-      status: 'scheduled',
-    }).returning();
-
-    if (resolvedSupervisorIds.length > 0) {
-      await db.insert(schema.tripSupervisors).values(
-        resolvedSupervisorIds.map((uid: string) => ({
-          tripId: newTrip.id,
-          userId: uid,
-          assignedRole: 'line_supervisor',
-        }))
-      );
-    }
-
-    await db.insert(schema.auditLogs).values({
-      userId: request.user.id,
-      action: 'TRIP_CREATED',
-      entityType: 'trip',
-      entityId: String(newTrip.id),
-      details: { tripId: newTrip.id, tripDate, routeId, timeSlot },
-    });
-
     try {
-      const route = await db.query.routes.findFirst({
-        where: eq(schema.routes.id, parseInt(routeId)),
+      const body = request.body as any;
+      const {
+        routeId, busId, driverId, supervisorIds,
+        tripDate, departureTime, returnTime, direction,
+        timeSlot, totalSeats, priceEgp
+      } = body;
+
+      if (!routeId || !tripDate || !departureTime) {
+        return reply.status(400).send({ error: 'routeId, tripDate, and departureTime are required' });
+      }
+
+      // Helper to safely parse date & time
+      const parseTimeSafe = (dateStr: string, timeInput: any, defaultHour = 7, defaultMin = 0): Date => {
+        if (!timeInput) return new Date(`${dateStr}T${String(defaultHour).padStart(2, '0')}:${String(defaultMin).padStart(2, '0')}:00+02:00`);
+        if (timeInput instanceof Date) return timeInput;
+        const str = String(timeInput).trim();
+        const ampmMatch = str.match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+        if (ampmMatch) {
+          let hours = parseInt(ampmMatch[1], 10);
+          const mins = parseInt(ampmMatch[2], 10);
+          const mer = ampmMatch[3]?.toUpperCase();
+          if (mer === 'PM' && hours < 12) hours += 12;
+          if (mer === 'AM' && hours === 12) hours = 0;
+          const hh = String(hours).padStart(2, '0');
+          const mm = String(mins).padStart(2, '0');
+          return new Date(`${dateStr}T${hh}:${mm}:00+02:00`);
+        }
+        const parsed = new Date(str);
+        if (!isNaN(parsed.getTime())) return parsed;
+        return new Date(`${dateStr}T${String(defaultHour).padStart(2, '0')}:${String(defaultMin).padStart(2, '0')}:00+02:00`);
+      };
+
+      const depDate = parseTimeSafe(tripDate, departureTime, 7, 0);
+      const retDate = returnTime ? parseTimeSafe(tripDate, returnTime, 14, 30) : null;
+
+      let assignedBusId = busId ? parseInt(busId) : null;
+      if (!assignedBusId || isNaN(assignedBusId)) {
+        const firstBus = await db.query.buses.findFirst();
+        assignedBusId = firstBus?.id || 1;
+      }
+
+      // Resolve driverId safely (UUID vs phone/email)
+      let resolvedDriverId: string | null = null;
+      if (driverId) {
+        const dStr = String(driverId).trim();
+        if (dStr && dStr !== 'null' && dStr !== 'undefined') {
+          let uDriver = null;
+          if (isUuid(dStr)) {
+            uDriver = await db.query.users.findFirst({
+              where: eq(schema.users.id, dStr),
+            });
+          } else {
+            uDriver = await db.query.users.findFirst({
+              where: or(
+                eq(schema.users.phone, dStr),
+                eq(schema.users.email, dStr)
+              ),
+            });
+          }
+          if (uDriver) {
+            resolvedDriverId = uDriver.id;
+          }
+        }
+      }
+
+      // Resolve supervisorIds safely (UUIDs vs phones/emails)
+      const resolvedSupervisorIds: string[] = [];
+      if (Array.isArray(supervisorIds) && supervisorIds.length > 0) {
+        for (const sId of supervisorIds) {
+          if (!sId) continue;
+          const sStr = String(sId).trim();
+          if (!sStr || sStr === 'null' || sStr === 'undefined') continue;
+          let sUser = null;
+          if (isUuid(sStr)) {
+            sUser = await db.query.users.findFirst({
+              where: eq(schema.users.id, sStr),
+            });
+          } else {
+            sUser = await db.query.users.findFirst({
+              where: or(
+                eq(schema.users.phone, sStr),
+                eq(schema.users.email, sStr)
+              ),
+            });
+          }
+          if (sUser && !resolvedSupervisorIds.includes(sUser.id)) {
+            resolvedSupervisorIds.push(sUser.id);
+          }
+        }
+      }
+
+      const [newTrip] = await db.insert(schema.trips).values({
+        routeId: parseInt(routeId),
+        busId: assignedBusId,
+        driverId: resolvedDriverId,
+        tripDate,
+        departureTime: depDate,
+        returnTime: retDate,
+        direction: direction || 'to_campus',
+        timeSlot: timeSlot || 'morning_1',
+        totalSeats: totalSeats ? parseInt(totalSeats) : 50,
+        priceEgp: priceEgp ? String(priceEgp) : '160.00',
+        status: 'scheduled',
+      }).returning();
+
+      if (resolvedSupervisorIds.length > 0) {
+        await db.insert(schema.tripSupervisors).values(
+          resolvedSupervisorIds.map((uid: string) => ({
+            tripId: newTrip.id,
+            userId: uid,
+            assignedRole: 'line_supervisor',
+          }))
+        );
+      }
+
+      await db.insert(schema.auditLogs).values({
+        userId: request.user.id,
+        action: 'TRIP_CREATED',
+        entityType: 'trip',
+        entityId: String(newTrip.id),
+        details: { tripId: newTrip.id, tripDate, routeId, timeSlot },
       });
-      WebSocketHub.broadcastToAll({
-        type: 'NEW_TRIP_ANNOUNCED',
-        tripId: newTrip.id,
-        routeId: newTrip.routeId,
-        routeNameAr: route?.nameAr || 'خط جديد',
-        routeNameEn: route?.nameEn || 'New Route',
-        tripDate: newTrip.tripDate,
-        timeSlot: newTrip.timeSlot,
-        messageAr: `📢 شفت جديد متاح الآن! تمت إضافة حافلة على خط ${route?.nameAr || ''} لتاريخ ${newTrip.tripDate}.`,
-        messageEn: `📢 New shift available! Route: ${route?.nameEn || ''} on ${newTrip.tripDate}.`,
+
+      try {
+        const route = await db.query.routes.findFirst({
+          where: eq(schema.routes.id, parseInt(routeId)),
+        });
+        WebSocketHub.broadcastToAll({
+          type: 'NEW_TRIP_ANNOUNCED',
+          tripId: newTrip.id,
+          routeId: newTrip.routeId,
+          routeNameAr: route?.nameAr || 'خط جديد',
+          routeNameEn: route?.nameEn || 'New Route',
+          tripDate: newTrip.tripDate,
+          timeSlot: newTrip.timeSlot,
+          messageAr: `📢 شفت جديد متاح الآن! تمت إضافة حافلة على خط ${route?.nameAr || ''} لتاريخ ${newTrip.tripDate}.`,
+          messageEn: `📢 New shift available! Route: ${route?.nameEn || ''} on ${newTrip.tripDate}.`,
+        });
+      } catch (e) {
+        console.warn('[Admin] Failed to broadcast new trip notification:', e);
+      }
+
+      await CacheService.invalidateTripsAndFleetCache(newTrip.id);
+
+      return { success: true, trip: newTrip };
+    } catch (err: any) {
+      fastify.log.error(err);
+      return reply.status(500).send({
+        error: err.message || 'Failed to create trip',
+        details: String(err),
       });
-    } catch (e) {
-      console.warn('[Admin] Failed to broadcast new trip notification:', e);
     }
-
-    await CacheService.invalidateTripsAndFleetCache(newTrip.id);
-
-    return { success: true, trip: newTrip };
   });
 
   // 7. Update Trip
   fastify.put('/api/admin/trips/:id', {
     preValidation: [(fastify as any).authenticate, requireRole(['admin'])],
   }, async (request: any, reply) => {
-    const { id } = request.params as { id: string };
-    const tripId = parseInt(id);
-    if (isNaN(tripId)) return reply.status(400).send({ error: 'Invalid trip ID' });
+    try {
+      const { id } = request.params as { id: string };
+      const tripId = parseInt(id);
+      if (isNaN(tripId)) return reply.status(400).send({ error: 'Invalid trip ID' });
 
-    const body = request.body as any;
-    const { driverId, supervisorIds, departureTime, returnTime, status, timeSlot, totalSeats, priceEgp } = body;
+      const body = request.body as any;
+      const { driverId, supervisorIds, departureTime, returnTime, status, timeSlot, totalSeats, priceEgp } = body;
 
-    const updateData: any = { updatedAt: new Date() };
-    if (driverId !== undefined) updateData.driverId = driverId;
-    if (departureTime) updateData.departureTime = new Date(departureTime);
-    if (returnTime) updateData.returnTime = new Date(returnTime);
-    if (status) updateData.status = status;
-    if (timeSlot) updateData.timeSlot = timeSlot;
-    if (totalSeats) updateData.totalSeats = parseInt(totalSeats);
-    if (priceEgp) updateData.priceEgp = String(priceEgp);
+      const updateData: any = { updatedAt: new Date() };
 
-    await db.update(schema.trips).set(updateData).where(eq(schema.trips.id, tripId));
-
-    if (Array.isArray(supervisorIds)) {
-      await db.delete(schema.tripSupervisors).where(eq(schema.tripSupervisors.tripId, tripId));
-      if (supervisorIds.length > 0) {
-        await db.insert(schema.tripSupervisors).values(
-          supervisorIds.map((uid: string) => ({
-            tripId,
-            userId: uid,
-            assignedRole: 'line_supervisor',
-          }))
-        );
+      if (driverId !== undefined) {
+        if (!driverId) {
+          updateData.driverId = null;
+        } else {
+          const dStr = String(driverId).trim();
+          if (isUuid(dStr)) {
+            updateData.driverId = dStr;
+          } else {
+            const uDriver = await db.query.users.findFirst({
+              where: or(
+                eq(schema.users.phone, dStr),
+                eq(schema.users.email, dStr)
+              ),
+            });
+            updateData.driverId = uDriver ? uDriver.id : null;
+          }
+        }
       }
+
+      if (departureTime) updateData.departureTime = new Date(departureTime);
+      if (returnTime) updateData.returnTime = new Date(returnTime);
+      if (status) updateData.status = status;
+      if (timeSlot) updateData.timeSlot = timeSlot;
+      if (totalSeats) updateData.totalSeats = parseInt(totalSeats);
+      if (priceEgp) updateData.priceEgp = String(priceEgp);
+
+      await db.update(schema.trips).set(updateData).where(eq(schema.trips.id, tripId));
+
+      if (Array.isArray(supervisorIds)) {
+        await db.delete(schema.tripSupervisors).where(eq(schema.tripSupervisors.tripId, tripId));
+        const resolvedSupIds: string[] = [];
+        for (const sId of supervisorIds) {
+          if (!sId) continue;
+          const sStr = String(sId).trim();
+          if (isUuid(sStr)) {
+            resolvedSupIds.push(sStr);
+          } else {
+            const sUser = await db.query.users.findFirst({
+              where: or(
+                eq(schema.users.phone, sStr),
+                eq(schema.users.email, sStr)
+              ),
+            });
+            if (sUser && !resolvedSupIds.includes(sUser.id)) {
+              resolvedSupIds.push(sUser.id);
+            }
+          }
+        }
+
+        if (resolvedSupIds.length > 0) {
+          await db.insert(schema.tripSupervisors).values(
+            resolvedSupIds.map((uid: string) => ({
+              tripId,
+              userId: uid,
+              assignedRole: 'line_supervisor',
+            }))
+          );
+        }
+      }
+
+      await db.insert(schema.auditLogs).values({
+        userId: request.user.id,
+        action: 'TRIP_UPDATED',
+        entityType: 'trip',
+        entityId: String(tripId),
+        details: updateData,
+      });
+
+      await CacheService.invalidateTripsAndFleetCache(tripId);
+
+      return { success: true };
+    } catch (err: any) {
+      fastify.log.error(err);
+      return reply.status(500).send({
+        error: err.message || 'Failed to update trip',
+        details: String(err),
+      });
     }
-
-    await db.insert(schema.auditLogs).values({
-      userId: request.user.id,
-      action: 'TRIP_UPDATED',
-      entityType: 'trip',
-      entityId: String(tripId),
-      details: updateData,
-    });
-
-    await CacheService.invalidateTripsAndFleetCache(tripId);
-
-    return { success: true };
   });
 
   // 8. Delete / Cancel Trip
