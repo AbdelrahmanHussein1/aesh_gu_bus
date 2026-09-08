@@ -19,6 +19,8 @@ interface AppState {
   selectedDirection: Direction;
   selectedDate: string;
   trips: Trip[];
+  isTripsLoading: boolean;
+  lastTripsRefreshTime: Date | null;
   activeTrip: Trip | null;
   activeArrivalTrip: Trip | null;
   activeReturnTrip: Trip | null;
@@ -100,6 +102,7 @@ interface AppActions {
   toggleSidebar: () => void;
   setMobileSidebarOpen: (v: boolean) => void;
   setIsOffline: (v: boolean) => void;
+  refreshTrips: () => Promise<void>;
 }
 
 const AppContext = createContext<(AppState & AppActions) | null>(null);
@@ -148,6 +151,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [selectedDirection, setSelectedDirection] = useState<Direction>('to_campus');
   const [selectedDate, setSelectedDate] = useState<string>(getTomorrowDateString());
   const [trips, setTrips] = useState<Trip[]>([]);
+  const [isTripsLoading, setIsTripsLoading] = useState<boolean>(false);
+  const [lastTripsRefreshTime, setLastTripsRefreshTime] = useState<Date | null>(null);
   const [activeTrip, setActiveTrip] = useState<Trip | null>(null);
   const [activeArrivalTrip, setActiveArrivalTrip] = useState<Trip | null>(null);
   const [activeReturnTrip, setActiveReturnTrip] = useState<Trip | null>(null);
@@ -314,30 +319,37 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  useEffect(() => {
+  const refreshTrips = useCallback(async () => {
     if (!user) {
       setTrips([]);
       return;
     }
-    if (isOffline) {
-      const mockTrips = generateMockTrips(selectedRouteId, selectedDate, routes);
-      setTrips(mockTrips);
-    } else if (selectedRouteId && selectedDate) {
-      const fetchLiveTrips = async () => {
-        try {
-          const apiUrl = getApiBaseUrl();
-          const res = await fetch(`${apiUrl}/api/trips?date=${selectedDate}&routeId=${selectedRouteId}`);
-          if (res.ok) {
-            const data = await res.json();
-            setTrips(data);
-          }
-        } catch (e) {
-          console.error('Failed to fetch live trips:', e);
+    setIsTripsLoading(true);
+    try {
+      if (isOffline) {
+        const mockTrips = generateMockTrips(selectedRouteId, selectedDate, routes);
+        setTrips(mockTrips);
+        setLastTripsRefreshTime(new Date());
+      } else if (selectedDate) {
+        const apiUrl = getApiBaseUrl();
+        const routeQuery = selectedRouteId ? `&routeId=${selectedRouteId}` : '';
+        const res = await fetch(`${apiUrl}/api/trips?date=${selectedDate}${routeQuery}`);
+        if (res.ok) {
+          const data = await res.json();
+          setTrips(data);
+          setLastTripsRefreshTime(new Date());
         }
-      };
-      fetchLiveTrips();
+      }
+    } catch (e) {
+      console.error('Failed to fetch live trips:', e);
+    } finally {
+      setIsTripsLoading(false);
     }
   }, [user, selectedRouteId, selectedDate, isOffline, routes]);
+
+  useEffect(() => {
+    refreshTrips();
+  }, [refreshTrips]);
 
   useEffect(() => {
     if (trips.length === 0) { setActiveTrip(null); setActiveArrivalTrip(null); setActiveReturnTrip(null); return; }
@@ -1217,6 +1229,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const value = {
     isAuthLoading, token, user, role, isOffline, routes, selectedRouteId, selectedDirection, selectedDate, trips,
+    isTripsLoading, lastTripsRefreshTime, refreshTrips,
     activeTrip, activeArrivalTrip, activeReturnTrip, bookingType, timeSlot, returnTimeSlot, seats, selectedSeat,
     heldExpiresAt, lockingSeatNumber, myBookings, expandedTicketId, justBoardedBookingIds, auditLogs,
     supervisorManifest, showCheckout, paymentMethod, checkoutError, isPaying, cardNumber, receiptRef,
