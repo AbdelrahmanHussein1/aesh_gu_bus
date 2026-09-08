@@ -51,16 +51,14 @@ node apps/api/dist/index.js &
 API_PID=$!
 
 # 5. Start Next.js Web App (Internal Port 3002)
-if [ -f "node_modules/next/dist/bin/next" ]; then
-  node node_modules/next/dist/bin/next start apps/web -p 3002 -H 0.0.0.0 &
-else
-  PORT=3002 npm run start --workspace=apps/web &
-fi
+PORT=3002 node node_modules/next/dist/bin/next start apps/web -p 3002 -H 0.0.0.0 &
 WEB_PID=$!
 
 # 6. Start WebSocket & HTTP Reverse Proxy Gateway (Public Port 3001)
 node scripts/gateway.js &
 GATEWAY_PID=$!
 
-# Wait for services
-wait -n $API_PID $WEB_PID $GATEWAY_PID
+# Wait for background processes (POSIX / Alpine BusyBox compliant)
+trap "kill -TERM $API_PID $WEB_PID $GATEWAY_PID 2>/dev/null; exit 0" TERM INT
+wait $API_PID $WEB_PID $GATEWAY_PID
+

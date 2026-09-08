@@ -23,7 +23,7 @@ function copyFiltered(src, dest) {
   const stat = fs.statSync(src);
   if (stat.isDirectory()) {
     const base = path.basename(src);
-    if (['node_modules', '.next', '.git', '.turbo', 'dist-release', 'dist', 'build', '.expo'].includes(base)) {
+    if (['node_modules', '.next', '.git', '.turbo', 'dist-release', 'dist', 'build', '.expo', 'android', 'ios', 'mobile'].includes(base)) {
       return;
     }
     fs.mkdirSync(dest, { recursive: true });
