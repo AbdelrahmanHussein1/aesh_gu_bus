@@ -1,6 +1,6 @@
-# 🚌 Galala University Smart Transit Platform (Bus Aesh) — v1.1.1
+# 🚌 Galala University Smart Transit Platform (Bus Aesh) — v1.1.2
 
-[![Release](https://img.shields.io/badge/Release-v1.1.1-38bdf8?style=for-the-badge&logo=github)](https://github.com/AbdelrahmanHussein1/aesh_gu_bus/releases/tag/v1.1.1)
+[![Release](https://img.shields.io/badge/Release-v1.1.2-38bdf8?style=for-the-badge&logo=github)](https://github.com/AbdelrahmanHussein1/aesh_gu_bus/releases/tag/v1.1.2)
 [![Fastify](https://img.shields.io/badge/Fastify-Backend%20API%20(Port%203000)-000000?style=for-the-badge&logo=fastify)](https://github.com/AbdelrahmanHussein1/aesh_gu_bus)
 [![Next.js 15](https://img.shields.io/badge/Next.js%2015-Web%20Portal%20(Port%203001)-black?style=for-the-badge&logo=next.js)](https://github.com/AbdelrahmanHussein1/aesh_gu_bus)
 [![PostgreSQL 16](https://img.shields.io/badge/PostgreSQL%2016-Drizzle%20ORM-336791?style=for-the-badge&logo=postgresql)](https://github.com/AbdelrahmanHussein1/aesh_gu_bus)
@@ -17,7 +17,7 @@
 
 1. [Architectural Overview](#1-architectural-overview)
 2. [Exhaustive Codebase & Directory Map](#2-exhaustive-codebase--directory-map)
-3. [Release v1.1.1 Highlights & Performance Engineering](#3-release-v111-highlights--performance-engineering)
+3. [Release v1.1.2 Highlights & Operations Upgrades](#3-release-v112-highlights--operations-upgrades)
 4. [Deep Feature Breakdown by Portal](#4-deep-feature-breakdown-by-portal)
    - [Admin Operations Console](#41-admin-operations-console)
    - [Student / Rider Portal](#42-student--rider-portal)
@@ -244,45 +244,48 @@ aesh_gu_bus/
 
 ---
 
-## 3. Release v1.1.1 Highlights & Performance Engineering
+## 3. Release v1.1.2 Highlights & Operations Upgrades
 
-Release `v1.1.1` delivers critical production-grade performance enhancements that eliminate server saturation, eliminate infinite client polling loops, and provide instantaneous response times under heavy concurrent student traffic:
+Release `v1.1.2` is a major milestone delivering comprehensive operational capabilities, live synchronization parity across all roles, refreshed rider interactions, and zero-downtime container stability:
 
-### 1. Redis Cache-Aside Layer (`CacheService`)
-- **Direct Database Bypass**: Read-heavy endpoints (`/api/admin/schedules`, `/api/admin/fleet`, `/api/trips`, `/api/trips/:id/seats`, `/api/admin/trips/:id/seat-details`) now check Redis first before touching PostgreSQL.
-- **Microsecond Latency**: Cache hits return in **< 2ms**, representing a 98% reduction in latency compared to complex multi-table SQL joins.
-- **Calibrated TTL Policies**:
-  - Schedules List: **60 seconds**
-  - Fleet Overview: **30 seconds**
-  - Public Trips: **60 seconds**
-  - Cabin Seat Maps: **5 seconds**
-- **Dual-Mode Fallback**: Enhanced `MemoryRedis` implements full regex pattern matching (`keys(pattern)`), TTL calculation, and key existence so development and offline environments behave identically to real Redis.
+### 1. 🔁 Both-Way (ذهاب وعودة) Dual-Shift Scheduling & Roster Management
+- **Integrated 3-Mode Trip Selector**: The Admin Shift Creation Modal (`ScheduleManager.tsx`) now features a prominent segmented control:
+  - 🔁 **ذهاب وعودة (Round Trip / Both Ways)**
+  - ➡️ **ذهاب فقط (To Campus)**
+  - ⬅️ **عودة فقط (From Campus)**
+- **Coordinated Dual-Leg Scheduling**: Selecting "ذهاب وعودة" unlocks a coordinated dual-shift card allowing administrators to pair:
+  - **Arrival Leg**: Morning 1 (09:00 AM) or Morning 2 (11:30 AM) with departure time.
+  - **Return Leg**: Return 1 (12:30 PM), Return 2 (02:30 PM), or Return 3 (05:30 PM) with departure time.
+- **Unified Fleet Binding**: Route, bus, driver, line supervisor, seat count (50), and pricing are seamlessly bound to both legs simultaneously.
+- **Atomic Backend Creation (`POST /api/admin/trips`)**: Fastify atomically creates both `to_campus` and `from_campus` trip records within a database transaction, links personnel, records audit events, broadcasts real-time WebSocket signals (`NEW_TRIP_ANNOUNCED`), and purges Redis cache keys in a single operation.
 
-### 2. Event-Driven Instant Cache Invalidation
-- Caches are purged **instantly** upon any mutating state change:
-  - Adding a new trip (`POST /api/admin/trips`)
-  - Updating a trip (`PUT /api/admin/trips/:id`)
-  - Deleting a trip (`DELETE /api/admin/trips/:id`)
-  - Cloning schedules (`POST /api/admin/schedules/clone`)
-  - Purging shifts (`DELETE /api/admin/shifts/purge-all`)
-  - Creating test shifts (`POST /api/admin/shifts/create-single-test-shift`)
-  - Locking or unlocking a seat (`/lock`, `/unlock`)
-  - Confirming or cancelling a booking (`/bookings`, `/cancel`)
-  - Reassigning seats or scanning QR codes (`/swap`, `/scan/verify`)
-- Upon cache invalidation, `WebSocketHub.broadcastToAll` sends a `{ type: 'SCHEDULE_UPDATED' }` event to all connected clients to trigger immediate synchronization with zero polling overhead.
+### 2. 📋 Supervisor Live Boarding Synchronization & Manual Check-In
+- **One-Click Manual Check-In Button (`تسجيل صعود`)**: Line supervisors can board passengers directly from the live manifest table with a single tap, eliminating dependency on camera scanning during low-light or damaged screen situations.
+- **Instant Optimistic UI & Acoustic Feedback**: Tapping check-in immediately switches the student's status pill to green (`تم الصعود`), triggers an acoustic confirmation chime, and increments the live boarded counter.
+- **Anti-Desynchronization Fix**: Fixed defect where boarding all students left the summary counter showing zero boarded. Counters now accurately compute live counts from manifest rows and broadcast updates across all connected admin and supervisor sessions.
+- **Auto-Refreshing Manifest**: Manifest table regularly syncs with the backend to ensure immediate visibility of newly boarded passengers or last-minute ticket transfers.
 
-### 3. Elimination of Client-Side Request Storms (>260 Requests Resolved)
-- **Throttled Polling**: Background intervals were backed off from aggressive 1.5s–3.5s loops to **20s–25s**.
-- **Visibility-Aware Pausing**: Added `document.visibilityState` listeners across all admin and rider components. When a user minimizes the browser or switches tabs, **all network polling halts completely**. Upon switching back to the tab, a single background refresh catches up immediately.
-- **In-Flight Deduplication**: Components prevent overlapping requests using reference flags (`inFlightRef`).
+### 3. 🔄 Rider UI Refresh & Real-Time Controls
+- **On-Demand "تحديث الرحلات" (Refresh) Button**: Added a dedicated refresh button with a spinning animation in the Rider booking dashboard (`/rider`), allowing students to query the latest available shifts instantly without performing a full browser reload.
+- **Polished Shift & Route Cards**: Completely redesigned shift cards featuring high-contrast route badges, departure/arrival timeline indicators, real-time remaining seat pills, and responsive layout for mobile and desktop screens.
+- **SeatGrid Real-Time Lock Timers**: Enhanced 50-seat cabin visualizer with clear countdown indicators for active holds and immediate Redis lock release on seat deselection.
 
-### 4. Elimination of Infinite 401 & 404 Loops
-- **Authentication Guards**: Admin components (`ScheduleManager`, `FleetStatus`) verify the presence of an admin token before attempting live network requests. If unauthenticated, they seamlessly render offline data without generating 401 errors.
-- **401/403 Circuit Breaker**: If any administrative request receives an HTTP 401 or 403, the polling interval is immediately aborted (`clearInterval`).
-- **Dead Trip (404) Handling**: When an inspected trip is purged or deleted, the client detects the 404 response, halts polling, clears the stale reference (`setActiveTrip(null)`), and renders a clear user alert.
+### 4. 🛡️ Supervisor Cancellation Notification Isolation
+- **Targeted Student Push Alerts**: Corrected WebSocket event routing so that when a supervisor cancels a passenger's booking (due to emergency or bus re-routing), the notification modal triggers **only** for the affected student, completely preventing self-notification loops for the supervisor.
 
-### 5. Missing Asset Resolution
-- Placed a high-resolution favicon in `apps/web/public/favicon.ico`, completely eliminating recurring browser 404 logs.
+### 5. 📄 Redesigned & Organized PDF Manifests
+- **Structured Tabular Layout**: Overhauled PDF exports for drivers and supervisors into a publication-ready tabular layout with university branding, route summary, departure timestamp, plate number, driver details, and student manifest.
+- **Arabic Typography & Styling**: Formatted with RTL Arabic support, clear grid borders, and distinct status columns (`رقم المقعد`, `اسم الطالب`, `الرقم الجامعي`, `كود الصعود`, `حالة الصعود`).
+
+### 6. ⚡ Guaranteed 0-Downtime Container Boot (Cloudflare 502 Elimination)
+- **Safe UUID Query Execution**: Resolved critical Postgres `22P02 invalid input syntax for type uuid: "user-default-id"` in `apps/api/src/db/seed.ts` by removing legacy non-UUID delete statements.
+- **Guaranteed Process Termination**: Added `process.exit(0)` to both success and catch blocks in `seed.ts`, ensuring the entrypoint script (`docker-entrypoint.sh`) never hangs and immediately launches Fastify (`:3000`), Next.js (`:3002`), and the Gateway reverse proxy (`:3001`).
+
+### 7. 🏎️ Foundational High-Concurrency Performance (from v1.1.1)
+- **Redis Cache-Aside Layer**: Sub-2ms responses for `/api/admin/schedules`, `/api/admin/fleet`, and public seat maps.
+- **Event-Driven Cache Invalidation**: Instant Redis cache purges upon every mutation paired with 0ms WebSocket broadcast pushes.
+- **Throttled Polling & Visibility Guards**: Network polling backed off to 20s–25s and completely halted when browser tabs are hidden (`document.visibilityState === 'hidden'`).
+- **Single-Tab & Single-Device Protection**: Native `BroadcastChannel` prevents multi-tab race conditions and enforces single-device logins.
 
 ---
 
@@ -300,11 +303,12 @@ Accessed at `/admin` (or via the role selector bar in development).
 ```
 
 1. **Shift & Schedule Hub (`ScheduleManager.tsx`)**:
+   - **Both-Way (ذهاب وعودة) Creation**: 3-option trip type selector (`ذهاب وعودة`, `ذهاب فقط`, `عودة فقط`) allowing administrators to atomically schedule coordinated arrival and return shifts with shared fleet assets in a single click.
    - Filter trips by **Date** (today, tomorrow, next 10 days), **Route**, and **Shift** (Arrival 1, Arrival 2, Return 1, Return 2, Return 3).
    - Real-time statistics bar: Total Shifts, Total Fleet Capacity, Confirmed Bookings, and Active Drivers.
    - **Click-to-Inspect**: Clicking any shift card launches the **Bus Seat Map Inspector Modal**.
    - **Clone Schedule Wizard**: Duplicates all scheduled shifts and supervisor assignments from a source date to a target date with a single click.
-   - **Shift Purge & Generator**: Provides options to clear all shifts or create single isolated test shifts for debugging.
+   - **Shift Purge & Synchronized Parity**: Clears obsolete shifts simultaneously in PostgreSQL and Redis cache with zero orphan ghost trips.
 
 2. **Bus Seat Map Inspector Modal (`BusSeatInspectorModal.tsx`)**:
    - Visual 50-seat bus cabin layout featuring the driver's cabin, central aisle, and back row.
@@ -338,6 +342,8 @@ Accessed at `/admin` (or via the role selector bar in development).
 Accessed at `/rider`.
 
 1. **Route & Shift Selection (`RouteSelector.tsx`, `TripList.tsx`)**:
+   - **On-Demand "تحديث الرحلات" Button**: Dedicated refresh button with spinning state for instant live bus availability sync.
+   - **Redesigned Shift Cards**: High-contrast route badges, departure/arrival timelines, and remaining seat counters.
    - Selection of 29 official Galala University routes (Port Tawfik, Suez, El Salam, El Obour, October, Nasr City, New Cairo, etc.).
    - Direction toggle: **To Campus (ذهاب إلى الجامعة)** or **From Campus (عودة من الجامعة)**.
    - Operational date picker and shift selector (Morning 07:00 AM, Return 12:30 PM, Return 02:30 PM, Return 05:30 PM).
@@ -367,24 +373,28 @@ Accessed at `/rider`.
 ### 4.3. Supervisor On-Board Portal
 Accessed at `/supervisor`.
 
-1. **Live Camera QR Scanner (`QRScanner.tsx`)**:
+1. **One-Click Manual Check-In & Boarding Counters (`ManifestTable.tsx`)**:
+   - Interactive **"تسجيل صعود" (Board Passenger)** button on each manifest row for instant boarding without camera scanning.
+   - Live boarded summary counter accurately computes total, boarded, and pending passenger counts with instant optimistic updates and confirmation sound.
+
+2. **Live Camera QR Scanner (`QRScanner.tsx`)**:
    - Utilizes `jsQR` and HTML5 Video to scan student boarding passes directly through the device camera.
    - **Anti-Passback Fraud Prevention**: Verifies that the ticket belongs to the current trip and has not been previously scanned. If a ticket was already used, it immediately alerts the supervisor with the exact timestamp it was scanned.
    - Instant visual and acoustic feedback (success chime on valid ticket, warning sound on duplicate/invalid ticket).
    - **Manual Code Input**: Allows the supervisor to enter the student's 4-character code (`GU-XXXX`) to verify boarding without a camera.
 
-2. **Real-Time Passenger Manifest (`ManifestTable.tsx`)**:
-   - Complete manifest of all confirmed passengers for the assigned trip.
-   - Columns: Seat Number, Passenger Full Name, Academic ID, Booking Code, Leg Type, Payment Status, and Boarding Status (`Boarded` with timestamp vs. `Pending`).
-   - Real-time search by student name, academic ID, or booking code.
+3. **Real-Time Passenger Manifest & PDF Export (`ManifestTable.tsx`)**:
+   - Complete manifest of all confirmed passengers for the assigned trip with live search by name, academic ID, or code.
+   - **Organized PDF Export**: High-quality formatted passenger manifest PDF printout for drivers and university administration.
 
-3. **On-the-Fly Seat Reassignment (`SwapModal.tsx`)**:
+4. **On-the-Fly Seat Reassignment (`SwapModal.tsx`)**:
    - Allows supervisors to reassign a student to an alternative empty seat on the same trip or transfer them to another bus.
    - Automatically issues a new signed QR code and sends an instant email notification to the student with their updated seat details.
    - Logs the swap event in the audit trail.
 
-4. **Supervisor Cancellation with Automated Refund**:
+5. **Supervisor Cancellation with Automated Refund**:
    - Supervisors can cancel a passenger's booking up to 5 hours prior to departure (e.g. for operational bus re-routing).
+   - Isolated notification routing ensures the alert is dispatched only to the affected student, without triggering self-alerts for the supervisor.
    - Automatically marks the booking as cancelled, initiates a 100% full refund (160 EGP), frees the seat in the live cabin map, and sends an instant push alert and email to the student.
 
 ---
@@ -573,9 +583,9 @@ For rapid evaluation and demonstration, the database includes pre-configured acc
 
 | Role | Email | Password | Access Capabilities |
 | :--- | :--- | :--- | :--- |
-| **System Administrator** | `admin@gu.edu.eg` | `123456` | Master operations, fleet live status, shift hub, audit logs, dataset explorer |
-| **Line Supervisor** | `supervisor@gu.edu.eg` | `123456` | Live camera QR scanning, manual code boarding, passenger manifest, seat swaps |
-| **Student / Rider** | `student@gu.edu.eg` | `123456` | Route selection, 50-seat cabin selector, seat locking, payments, boarding passes |
+| **System Administrator** | `admin@gu.edu.eg` | `1111` *(or `123456`)* | Master operations, fleet live status, shift hub, audit logs, dataset explorer |
+| **Line Supervisor** | `supervisor@gu.edu.eg` | `1111` *(or `123456`)* | Live camera QR scanning, manual code boarding, passenger manifest, seat swaps |
+| **Student / Rider** | `student@gu.edu.eg` | `1111` *(or `123456`)* | Route selection, 50-seat cabin selector, seat locking, payments, boarding passes |
 
 *(Students can also register new accounts directly using their `@gu.edu.eg` university email address).*
 
