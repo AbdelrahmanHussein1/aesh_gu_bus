@@ -37,17 +37,20 @@ export default function TripList() {
                     }`}
                   >
                     <div>
-                      <div className="flex items-center gap-2">
-                        <h4 className="font-bold text-sm text-text-primary">{shiftInfo.shortTitleAr}</h4>
-                        <span className="text-[9px] px-1.5 py-0.5 rounded font-bold bg-primary-container/10 text-primary-container border border-primary-container/20">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h4 className="font-bold text-sm text-text-primary">خط {shiftInfo.routeNameAr}</h4>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-primary-container/15 text-primary-container border border-primary-container/25">
                           {shiftInfo.categoryLabelAr}
                         </span>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-amber-500/15 text-amber-800 border border-amber-500/25">
+                          {shiftInfo.timeBadgeAr}
+                        </span>
                       </div>
-                      <p className="text-xs text-text-secondary mt-1 flex items-center gap-1 font-medium">
-                        <span>خط {shiftInfo.routeNameAr}</span>
+                      <p className="text-xs text-text-secondary mt-1 flex items-center gap-2 font-medium">
+                        <span className="font-semibold text-text-primary">{shiftInfo.shiftTimeTitleAr}</span>
                         <span>•</span>
                         <span className="font-mono flex items-center gap-1">
-                          <span className="material-symbols-outlined text-xs">schedule</span> {shiftInfo.departureDisplay}
+                          <span className="material-symbols-outlined text-xs">schedule</span> تحرك {shiftInfo.departureDisplay}
                         </span>
                       </p>
                       {trip.driver && (
@@ -84,17 +87,20 @@ export default function TripList() {
                     }`}
                   >
                     <div>
-                      <div className="flex items-center gap-2">
-                        <h4 className="font-bold text-sm text-text-primary">{shiftInfo.shortTitleAr}</h4>
-                        <span className="text-[9px] px-1.5 py-0.5 rounded font-bold bg-primary-container/10 text-primary-container border border-primary-container/20">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h4 className="font-bold text-sm text-text-primary">خط {shiftInfo.routeNameAr}</h4>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-primary-container/15 text-primary-container border border-primary-container/25">
                           {shiftInfo.categoryLabelAr}
                         </span>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-indigo-500/15 text-indigo-800 border border-indigo-500/25">
+                          {shiftInfo.timeBadgeAr}
+                        </span>
                       </div>
-                      <p className="text-xs text-text-secondary mt-1 flex items-center gap-1 font-medium">
-                        <span>خط {shiftInfo.routeNameAr}</span>
+                      <p className="text-xs text-text-secondary mt-1 flex items-center gap-2 font-medium">
+                        <span className="font-semibold text-text-primary">{shiftInfo.shiftTimeTitleAr}</span>
                         <span>•</span>
                         <span className="font-mono flex items-center gap-1">
-                          <span className="material-symbols-outlined text-xs">schedule</span> {shiftInfo.departureDisplay}
+                          <span className="material-symbols-outlined text-xs">schedule</span> تحرك {shiftInfo.departureDisplay}
                         </span>
                       </p>
                       {trip.driver && (
@@ -145,17 +151,20 @@ export default function TripList() {
                 }`}
               >
                 <div>
-                  <div className="flex items-center gap-2">
-                    <h4 className="font-bold text-sm text-text-primary">{shiftInfo.shortTitleAr}</h4>
-                    <span className="text-[9px] px-1.5 py-0.5 rounded font-bold bg-primary-container/10 text-primary-container border border-primary-container/20">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h4 className="font-bold text-sm text-text-primary">خط {shiftInfo.routeNameAr}</h4>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-primary-container/15 text-primary-container border border-primary-container/25">
                       {shiftInfo.categoryLabelAr}
                     </span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-primary-container/10 text-primary-container">
+                      {shiftInfo.timeBadgeAr}
+                    </span>
                   </div>
-                  <p className="text-xs text-text-secondary mt-1 flex items-center gap-1 font-medium">
-                    <span>خط {shiftInfo.routeNameAr}</span>
+                  <p className="text-xs text-text-secondary mt-1 flex items-center gap-2 font-medium">
+                    <span className="font-semibold text-text-primary">{shiftInfo.shiftTimeTitleAr}</span>
                     <span>•</span>
                     <span className="font-mono flex items-center gap-1">
-                      <span className="material-symbols-outlined text-xs">schedule</span> {shiftInfo.departureDisplay}
+                      <span className="material-symbols-outlined text-xs">schedule</span> تحرك {shiftInfo.departureDisplay}
                     </span>
                   </p>
                   {trip.driver && (

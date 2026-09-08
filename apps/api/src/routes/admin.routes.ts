@@ -1038,13 +1038,20 @@ export async function adminRoutes(fastify: FastifyInstance) {
     let clonedCount = 0;
 
     await db.transaction(async (tx) => {
+      const getSafeIsoTime = (dVal: any, defaultH = 7, defaultM = 0) => {
+        if (!dVal) return `${String(defaultH).padStart(2, '0')}:${String(defaultM).padStart(2, '0')}:00`;
+        const d = new Date(dVal);
+        if (isNaN(d.getTime())) return `${String(defaultH).padStart(2, '0')}:${String(defaultM).padStart(2, '0')}:00`;
+        return d.toISOString().substring(11, 19);
+      };
+
       for (const st of sourceTrips) {
-        const srcDep = new Date(st.departureTime);
-        const targetDep = new Date(`${targetDate}T${srcDep.toISOString().substring(11, 19)}Z`);
+        const depTimeStr = getSafeIsoTime(st.departureTime, 7, 0);
+        const targetDep = new Date(`${targetDate}T${depTimeStr}+02:00`);
         let targetRet: Date | null = null;
         if (st.returnTime) {
-          const srcRet = new Date(st.returnTime);
-          targetRet = new Date(`${targetDate}T${srcRet.toISOString().substring(11, 19)}Z`);
+          const retTimeStr = getSafeIsoTime(st.returnTime, 14, 30);
+          targetRet = new Date(`${targetDate}T${retTimeStr}+02:00`);
         }
 
         const [newTrip] = await tx.insert(schema.trips).values({
@@ -1110,53 +1117,64 @@ export async function adminRoutes(fastify: FastifyInstance) {
     const date = body.date || query.date;
     const allDates = body.allDates === true || query.allDates === 'true' || (!date && !body.date);
 
-    const conditions = [];
-    if (!allDates && date && date !== 'all') {
-      conditions.push(eq(schema.trips.tripDate, date));
-    }
+    let purgedShiftsCount = 0;
+    let purgedBookingsCount = 0;
 
-    const targetTrips = await db.query.trips.findMany({
-      where: conditions.length > 0 ? and(...conditions) : undefined,
-      columns: { id: true },
-    });
+    if (allDates) {
+      const allTrips = await db.select({ id: schema.trips.id }).from(schema.trips);
+      const allBookings = await db.select({ id: schema.bookings.id }).from(schema.bookings);
+      purgedShiftsCount = allTrips.length;
+      purgedBookingsCount = allBookings.length;
 
-    const tripIds = targetTrips.map(t => t.id);
-    if (tripIds.length === 0) {
-      return { success: true, purgedShiftsCount: 0, purgedBookingsCount: 0, message: 'No shifts found to purge.' };
-    }
+      // Full clean cascade without parameter limits
+      await db.delete(schema.boardingLogs);
+      await db.delete(schema.swapLogs);
+      await db.delete(schema.bookings);
+      await db.delete(schema.tripSupervisors);
+      await db.delete(schema.trips);
+    } else {
+      const targetTrips = await db.query.trips.findMany({
+        where: eq(schema.trips.tripDate, date),
+        columns: { id: true },
+      });
+      const tripIds = targetTrips.map(t => t.id);
+      purgedShiftsCount = tripIds.length;
 
-    // 1. Find all bookings on these trips
-    const targetBookings = await db.query.bookings.findMany({
-      where: inArray(schema.bookings.tripId, tripIds),
-      columns: { id: true },
-    });
-    const bookingIds = targetBookings.map(b => b.id);
+      if (tripIds.length > 0) {
+        const chunkSize = 100;
+        for (let i = 0; i < tripIds.length; i += chunkSize) {
+          const chunk = tripIds.slice(i, i + chunkSize);
+          const targetBookings = await db.query.bookings.findMany({
+            where: inArray(schema.bookings.tripId, chunk),
+            columns: { id: true },
+          });
+          const bIds = targetBookings.map(b => b.id);
+          purgedBookingsCount += bIds.length;
 
-    // 2. Cascade delete logs and records
-    if (bookingIds.length > 0) {
-      await db.delete(schema.boardingLogs).where(inArray(schema.boardingLogs.bookingId, bookingIds));
-      await db.delete(schema.swapLogs).where(
-        or(
-          inArray(schema.swapLogs.oldBookingId, bookingIds),
-          inArray(schema.swapLogs.newBookingId, bookingIds)
-        )
-      );
-      await db.delete(schema.bookings).where(inArray(schema.bookings.id, bookingIds));
-    }
-
-    await db.delete(schema.tripSupervisors).where(inArray(schema.tripSupervisors.tripId, tripIds));
-    await db.delete(schema.trips).where(inArray(schema.trips.id, tripIds));
-
-    // Clear Redis seat locks for purged trips
-    try {
-      for (const tid of tripIds) {
-        const keys = await redis.keys(`seat_lock:${tid}:*`);
-        if (keys && keys.length > 0) {
-          await redis.del(...keys);
+          if (bIds.length > 0) {
+            await db.delete(schema.boardingLogs).where(inArray(schema.boardingLogs.bookingId, bIds));
+            await db.delete(schema.swapLogs).where(
+              or(
+                inArray(schema.swapLogs.oldBookingId, bIds),
+                inArray(schema.swapLogs.newBookingId, bIds)
+              )
+            );
+            await db.delete(schema.bookings).where(inArray(schema.bookings.id, bIds));
+          }
+          await db.delete(schema.tripSupervisors).where(inArray(schema.tripSupervisors.tripId, chunk));
+          await db.delete(schema.trips).where(inArray(schema.trips.id, chunk));
         }
       }
-      // Set flag so auto-generator doesn't immediately resurrect 320 shifts
-      await redis.set('admin_purged_trips_flag', '1', 'EX', 86400);
+    }
+
+    // Clear all Redis seat locks
+    try {
+      const keys = await redis.keys('seat_lock:*');
+      if (keys && keys.length > 0) {
+        await redis.del(...keys);
+      }
+      // Set flag with 30-day expiration so auto-generator NEVER resurrects ghost shifts
+      await redis.set('admin_purged_trips_flag', '1', 'EX', 2592000);
     } catch {}
 
     await logSecurityEvent({
@@ -1164,13 +1182,14 @@ export async function adminRoutes(fastify: FastifyInstance) {
       action: 'ADMIN_PURGED_SHIFTS',
       entityType: 'trips',
       entityId: allDates ? 'ALL_DATES' : (date || 'ALL'),
-      details: { purgedShiftsCount: tripIds.length, purgedBookingsCount: bookingIds.length, date: date || 'all' },
+      details: { purgedShiftsCount, purgedBookingsCount, date: date || 'all' },
       ipAddress: request.ip,
     });
 
     WebSocketHub.broadcastToAll({
       type: 'FLEET_PURGED',
       date: date || 'all',
+      allDates: !!allDates,
       messageAr: 'تم حذف الشفتات بنجاح من قبل مسؤول النظام.',
       messageEn: 'All shifts have been purged by administrator.',
     });
@@ -1179,10 +1198,10 @@ export async function adminRoutes(fastify: FastifyInstance) {
 
     return {
       success: true,
-      purgedShiftsCount: tripIds.length,
-      purgedBookingsCount: bookingIds.length,
+      purgedShiftsCount,
+      purgedBookingsCount,
       date: allDates ? 'ALL' : (date || 'ALL'),
-      message: `Successfully purged ${tripIds.length} shifts and ${bookingIds.length} bookings.`,
+      message: `Successfully purged ${purgedShiftsCount} shifts and ${purgedBookingsCount} bookings.`,
     };
   });
 
@@ -1233,10 +1252,6 @@ export async function adminRoutes(fastify: FastifyInstance) {
         assignedRole: 'line_supervisor',
       }).onConflictDoNothing();
     }
-
-    try {
-      await redis.del('admin_purged_trips_flag');
-    } catch {}
 
     await logSecurityEvent({
       userId: request.user.id,

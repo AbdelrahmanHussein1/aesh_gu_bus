@@ -586,6 +586,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
             handleRiderBoardedNotification(msg);
           } else if (msg.type === 'SUPERVISOR_CANCELLED_TICKET') {
             handleSupervisorCancelledNotification(msg);
+          } else if (msg.type === 'FLEET_PURGED') {
+            if (msg.allDates || !msg.date || msg.date === 'all' || msg.date === selectedDate) {
+              setActiveTrip(null);
+              setActiveArrivalTrip(null);
+              setActiveReturnTrip(null);
+            }
+            window.dispatchEvent(new CustomEvent('fleet_purged', { detail: msg }));
+            window.dispatchEvent(new CustomEvent('schedule_updated', { detail: msg }));
           } else if (msg.type === 'NEW_TRIP_ANNOUNCED' || msg.type === 'TRIP_CANCELLED' || msg.type === 'SCHEDULE_CLONED' || msg.type === 'SCHEDULE_UPDATED') {
             window.dispatchEvent(new CustomEvent('schedule_updated', { detail: msg }));
           }

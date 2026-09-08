@@ -146,11 +146,13 @@ export default function ScheduleManager() {
       loadSchedules(true);
     };
     window.addEventListener('schedule_updated', handleScheduleUpdated);
+    window.addEventListener('fleet_purged', handleScheduleUpdated);
 
     return () => {
       clearInterval(timer);
       document.removeEventListener('visibilitychange', handleVisibility);
       window.removeEventListener('schedule_updated', handleScheduleUpdated);
+      window.removeEventListener('fleet_purged', handleScheduleUpdated);
     };
   }, [loadSchedules, pollingDisabled, token, isOffline]);
 
@@ -346,25 +348,42 @@ export default function ScheduleManager() {
   // Handle Purge All Shifts / Clear Roster
   const handlePurgeShifts = async () => {
     setPurging(true);
-    const dateParam = purgeTarget === 'date' ? selectedDate : undefined;
+    const isAll = purgeTarget === 'all';
+    const dateParam = isAll ? undefined : selectedDate;
 
     if (!isOffline) {
       try {
-        const queryStr = dateParam ? `?date=${dateParam}` : '';
+        const queryStr = isAll ? '?allDates=true' : `?date=${dateParam}`;
         const res = await fetch(`${API_URL}/api/admin/shifts/purge-all${queryStr}`, {
           method: 'DELETE',
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({
+            allDates: isAll,
+            date: dateParam,
+          }),
         });
         if (res.ok) {
           const data = await res.json();
+          purgeOfflineShifts(dateParam);
           triggerNotice('success', data.message || `Successfully purged shifts.`);
           setShowPurgeModal(false);
           setPurging(false);
           loadSchedules();
           return;
+        } else {
+          const errData = await res.json().catch(() => ({}));
+          triggerNotice('error', errData.error || 'Failed to purge shifts on server');
+          setPurging(false);
+          return;
         }
-      } catch (err) {
-        console.warn('Backend purge failed, using offline purge:', err);
+      } catch (err: any) {
+        console.error('Backend purge failed:', err);
+        triggerNotice('error', err?.message || 'Network error purging shifts');
+        setPurging(false);
+        return;
       }
     }
 
@@ -643,9 +662,10 @@ export default function ScheduleManager() {
             <div className="flex justify-center gap-3 pt-2">
               <button
                 onClick={() => setShowCloneModal(true)}
-                className="px-4 py-2 bg-surface-container-high hover:bg-surface-container-highest border border-border-whisper rounded-lg text-xs font-bold text-text-primary"
+                className="px-4 py-2 bg-surface-container-high hover:bg-surface-container-highest border border-border-whisper rounded-lg text-xs font-bold text-text-primary flex items-center gap-1.5"
               >
-                Reuse June 4 Schedule
+                <span className="material-symbols-outlined text-sm">content_copy</span>
+                <span>Reuse / Clone Schedule (إعادة استخدام جدول)</span>
               </button>
               <button
                 onClick={() => {
@@ -678,17 +698,17 @@ export default function ScheduleManager() {
                     <div className="flex items-start justify-between gap-2">
                       <div>
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${trip.direction === 'to_campus' ? 'bg-primary-container/10 text-primary-container' : 'bg-secondary-fixed/30 text-amber-800'}`}>
-                            {shiftInfo.directionAr}
-                          </span>
                           <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-primary-container/15 text-primary-container">
                             {shiftInfo.categoryLabelAr}
                           </span>
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${trip.direction === 'to_campus' ? 'bg-primary-container/10 text-primary-container' : 'bg-secondary-fixed/30 text-amber-800'}`}>
+                            {shiftInfo.directionAr}
+                          </span>
                         </div>
                         <h4 className="font-bold text-sm text-text-primary mt-1.5 font-arabic group-hover:text-primary-container transition-colors">
-                          {shiftInfo.shortTitleAr}
+                          خط {shiftInfo.routeNameAr}
                         </h4>
-                        <p className="text-[11px] text-text-secondary font-medium">خط {shiftInfo.routeNameAr} ({shiftInfo.routeNameEn})</p>
+                        <p className="text-[11px] text-text-secondary font-medium">{shiftInfo.shiftTimeTitleAr}</p>
                       </div>
 
                       <div className="text-right">
@@ -858,7 +878,17 @@ export default function ScheduleManager() {
                   <label className="font-bold text-text-primary block mb-1">Direction / الاتجاه</label>
                   <select
                     value={newDirection}
-                    onChange={(e) => setNewDirection(e.target.value as Direction)}
+                    onChange={(e) => {
+                      const dir = e.target.value as Direction;
+                      setNewDirection(dir);
+                      if (dir === 'to_campus' && newTimeSlot.startsWith('return')) {
+                        setNewTimeSlot('morning_1');
+                        setNewDepartureTime('07:00 AM');
+                      } else if (dir === 'from_campus' && newTimeSlot.startsWith('morning')) {
+                        setNewTimeSlot('return_1');
+                        setNewDepartureTime('12:30 PM');
+                      }
+                    }}
                     className="w-full px-3 py-2 rounded-lg bg-surface-container-low border border-border-whisper text-text-primary font-medium focus:ring-1 focus:ring-primary-container"
                   >
                     <option value="to_campus">To Campus (ذهاب للجامعة)</option>
@@ -870,7 +900,26 @@ export default function ScheduleManager() {
                   <label className="font-bold text-text-primary block mb-1">Shift / الشفت</label>
                   <select
                     value={newTimeSlot}
-                    onChange={(e) => setNewTimeSlot(e.target.value as TimeSlot)}
+                    onChange={(e) => {
+                      const slot = e.target.value as TimeSlot;
+                      setNewTimeSlot(slot);
+                      if (slot === 'morning_1') {
+                        setNewDirection('to_campus');
+                        setNewDepartureTime('07:00 AM');
+                      } else if (slot === 'morning_2') {
+                        setNewDirection('to_campus');
+                        setNewDepartureTime('09:30 AM');
+                      } else if (slot === 'return_1') {
+                        setNewDirection('from_campus');
+                        setNewDepartureTime('12:30 PM');
+                      } else if (slot === 'return_2') {
+                        setNewDirection('from_campus');
+                        setNewDepartureTime('02:30 PM');
+                      } else if (slot === 'return_3') {
+                        setNewDirection('from_campus');
+                        setNewDepartureTime('05:30 PM');
+                      }
+                    }}
                     className="w-full px-3 py-2 rounded-lg bg-surface-container-low border border-border-whisper text-text-primary font-medium focus:ring-1 focus:ring-primary-container"
                   >
                     <option value="morning_1">Morning 1 (09:00 AM Arrival)</option>
@@ -1060,16 +1109,16 @@ export default function ScheduleManager() {
                   onClick={() => setPurgeTarget('all')}
                   className={`p-3 rounded-xl border text-left transition-all ${purgeTarget === 'all' ? 'bg-rose-500/20 border-rose-500 text-text-primary font-bold' : 'bg-surface border-border-whisper text-text-secondary'}`}
                 >
-                  <div className="text-xs font-bold">Wipe All Shifts</div>
-                  <div className="text-[10px] text-text-tertiary">All shifts across all dates</div>
+                  <div className="text-xs font-bold">تصفير الكل / Wipe All Dates</div>
+                  <div className="text-[10px] text-text-tertiary">حذف كافة الشفتات لجميع التواريخ (All dates)</div>
                 </button>
                 <button
                   type="button"
                   onClick={() => setPurgeTarget('date')}
                   className={`p-3 rounded-xl border text-left transition-all ${purgeTarget === 'date' ? 'bg-rose-500/20 border-rose-500 text-text-primary font-bold' : 'bg-surface border-border-whisper text-text-secondary'}`}
                 >
-                  <div className="text-xs font-bold">Wipe For Date Only</div>
-                  <div className="text-[10px] text-text-tertiary">Only shifts on {selectedDate}</div>
+                  <div className="text-xs font-bold">تاريخ اليوم فقط / Selected Date</div>
+                  <div className="text-[10px] text-text-tertiary">فقط شفتات يوم {selectedDate}</div>
                 </button>
               </div>
             </div>

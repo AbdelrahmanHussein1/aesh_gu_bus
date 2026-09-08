@@ -43,14 +43,23 @@ export const PREDEFINED_ROUTES: PredefinedRoute[] = [
   { id: 28, category: 'cairo', nameAr: 'زهراء مدينة نصر والتجمع الأول', nameEn: 'Zahraa Nasr City & 1st Settlement' },
 
   // Suez (4 routes)
-  { id: 29, category: 'suez', nameAr: 'بورتوفيق - السويس', nameEn: 'Port Tawfik (Suez)' },
-  { id: 30, category: 'suez', nameAr: 'السلام والمستقبل', nameEn: 'El Salam & El Mostakbal' },
+  { id: 29, category: 'suez', nameAr: 'السويس (بورتوفيق)', nameEn: 'Suez (Port Tawfik)' },
+  { id: 30, category: 'suez', nameAr: 'السويس (السلام والمستقبل)', nameEn: 'Suez (El Salam & El Mostakbal)' },
   { id: 33, category: 'suez', nameAr: 'السويس (مسجد نبي الله داوود)', nameEn: 'Suez (Nabi Allah Dawoud)' },
-  { id: 91, category: 'suez', nameAr: 'طريق 91 السويس - خط مجمع إجازة (صيفي)', nameEn: '91 Road Suez - Summer Vacation', isSummerOnly: true },
+  { id: 91, category: 'suez', nameAr: 'طريق 91 السويس (صيفي)', nameEn: 'Suez Road 91 (Summer)', isSummerOnly: true },
 
   // Shorouk & Badr (1 route)
   { id: 35, category: 'shorouk_badr', nameAr: 'الشروق وبدر', nameEn: 'El Shorouk & Badr' },
 ];
+
+export function cleanRouteName(name: string): string {
+  if (!name) return 'خط الجامعة';
+  return name
+    .replace(/[-–—/]\s*وصول.*$/i, '')
+    .replace(/[-–—/]\s*عودة.*$/i, '')
+    .replace(/[-–—]\s*قصر الشوق/i, '')
+    .trim();
+}
 
 export function getCategoryLabel(category: RouteCategoryKey, lang: 'ar' | 'en' = 'ar'): string {
   const cat = ROUTE_CATEGORIES.find(c => c.key === category);
@@ -162,10 +171,15 @@ export function getShiftTimeLabel(timeSlot?: string, direction?: string, departu
 }
 
 export interface ShiftDisplayInfo {
+  primaryTitleAr: string;
+  primaryTitleEn: string;
+  shiftTimeTitleAr: string;
+  shiftTimeTitleEn: string;
   shiftNumberLabelAr: string;
   shiftNumberLabelEn: string;
   timeBadgeAr: string;
   timeBadgeEn: string;
+  targetTime: string;
   fullTitleAr: string;
   fullTitleEn: string;
   shortTitleAr: string;
@@ -185,12 +199,14 @@ export interface ShiftDisplayInfo {
 
 export function formatShiftDisplay(trip: any): ShiftDisplayInfo {
   const routeId = Number(trip.routeId || trip.route?.id || 0);
-  const predefined = PREDEFINED_ROUTES.find(r => r.id === routeId);
+  const erpPointId = Number(trip.route?.erpPointId || 0);
+  const predefined = PREDEFINED_ROUTES.find(r => r.id === routeId || (erpPointId > 0 && r.id === erpPointId));
   const categoryKey = predefined ? predefined.category : getRouteCategory(routeId);
   const categoryLabelAr = getCategoryLabel(categoryKey, 'ar');
   const categoryLabelEn = getCategoryLabel(categoryKey, 'en');
 
-  const routeNameAr = predefined?.nameAr || trip.route?.nameAr || trip.routeNameAr || 'خط الجامعة';
+  const rawRouteNameAr = predefined?.nameAr || trip.route?.nameAr || trip.routeNameAr || 'خط الجامعة';
+  const routeNameAr = cleanRouteName(rawRouteNameAr);
   const routeNameEn = predefined?.nameEn || trip.route?.nameEn || trip.routeNameEn || 'University Line';
 
   const direction = trip.direction || (trip.timeSlot?.startsWith('morning') ? 'to_campus' : 'from_campus');
@@ -204,16 +220,30 @@ export function formatShiftDisplay(trip: any): ShiftDisplayInfo {
   const capacity = trip.bus?.totalSeats || trip.totalSeats || trip.capacity || 50;
   const departureDisplay = formatTimeString(trip.departureTime) || slotInfo.targetTime;
 
+  const primaryTitleAr = `خط ${routeNameAr}`;
+  const primaryTitleEn = `Line ${routeNameEn}`;
+  const shiftTimeTitleAr = direction === 'to_campus'
+    ? `${slotInfo.numberAr} • وصول ${slotInfo.targetTime}`
+    : `${slotInfo.numberAr} • مغادرة ${slotInfo.targetTime}`;
+  const shiftTimeTitleEn = direction === 'to_campus'
+    ? `${slotInfo.numberEn} • Arrive ${slotInfo.targetTime}`
+    : `${slotInfo.numberEn} • Depart ${slotInfo.targetTime}`;
+
   const shortTitleAr = `${slotInfo.numberAr} (${slotInfo.targetTime})`;
   const shortTitleEn = `${slotInfo.numberEn} (${slotInfo.targetTime})`;
-  const fullTitleAr = `${slotInfo.numberAr} (${slotInfo.targetTime}) • خط ${routeNameAr} - ${categoryLabelAr}`;
-  const fullTitleEn = `${slotInfo.numberEn} (${slotInfo.targetTime}) • ${routeNameEn} - ${categoryLabelEn}`;
+  const fullTitleAr = `خط ${routeNameAr} (${categoryLabelAr}) • ${slotInfo.numberAr} (${slotInfo.targetTime})`;
+  const fullTitleEn = `${routeNameEn} (${categoryLabelEn}) • ${slotInfo.numberEn} (${slotInfo.targetTime})`;
 
   return {
+    primaryTitleAr,
+    primaryTitleEn,
+    shiftTimeTitleAr,
+    shiftTimeTitleEn,
     shiftNumberLabelAr: slotInfo.numberAr,
     shiftNumberLabelEn: slotInfo.numberEn,
     timeBadgeAr: slotInfo.badgeAr,
     timeBadgeEn: slotInfo.badgeEn,
+    targetTime: slotInfo.targetTime,
     fullTitleAr,
     fullTitleEn,
     shortTitleAr,

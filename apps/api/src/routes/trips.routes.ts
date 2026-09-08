@@ -72,8 +72,8 @@ export async function tripsRoutes(fastify: FastifyInstance) {
     // Check if admin has purged trips so we don't automatically regenerate hundreds of shifts
     const isPurged = await redis.get('admin_purged_trips_flag');
 
-    // Only auto-generate if no trips exist AND admin hasn't explicitly purged the roster
-    if (activeTrips.length === 0 && !isPurged && autoSeed !== 'false') {
+    // Only auto-generate if explicitly requested with autoSeed === 'true' AND admin hasn't explicitly purged the roster
+    if (activeTrips.length === 0 && !isPurged && autoSeed === 'true') {
       const allRoutes = await db.query.routes.findMany({ where: eq(schema.routes.isActive, true) });
       const [defaultBus] = await db.select().from(schema.buses).limit(1);
       const [defaultSupervisor] = await db.select().from(schema.users).where(eq(schema.users.role, 'supervisor')).limit(1);

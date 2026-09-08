@@ -86,6 +86,17 @@ export default function TripSelector() {
       fetchTrips();
     };
 
+    const handleFleetPurged = (e: any) => {
+      const detail = e.detail;
+      if (detail?.allDates || !detail?.date || detail?.date === 'all' || detail?.date === selectedDate) {
+        setAvailableTrips([]);
+        setActiveTrip(null);
+        setSelectedRosterTrip(null);
+      }
+      fetchTrips();
+    };
+
+    window.addEventListener('fleet_purged', handleFleetPurged);
     window.addEventListener('schedule_updated', handleRefresh);
     window.addEventListener('rider_boarded_event', handleRefresh);
     window.addEventListener('booking_updated', handleRefresh);
@@ -98,12 +109,13 @@ export default function TripSelector() {
     document.addEventListener('visibilitychange', handleVisibility);
 
     return () => {
+      window.removeEventListener('fleet_purged', handleFleetPurged);
       window.removeEventListener('schedule_updated', handleRefresh);
       window.removeEventListener('rider_boarded_event', handleRefresh);
       window.removeEventListener('booking_updated', handleRefresh);
       document.removeEventListener('visibilitychange', handleVisibility);
     };
-  }, [fetchTrips]);
+  }, [fetchTrips, selectedDate, setActiveTrip]);
 
   // Displayed trips filtered by category
   const displayedTrips = useMemo(() => {
@@ -145,14 +157,17 @@ export default function TripSelector() {
         </div>
         <div>
           <div className="flex items-center gap-2">
-            <span className="font-bold text-sm text-text-primary">{activeTripInfo.shortTitleAr}</span>
+            <span className="font-bold text-sm sm:text-base text-text-primary">خط {activeTripInfo.routeNameAr}</span>
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-primary-container/15 text-primary-container border border-primary-container/30">
+              {activeTripInfo.categoryLabelAr}
+            </span>
             <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-success-galala/15 text-success-galala border border-success-galala/30 flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-success-galala animate-pulse" />
-              Active Scanning Target
+              Active
             </span>
           </div>
-          <p className="text-text-secondary mt-0.5 flex items-center gap-2">
-            <span className="font-medium text-text-primary">خط {activeTripInfo.routeNameAr} ({activeTripInfo.categoryLabelAr})</span>
+          <p className="text-text-secondary mt-0.5 flex items-center gap-2 font-medium">
+            <span className="text-text-primary font-semibold">{activeTripInfo.shiftTimeTitleAr}</span>
             <span>•</span>
             <span className="font-mono text-primary-container font-semibold">{activeTripInfo.timeBadgeAr}</span>
           </p>
@@ -358,20 +373,23 @@ export default function TripSelector() {
                         <div className="flex items-start justify-between gap-2 mb-2">
                           <div className="space-y-1">
                             <div className="flex items-center gap-1.5 flex-wrap">
-                              <span className="font-bold text-xs text-text-primary">
-                                {shiftInfo.shortTitleAr}
+                              <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-primary-container/15 text-primary-container border border-primary-container/20">
+                                {shiftInfo.categoryLabelAr}
                               </span>
-                              <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold ${
+                              <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
                                 isMorning ? 'bg-amber-500/10 text-amber-700 border border-amber-500/30' : 'bg-indigo-500/10 text-indigo-700 border border-indigo-500/30'
                               }`}>
                                 {shiftInfo.timeBadgeAr}
                               </span>
-                              <span className="text-[9px] px-1.5 py-0.5 rounded font-bold bg-primary-container/10 text-primary-container border border-primary-container/20">
-                                {shiftInfo.categoryLabelAr}
+                              <span className="text-[10px] font-mono font-bold text-text-primary">
+                                {shiftInfo.departureDisplay}
                               </span>
                             </div>
-                            <p className="text-[11px] font-semibold text-text-secondary truncate max-w-[200px]">
+                            <h4 className="font-bold text-xs sm:text-sm text-text-primary mt-1">
                               خط {shiftInfo.routeNameAr}
+                            </h4>
+                            <p className="text-[11px] font-medium text-text-secondary">
+                              {shiftInfo.shiftTimeTitleAr}
                             </p>
                           </div>
                           {isSelected ? (
