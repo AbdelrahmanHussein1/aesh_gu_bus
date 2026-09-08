@@ -49,8 +49,6 @@ async function seed() {
 
     // Insert Default System Admin account
     console.log('Inserting default user roles...');
-    // Clean up any legacy dummy placeholder mock IDs if present
-    await db.delete(schema.users).where(eq(schema.users.id, 'user-default-id'));
 
     const defaultHashedPassword = hashPassword('1111');
 
@@ -415,8 +413,10 @@ async function seed() {
     }
 
     console.log('--- DATABASE SEEDING COMPLETED ---');
+    process.exit(0);
   } catch (error) {
     console.error('Seeding failed:', error);
+    process.exit(0);
   }
 }
 
