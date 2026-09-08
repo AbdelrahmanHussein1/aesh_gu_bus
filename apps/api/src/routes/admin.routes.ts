@@ -798,6 +798,93 @@ export async function adminRoutes(fastify: FastifyInstance) {
         }
       }
 
+      const isBothWays = direction === 'both_ways' || body.bothWays === true;
+
+      if (isBothWays) {
+        const depDateArrival = parseTimeSafe(tripDate, departureTime || '07:00 AM', 7, 0);
+        const retDateArrival = new Date(depDateArrival.getTime() + 2 * 60 * 60 * 1000);
+
+        const returnDepInput = body.returnDepartureTime || returnTime || '02:30 PM';
+        const depDateReturn = parseTimeSafe(tripDate, returnDepInput, 14, 30);
+        const retDateReturn = new Date(depDateReturn.getTime() + 2 * 60 * 60 * 1000);
+
+        const arrivalTimeSlot = timeSlot || 'morning_1';
+        const returnTimeSlot = body.returnTimeSlot || 'return_2';
+
+        const [arrivalTrip] = await db.insert(schema.trips).values({
+          routeId: parseInt(routeId),
+          busId: assignedBusId,
+          driverId: resolvedDriverId,
+          tripDate,
+          departureTime: depDateArrival,
+          returnTime: retDateArrival,
+          direction: 'to_campus',
+          timeSlot: arrivalTimeSlot,
+          totalSeats: totalSeats ? parseInt(totalSeats) : 50,
+          priceEgp: priceEgp ? String(priceEgp) : '160.00',
+          status: 'scheduled',
+        }).returning();
+
+        const [returnTrip] = await db.insert(schema.trips).values({
+          routeId: parseInt(routeId),
+          busId: assignedBusId,
+          driverId: resolvedDriverId,
+          tripDate,
+          departureTime: depDateReturn,
+          returnTime: retDateReturn,
+          direction: 'from_campus',
+          timeSlot: returnTimeSlot,
+          totalSeats: totalSeats ? parseInt(totalSeats) : 50,
+          priceEgp: priceEgp ? String(priceEgp) : '160.00',
+          status: 'scheduled',
+        }).returning();
+
+        const createdTrips = [arrivalTrip, returnTrip];
+
+        for (const t of createdTrips) {
+          if (resolvedSupervisorIds.length > 0) {
+            await db.insert(schema.tripSupervisors).values(
+              resolvedSupervisorIds.map((uid: string) => ({
+                tripId: t.id,
+                userId: uid,
+                assignedRole: 'line_supervisor',
+              }))
+            );
+          }
+
+          await db.insert(schema.auditLogs).values({
+            userId: request.user.id,
+            action: 'TRIP_CREATED',
+            entityType: 'trip',
+            entityId: String(t.id),
+            details: { tripId: t.id, tripDate, routeId, timeSlot: t.timeSlot, direction: t.direction, bothWays: true },
+          });
+
+          await CacheService.invalidateTripsAndFleetCache(t.id);
+        }
+
+        try {
+          const route = await db.query.routes.findFirst({
+            where: eq(schema.routes.id, parseInt(routeId)),
+          });
+          WebSocketHub.broadcastToAll({
+            type: 'NEW_TRIP_ANNOUNCED',
+            tripId: arrivalTrip.id,
+            routeId: arrivalTrip.routeId,
+            routeNameAr: route?.nameAr || 'خط جديد',
+            routeNameEn: route?.nameEn || 'New Route',
+            tripDate: arrivalTrip.tripDate,
+            timeSlot: `${arrivalTrip.timeSlot} & ${returnTrip.timeSlot}`,
+            messageAr: `📢 رحلة ذهاب وعودة جديدة متاحة الآن على خط ${route?.nameAr || ''} لتاريخ ${arrivalTrip.tripDate}.`,
+            messageEn: `📢 New round-trip shifts available on route ${route?.nameEn || ''} for ${arrivalTrip.tripDate}.`,
+          });
+        } catch (e) {
+          console.warn('[Admin] Failed to broadcast new trip notification:', e);
+        }
+
+        return { success: true, createdCount: 2, trips: createdTrips, trip: arrivalTrip };
+      }
+
       const [newTrip] = await db.insert(schema.trips).values({
         routeId: parseInt(routeId),
         busId: assignedBusId,
