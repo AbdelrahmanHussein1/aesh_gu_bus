@@ -1,5 +1,6 @@
 'use client';
 import React from 'react';
+import { useApp } from '@/hooks/useAppStore';
 
 export interface SupervisorCancellationAlertData {
   visible: boolean;
@@ -19,7 +20,8 @@ interface Props {
 }
 
 export default function SupervisorCancellationModal({ alertData, onDismiss }: Props) {
-  if (!alertData || !alertData.visible) return null;
+  const { role } = useApp();
+  if (role !== 'rider' || !alertData || !alertData.visible) return null;
 
   const refundAmt = alertData.refundAmount ?? 160;
 

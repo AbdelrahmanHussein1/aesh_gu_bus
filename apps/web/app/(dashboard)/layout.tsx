@@ -130,11 +130,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       {/* Strict Developer/Simulation Bar: Rendered ONLY for developer email */}
       <DeveloperBar />
 
-      {/* Real-time Supervisor Cancellation Warning Modal with Refund notice */}
-      <SupervisorCancellationModal 
-        alertData={supervisorCancelAlert} 
-        onDismiss={dismissSupervisorCancelAlert} 
-      />
+      {/* Real-time Supervisor Cancellation Warning Modal with Refund notice (Exclusively for Riders) */}
+      {role === 'rider' && (
+        <SupervisorCancellationModal 
+          alertData={supervisorCancelAlert} 
+          onDismiss={dismissSupervisorCancelAlert} 
+        />
+      )}
 
       {/* Single-Tab Lock: Strictly prevents multiple tabs for the same student/user */}
       <SingleTabGuard />

@@ -487,8 +487,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // Real-Time Supervisor Cancellation Alert & Refund Handler
+  // Real-Time Supervisor Cancellation Alert & Refund Handler (Rider Only)
   const handleSupervisorCancelledNotification = useCallback((msg: any) => {
+    // 1. A supervisor or admin should NEVER receive or display this rider refund modal!
+    if (role === 'supervisor' || role === 'admin') {
+      return;
+    }
+
+    // 2. Strictly verify that this cancellation belongs to the currently logged in student
+    if (user && msg.userId && user.id !== msg.userId && user.email !== msg.riderEmail) {
+      return;
+    }
+
     // Play subtle alert tone if possible
     try {
       if (typeof window !== 'undefined' && ((window as any).AudioContext || (window as any).webkitAudioContext)) {
@@ -530,7 +540,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (msg.seatNumber) {
       setSeats(prev => prev.map(s => s.seatNumber === msg.seatNumber ? { ...s, status: 'free' } : s));
     }
-  }, []);
+  }, [role, user]);
 
   const dismissSupervisorCancelAlert = useCallback(() => {
     if (supervisorCancelAlert?.bookingId) {
@@ -699,29 +709,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
           if (Array.isArray(data)) {
             setMyBookings(data);
 
-            // Check if any recent booking was cancelled by supervisor and not yet dismissed
-            try {
-              const dismissedKey = 'aesh_dismissed_cancellations';
-              const dismissed = JSON.parse(localStorage.getItem(dismissedKey) || '[]');
-              const recentCancel = data.find((b: any) => 
-                b.status === 'cancelled' && 
-                (b.paymentStatus === 'refunded' || (b.cancelReason && b.cancelReason.toLowerCase().includes('supervisor'))) &&
-                !dismissed.includes(b.id)
-              );
-              if (recentCancel) {
-                setSupervisorCancelAlert({
-                  visible: true,
-                  bookingId: recentCancel.id,
-                  boardingCode: recentCancel.boardingCode || ('GU-' + recentCancel.id.substring(0, 4).toUpperCase()),
-                  seatNumber: recentCancel.seatNumber,
-                  routeNameAr: recentCancel.routeAr,
-                  refundAmount: 160,
-                  messageAr: recentCancel.cancelReason || 'قام مشرف الرحلة بإلغاء حجزك وتم استرداد المبلغ بالكامل (160 ج.م) لحسابك.',
-                  messageEn: 'Your booking was cancelled by the line supervisor. A full refund has been issued.',
-                  timestamp: recentCancel.cancelledAt || new Date().toISOString(),
-                });
-              }
-            } catch {}
+            // Check if any recent booking was cancelled by supervisor and not yet dismissed (Rider only)
+            if (role === 'rider') {
+              try {
+                const dismissedKey = 'aesh_dismissed_cancellations';
+                const dismissed = JSON.parse(localStorage.getItem(dismissedKey) || '[]');
+                const recentCancel = data.find((b: any) => 
+                  b.status === 'cancelled' && 
+                  (b.paymentStatus === 'refunded' || (b.cancelReason && b.cancelReason.toLowerCase().includes('supervisor'))) &&
+                  !dismissed.includes(b.id)
+                );
+                if (recentCancel) {
+                  setSupervisorCancelAlert({
+                    visible: true,
+                    bookingId: recentCancel.id,
+                    boardingCode: recentCancel.boardingCode || ('GU-' + recentCancel.id.substring(0, 4).toUpperCase()),
+                    seatNumber: recentCancel.seatNumber,
+                    routeNameAr: recentCancel.routeAr,
+                    refundAmount: 160,
+                    messageAr: recentCancel.cancelReason || 'قام مشرف الرحلة بإلغاء حجزك وتم استرداد المبلغ بالكامل (160 ج.م) لحسابك.',
+                    messageEn: 'Your booking was cancelled by the line supervisor. A full refund has been issued.',
+                    timestamp: recentCancel.cancelledAt || new Date().toISOString(),
+                  });
+                }
+              } catch {}
+            }
 
             return;
           }
@@ -734,7 +746,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const all: Booking[] = JSON.parse(localStorage.getItem('aesh_bookings') || '[]');
     const mine = all.filter(b => b.riderEmail === user.email);
     setMyBookings(mine);
-  }, [user, isOffline, token]);
+  }, [user, isOffline, token, role]);
 
   useEffect(() => { 
     getUserBookings(); 

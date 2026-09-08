@@ -438,6 +438,9 @@ export async function supervisorRoutes(fastify: FastifyInstance) {
     const cancellationNotice = {
       type: 'SUPERVISOR_CANCELLED_TICKET',
       bookingId: booking.id,
+      userId: booking.userId,
+      riderEmail: booking.user?.email,
+      riderName: booking.user?.fullName,
       boardingCode,
       seatNumber: booking.seatNumber,
       tripId: booking.tripId,
@@ -452,7 +455,7 @@ export async function supervisorRoutes(fastify: FastifyInstance) {
       timestamp: new Date().toISOString(),
     };
 
-    // Instant direct notification to the student
+    // Instant direct notification ONLY to the affected student
     WebSocketHub.sendToUser(booking.userId, cancellationNotice);
 
     // Free the seat on the live trip room seat map
@@ -461,7 +464,6 @@ export async function supervisorRoutes(fastify: FastifyInstance) {
       tripId: booking.tripId,
       seatNumber: booking.seatNumber,
     });
-    WebSocketHub.broadcastToTripRoom(booking.tripId, cancellationNotice);
     WebSocketHub.broadcastToTripRoom(booking.tripId, {
       type: 'booking_cancelled',
       bookingId: booking.id,
