@@ -2,7 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { db } from '../db/index.js';
 import * as schema from '../db/schema.js';
 import { redis } from '../redis.js';
-import { eq, and, inArray, ne } from 'drizzle-orm';
+import { eq, and, inArray, ne, desc } from 'drizzle-orm';
 import { WebSocketHub } from '../websocket/hub.js';
 import { logSecurityEvent } from '../services/audit.service.js';
 import { CacheService } from '../services/cache.service.js';
@@ -155,33 +155,88 @@ export async function tripsRoutes(fastify: FastifyInstance) {
       }
     }
 
-    const result = activeTrips.map(t => ({
-      id: t.id,
-      routeId: t.routeId,
-      tripDate: t.tripDate,
-      departureTime: t.departureTime,
-      returnTime: t.returnTime,
-      direction: t.direction,
-      timeSlot: t.timeSlot,
-      totalSeats: t.totalSeats,
-      priceEgp: Number(t.priceEgp),
-      status: t.status,
-      cancellationLockHours: t.cancellationLockHours,
-      bus: t.bus,
-      route: t.route,
-      driver: t.driver ? {
-        nameAr: t.driver.fullNameAr || t.driver.fullName,
-        nameEn: t.driver.fullName,
-        phone: t.driver.phone || '',
-      } : null,
-      supervisors: t.supervisors?.map((s: any) => ({
-        nameAr: s.user.fullNameAr || s.user.fullName,
-        nameEn: s.user.fullName,
-        phone: s.user.phone || '',
-      })) || [],
-    }));
+    const tripIds = activeTrips.map(t => t.id);
+    const bookingsByTrip = new Map<number, any[]>();
 
-    await CacheService.setCache(cacheKey, result, 60);
+    if (tripIds.length > 0) {
+      const allConfirmedBookings = await db.query.bookings.findMany({
+        where: and(
+          inArray(schema.bookings.tripId, tripIds),
+          inArray(schema.bookings.status, ['confirmed', 'swapped'])
+        ),
+        with: {
+          user: true,
+          boardingLogs: {
+            orderBy: desc(schema.boardingLogs.scannedAt),
+          },
+        },
+      });
+
+      for (const b of allConfirmedBookings) {
+        const list = bookingsByTrip.get(b.tripId) || [];
+        list.push(b);
+        bookingsByTrip.set(b.tripId, list);
+      }
+    }
+
+    const result = activeTrips.map(t => {
+      const tripBookings = bookingsByTrip.get(t.id) || [];
+      const bookedSeats = tripBookings.length;
+      const boardedBookings = tripBookings.filter(b => b.qrUsedAt !== null || b.boardingLogs?.some((l: any) => l.scanResult === 'valid'));
+      const boardedSeats = boardedBookings.length;
+      const pendingSeats = Math.max(0, bookedSeats - boardedSeats);
+
+      const passengers = tripBookings.map(b => {
+        const isValidBoarded = b.qrUsedAt !== null || b.boardingLogs?.some((l: any) => l.scanResult === 'valid');
+        const validLog = b.boardingLogs?.find((l: any) => l.scanResult === 'valid');
+        const boardedAt = b.qrUsedAt || validLog?.scannedAt || null;
+
+        return {
+          bookingId: b.id,
+          seatNumber: b.seatNumber,
+          riderName: b.user?.fullName || 'Student',
+          riderNameAr: b.user?.fullNameAr || b.user?.fullName || 'طالب',
+          phone: b.user?.phone || '—',
+          academicId: b.user?.academicId || '—',
+          faculty: b.user?.faculty || '—',
+          boardingCode: b.boardingCode || ('GU-' + b.id.substring(0, 4).toUpperCase()),
+          isBoarded: Boolean(isValidBoarded),
+          boardedAt: boardedAt ? new Date(boardedAt).toISOString() : null,
+        };
+      });
+
+      return {
+        id: t.id,
+        routeId: t.routeId,
+        tripDate: t.tripDate,
+        departureTime: t.departureTime,
+        returnTime: t.returnTime,
+        direction: t.direction,
+        timeSlot: t.timeSlot,
+        totalSeats: t.totalSeats,
+        bookedSeats,
+        boardedSeats,
+        pendingSeats,
+        passengers,
+        priceEgp: Number(t.priceEgp),
+        status: t.status,
+        cancellationLockHours: t.cancellationLockHours,
+        bus: t.bus,
+        route: t.route,
+        driver: t.driver ? {
+          nameAr: t.driver.fullNameAr || t.driver.fullName,
+          nameEn: t.driver.fullName,
+          phone: t.driver.phone || '',
+        } : null,
+        supervisors: t.supervisors?.map((s: any) => ({
+          nameAr: s.user.fullNameAr || s.user.fullName,
+          nameEn: s.user.fullName,
+          phone: s.user.phone || '',
+        })) || [],
+      };
+    });
+
+    await CacheService.setCache(cacheKey, result, 15);
     return result;
   });
 

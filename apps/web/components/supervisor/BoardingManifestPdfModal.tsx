@@ -34,7 +34,166 @@ export default function BoardingManifestPdfModal({
   }, [trip, boardedPassengers.length, devOverride]);
 
   const handlePrint = () => {
-    window.print();
+    const contentEl = printRef.current;
+    if (!contentEl) {
+      window.print();
+      return;
+    }
+
+    // Remove any previous print iframe
+    const existingIframe = document.getElementById('manifest-print-isolated-iframe');
+    if (existingIframe) {
+      existingIframe.remove();
+    }
+
+    const iframe = document.createElement('iframe');
+    iframe.id = 'manifest-print-isolated-iframe';
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    iframe.style.opacity = '0';
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentWindow?.document;
+    if (!doc) {
+      window.print();
+      return;
+    }
+
+    const docTitle = `Official_Boarding_Manifest_Trip_${trip?.id || 'Shift'}_${formattedDate}`;
+
+    doc.open();
+    doc.write(`
+      <!DOCTYPE html>
+      <html dir="rtl" lang="ar">
+      <head>
+        <meta charset="utf-8" />
+        <title>${docTitle}</title>
+        <style>
+          @page {
+            size: A4 portrait;
+            margin: 10mm 12mm;
+          }
+          * {
+            box-sizing: border-box;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          body {
+            margin: 0;
+            padding: 8px;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Cairo", "Tahoma", Arial, sans-serif;
+            color: #0f172a;
+            background: #ffffff;
+            font-size: 11px;
+            line-height: 1.4;
+            direction: rtl;
+          }
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+            margin-bottom: 10px;
+            page-break-inside: auto;
+          }
+          tr {
+            page-break-inside: avoid;
+            page-break-after: auto;
+          }
+          thead {
+            display: table-header-group;
+          }
+          th, td {
+            border: 1px solid #cbd5e1;
+            padding: 6px 8px;
+            text-align: right;
+            font-size: 11px;
+          }
+          th {
+            background-color: #0f172a !important;
+            color: #ffffff !important;
+            font-weight: bold;
+          }
+          img {
+            max-height: 60px;
+            width: auto;
+          }
+        </style>
+      </head>
+      <body>
+        <div style="width: 100%;">
+          ${contentEl.innerHTML}
+        </div>
+      </body>
+      </html>
+    `);
+    doc.close();
+
+    setTimeout(() => {
+      try {
+        iframe.contentWindow?.focus();
+        iframe.contentWindow?.print();
+      } catch {
+        window.print();
+      }
+    }, 450);
+  };
+
+  const handleDownloadReport = () => {
+    const contentEl = printRef.current;
+    if (!contentEl) return;
+
+    const docTitle = `Official_Boarding_Manifest_Trip_${trip?.id || 'Shift'}_${formattedDate}`;
+    const htmlContent = `<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+  <meta charset="utf-8" />
+  <title>${docTitle}</title>
+  <style>
+    @page { size: A4 portrait; margin: 10mm 12mm; }
+    * { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+    body {
+      margin: 0;
+      padding: 24px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Cairo", "Tahoma", Arial, sans-serif;
+      color: #0f172a;
+      background: #ffffff;
+      font-size: 11px;
+      line-height: 1.4;
+      direction: rtl;
+    }
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; margin-bottom: 12px; }
+    tr { page-break-inside: avoid; }
+    thead { display: table-header-group; }
+    th, td { border: 1px solid #cbd5e1; padding: 6px 8px; text-align: right; font-size: 11px; }
+    th { background-color: #0f172a !important; color: #ffffff !important; }
+    .export-actions { margin-bottom: 16px; padding: 12px; background: #f1f5f9; border-radius: 8px; text-align: left; }
+    .btn { background: #2563eb; color: #fff; padding: 8px 16px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; }
+    @media print { .export-actions { display: none !important; } body { padding: 0 !important; } }
+  </style>
+</head>
+<body>
+  <div class="export-actions">
+    <button class="btn" onclick="window.print()">طباعة / حفظ كملف PDF (Save as PDF)</button>
+  </div>
+  <div>
+    ${contentEl.innerHTML}
+  </div>
+</body>
+</html>`;
+
+    const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${docTitle}.html`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   const formattedDate = trip?.tripDate || new Date().toISOString().split('T')[0];
@@ -46,12 +205,18 @@ export default function BoardingManifestPdfModal({
   const driverDisplay = trip?.driver?.nameAr || trip?.driver?.nameEn || 'Mohamed Sobhi (محمد صبحي)';
 
   return (
-    <div className="fixed inset-0 z-[999999] flex items-center justify-center p-2 sm:p-4 bg-black/80 backdrop-blur-md overflow-y-auto print:p-0 print:bg-white print:static print:h-auto">
+    <div
+      id="manifest-modal-backdrop"
+      className="fixed inset-0 z-[999999] flex items-center justify-center p-2 sm:p-4 bg-black/80 backdrop-blur-md overflow-y-auto print:p-0 print:bg-white print:static print:h-auto"
+    >
       {/* Container Card */}
-      <div className="bg-white text-slate-900 rounded-2xl shadow-2xl border border-slate-200 max-w-4xl w-full flex flex-col max-h-[92vh] print:max-h-none print:shadow-none print:border-none print:rounded-none">
+      <div
+        id="manifest-modal-container"
+        className="bg-white text-slate-900 rounded-2xl shadow-2xl border border-slate-200 max-w-4xl w-full flex flex-col max-h-[92vh] print:max-h-none print:shadow-none print:border-none print:rounded-none"
+      >
         
         {/* Screen Header (Hidden when printing) */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50 rounded-t-2xl print:hidden">
+        <div id="screen-manifest-header" className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50 rounded-t-2xl print:hidden">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold">
               <span className="material-symbols-outlined text-xl">picture_as_pdf</span>
@@ -93,19 +258,35 @@ export default function BoardingManifestPdfModal({
               {devOverride ? '⚡ Dev Override: ON' : '⚡ Dev Override'}
             </button>
 
-            {/* Print / Save PDF Button */}
+            {/* Direct File Download Report Button */}
+            <button
+              type="button"
+              disabled={!unlockStatus.isUnlocked}
+              onClick={handleDownloadReport}
+              className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-sm ${
+                unlockStatus.isUnlocked
+                  ? 'bg-slate-800 hover:bg-slate-900 text-white active:scale-95'
+                  : 'bg-slate-200 text-slate-400 cursor-not-allowed border border-slate-300'
+              }`}
+              title="Download standalone report file"
+            >
+              <span className="material-symbols-outlined text-base">download</span>
+              تنزيل كملف
+            </button>
+
+            {/* Export & Save PDF Button */}
             <button
               type="button"
               disabled={!unlockStatus.isUnlocked}
               onClick={handlePrint}
               className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition shadow-sm ${
                 unlockStatus.isUnlocked
-                  ? 'bg-blue-600 hover:bg-blue-700 text-white active:scale-95'
+                  ? 'bg-blue-600 hover:bg-blue-700 text-white active:scale-95 ring-2 ring-blue-400/30'
                   : 'bg-slate-200 text-slate-400 cursor-not-allowed border border-slate-300'
               }`}
             >
-              <span className="material-symbols-outlined text-base">print</span>
-              Print / Save as PDF
+              <span className="material-symbols-outlined text-base">picture_as_pdf</span>
+              تصدير وحفظ PDF
             </button>
 
             {/* Close Button */}
@@ -122,7 +303,7 @@ export default function BoardingManifestPdfModal({
 
         {/* Lock Warning Notice if locked */}
         {!unlockStatus.isUnlocked && (
-          <div className="bg-amber-50 border-b border-amber-200 p-3 px-6 text-xs text-amber-900 flex items-center justify-between print:hidden">
+          <div id="lock-warning-notice" className="bg-amber-50 border-b border-amber-200 p-3 px-6 text-xs text-amber-900 flex items-center justify-between print:hidden">
             <div className="flex items-center gap-2 font-medium">
               <span className="material-symbols-outlined text-amber-600 text-base">lock</span>
               <span>
@@ -332,15 +513,47 @@ export default function BoardingManifestPdfModal({
         @media print {
           body {
             background: white !important;
-            color: black !important;
+            color: #0f172a !important;
           }
-          nav, aside, header, footer, .print\\:hidden {
+          /* Hide the whole website */
+          body > * {
             display: none !important;
+          }
+          #manifest-modal-backdrop {
+            display: block !important;
+            position: static !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            background: transparent !important;
+            height: auto !important;
+            overflow: visible !important;
+          }
+          #manifest-modal-container {
+            display: block !important;
+            position: static !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            box-shadow: none !important;
+            border: none !important;
+            max-height: none !important;
+            height: auto !important;
+            overflow: visible !important;
           }
           #printable-boarding-manifest {
             display: block !important;
+            position: static !important;
             padding: 0 !important;
             margin: 0 !important;
+            overflow: visible !important;
+          }
+          #screen-manifest-header,
+          #lock-warning-notice,
+          nav,
+          aside,
+          header,
+          footer,
+          .print\\:hidden {
+            display: none !important;
           }
           @page {
             size: A4 portrait;

@@ -105,6 +105,7 @@ export class CacheService {
         this.deleteCache(`cache:trip_seats:${tripId}`),
         this.deleteCache(`cache:seat_details:${tripId}`),
         this.invalidatePattern('cache:fleet:*'), // Fleet status displays seat counts
+        this.invalidatePattern('cache:trips:*'), // Trip list displays live booked and boarded seats
       ]);
     } catch (err) {
       console.warn(`[CacheService] Error invalidating seat cache for trip #${tripId}:`, err);

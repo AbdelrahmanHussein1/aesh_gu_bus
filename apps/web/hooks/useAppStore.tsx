@@ -462,6 +462,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     playSuccessChime();
     if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('rider_boarded_event', { detail: msg }));
+      window.dispatchEvent(new CustomEvent('schedule_updated', { detail: msg }));
       import('canvas-confetti').then(mod => {
         mod.default({
           particleCount: 140,

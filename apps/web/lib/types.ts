@@ -33,6 +33,19 @@ export interface Bus {
   totalSeats: number;
 }
 
+export interface TripPassengerSummary {
+  bookingId: string;
+  seatNumber: number;
+  riderName: string;
+  riderNameAr?: string;
+  phone: string;
+  academicId: string;
+  faculty?: string;
+  boardingCode?: string;
+  isBoarded: boolean;
+  boardedAt: string | null;
+}
+
 export interface Trip {
   id: number;
   routeId: number;
@@ -47,6 +60,9 @@ export interface Trip {
   route?: Route;
   totalSeats?: number;
   bookedSeats?: number;
+  boardedSeats?: number;
+  pendingSeats?: number;
+  passengers?: TripPassengerSummary[];
   driver?: PersonnelContact | null;
   supervisors?: PersonnelContact[];
 }
