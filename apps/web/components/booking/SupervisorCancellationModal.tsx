@@ -111,7 +111,7 @@ export default function SupervisorCancellationModal({ alertData, onDismiss }: Pr
         <button
           type="button"
           onClick={onDismiss}
-          className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white font-bold text-sm shadow-lg shadow-red-500/20 transition cursor-pointer flex items-center justify-center gap-2"
+          className="w-full py-2.5 px-4 rounded-lg bg-red-600 hover:bg-red-500 active:scale-[0.98] text-white font-bold text-sm shadow-md transition cursor-pointer flex items-center justify-center gap-2"
         >
           <span className="material-symbols-outlined text-lg">check_circle</span>
           <span>فهمت، إغلاق التنبيه | Acknowledge & Dismiss</span>

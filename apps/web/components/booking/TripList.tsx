@@ -61,7 +61,7 @@ export default function TripList() {
         onClick={onSelect}
         className={`relative group cursor-pointer rounded-2xl p-1 transition-all duration-300 ${
           isSelected
-            ? 'bg-gradient-to-b from-blue-500/30 via-indigo-500/20 to-blue-600/30 ring-2 ring-blue-600 shadow-xl shadow-blue-500/10 scale-[1.01]'
+            ? 'bg-blue-600/15 ring-2 ring-blue-600 shadow-xl shadow-blue-600/10 scale-[1.01]'
             : 'bg-surface-container/60 hover:bg-surface-container border border-border-whisper hover:border-blue-400/40 hover:shadow-lg hover:-translate-y-0.5'
         }`}
       >
@@ -69,13 +69,13 @@ export default function TripList() {
         <div
           className={`rounded-[calc(1rem-2px)] p-4 sm:p-5 flex flex-col gap-4 relative overflow-hidden transition-colors ${
             isSelected
-              ? 'bg-gradient-to-br from-blue-50/70 via-white to-indigo-50/40 dark:from-blue-950/40 dark:via-slate-900 dark:to-indigo-950/30'
+              ? 'bg-blue-50/70 dark:bg-slate-900 border border-blue-500/30'
               : 'bg-surface'
           }`}
         >
           {/* Selected Accent Ribbon */}
           {isSelected && (
-            <div className="absolute top-0 right-0 left-0 h-1 bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-500" />
+            <div className="absolute top-0 right-0 left-0 h-1 bg-blue-600" />
           )}
 
           {/* Top Bar: Route, Category, Shift & Live Seat Availability */}
@@ -357,7 +357,7 @@ export default function TripList() {
         {/* Section Header with Dedicated Refresh Action */}
         <div className="flex flex-wrap items-center justify-between gap-3 pb-2 border-b border-border-whisper">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 text-white flex items-center justify-center shadow-md shadow-blue-500/15">
+            <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-md shadow-blue-600/20">
               <span className="material-symbols-outlined text-xl">directions_bus</span>
             </div>
             <div>
@@ -517,7 +517,7 @@ export default function TripList() {
       {/* Section Header with Dedicated Refresh Action */}
       <div className="flex flex-wrap items-center justify-between gap-3 pb-2 border-b border-border-whisper">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 text-white flex items-center justify-center shadow-md shadow-blue-500/15">
+          <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-md shadow-blue-600/20">
             <span className="material-symbols-outlined text-xl">directions_bus</span>
           </div>
           <div>

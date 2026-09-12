@@ -1,0 +1,21 @@
+{
+  "name": "Bus Aesh - Galala University Transit",
+  "short_name": "Bus Aesh",
+  "description": "Official smart bus reservation platform for Galala University students, supervisors, and administrators.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#000f74",
+  "icons": [
+    {
+      "src": "/icon.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/app-logo.png",
+      "sizes": "256x256",
+      "type": "image/png"
+    }
+  ]
+}

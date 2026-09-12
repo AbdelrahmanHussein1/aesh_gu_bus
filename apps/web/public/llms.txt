@@ -1,0 +1,33 @@
+# Bus Aesh — Galala University Smart Transit Platform
+
+> Official high-concurrency transit booking, fleet dispatching, and seat reservation ecosystem for Galala University (GU), Egypt.
+
+## System Overview
+- **Domain**: https://bus.gu.edu.eg (and Cloudflare Zero Trust Named Tunnel endpoints)
+- **Institution**: Galala University (جامعة الجلالة), Plateau of Galala, Suez Governorate, Egypt
+- **Transit Network**: 29 official university transit lines connecting Galala Campus with Greater Cairo (Nasr City, Heliopolis, New Cairo, Maadi, Giza, October, Zayed, El Obour, El Shorouk) and Suez/Ismailia.
+- **Fleet Specifications**: 50-passenger air-conditioned luxury transit buses equipped with designated drivers and line supervisors.
+
+## Architecture & Technology Stack
+- **Frontend Web Portal**: Next.js 15 (App Router), React 19, Tailwind CSS, Lucide Icons, Cairo/Outfit Typography.
+- **Mobile Application**: React Native / Expo with native camera barcode scanning.
+- **Backend API**: Fastify 5 (Node.js 20 LTS), RESTful API, Native WebSockets (/ws/trips/:id/seats, /ws/user/session).
+- **Persistence**: PostgreSQL 16 with Drizzle ORM, multi-table relations, and composite unique indexes.
+- **Cache & Concurrency**: Redis 7 cache-aside layer with sub-2ms reads and distributed seat locking (SET NX EX 300).
+- **Security**: Institutional Single Sign-On (@gu.edu.eg email verification, Microsoft 365 Outlook OTP, scrypt password hashing, HMAC-SHA256 signed QR codes, single-device session displacement, and single-tab BroadcastChannel guard).
+
+## Core Pages & User Portals
+- `/`: Institutional Transit Portal & Unified Authentication (Login & Student Registration)
+- `/rider`: Student Booking Dashboard, 29 Route Selector, 50-Seat Cabin Visualizer, Visa/Instapay Payment, and Active Boarding Passes.
+- `/supervisor`: On-board Line Supervisor Operations, HTML5 Video QR Scanner, Anti-Passback Validation, Manual Boarding Check-In, Seat Swaps, and Printable PDF Manifest.
+- `/admin`: Master Operations Console, 5-Shift Hub, Dual-Shift Both-Way Scheduler, 50-Seat Cabin Inspector Modal, Fleet Status, and Security Audit Logs.
+- `/pass`: Public/Student Digital Boarding Pass Verification & Lookup.
+- `/privacy`: Official Galala University Transit Privacy Policy & Data Protection Disclosure.
+- `/terms`: Terms & Conditions of University Transit, Seat Reservation Rules, Cancellation Windows, and Refund Guidelines.
+
+## Operating Policies
+- **Student Fare**: 160 EGP per single shift / 320 EGP round-trip.
+- **Seat Hold Window**: 5 minutes (300 seconds) in Redis during checkout.
+- **Cancellation Policy**: 100% full automated refund if cancelled at least 3 hours prior to trip departure.
+- **Supervisor Emergency Window**: Supervisors can cancel and re-route trips up to 5 hours prior to departure with automatic rider alerts.
+- **Support & Inquiries**: Email transport@gu.edu.eg, Response time within 2 hours during transit hours (06:00 - 20:00).

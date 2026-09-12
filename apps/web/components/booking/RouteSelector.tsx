@@ -164,7 +164,7 @@ export default function RouteSelector() {
           {/* Connected Round-trip Badge */}
           <div className="hidden md:flex col-span-2 flex-col items-center justify-center mt-6 gap-1">
             <div
-              className="w-10 h-10 rounded-full bg-surface border border-border-whisper flex items-center justify-center text-text-secondary cursor-not-allowed select-none opacity-80"
+              className="w-10 h-10 rounded-lg bg-surface border border-border-whisper flex items-center justify-center text-text-secondary cursor-not-allowed select-none opacity-80"
               title="رحلة الذهاب والعودة محددة تلقائياً: الانطلاق من المحطة والعودة إليها"
             >
               <span className="material-symbols-outlined text-xl">sync_alt</span>
@@ -189,7 +189,7 @@ export default function RouteSelector() {
             <button
               type="button"
               onClick={handleSwap}
-              className="w-10 h-10 rounded-full bg-surface border border-border-whisper flex items-center justify-center text-primary-container active:scale-95 transition-transform hover:bg-surface-container"
+              className="w-10 h-10 rounded-lg bg-surface border border-border-whisper flex items-center justify-center text-primary-container active:scale-95 transition-transform hover:bg-surface-container cursor-pointer"
               title="تبديل الاتجاه إلى عودة فقط"
             >
               <span className="material-symbols-outlined">swap_horiz</span>
@@ -213,7 +213,7 @@ export default function RouteSelector() {
             <button
               type="button"
               onClick={handleSwap}
-              className="w-10 h-10 rounded-full bg-surface border border-border-whisper flex items-center justify-center text-primary-container active:scale-95 transition-transform hover:bg-surface-container"
+              className="w-10 h-10 rounded-lg bg-surface border border-border-whisper flex items-center justify-center text-primary-container active:scale-95 transition-transform hover:bg-surface-container cursor-pointer"
               title="تبديل الاتجاه إلى ذهاب فقط"
             >
               <span className="material-symbols-outlined">swap_horiz</span>
@@ -320,7 +320,7 @@ export default function RouteSelector() {
                   className="relative flex-shrink-0 min-w-[115px] p-3 rounded-xl border-2 transition-all flex flex-col items-center justify-center gap-1 border-emerald-500 bg-emerald-500/10 text-emerald-300 ring-2 ring-emerald-500/30 shadow-[0_0_12px_rgba(16,185,129,0.25)] select-none cursor-default"
                   title="اليوم الحالي - انتهى موعد حجز رحلات اليوم (الحجز متاح لرحلات الغد وما بعدها)"
                 >
-                  <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-500 text-slate-950 shadow-sm flex items-center gap-1">
+                  <span className="px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider bg-emerald-500 text-slate-950 shadow-sm flex items-center gap-1">
                     <span className="w-1.5 h-1.5 rounded-full bg-slate-950 animate-ping"></span>
                     TODAY • اليوم
                   </span>
@@ -348,7 +348,7 @@ export default function RouteSelector() {
                   title={od.isTomorrow ? 'غداً - الحجز متاح الآن' : `رحلات ${od.date} - الحجز متاح`}
                 >
                   {od.isTomorrow ? (
-                    <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-sky-500 text-white shadow-sm flex items-center gap-1">
+                    <span className="px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider bg-sky-500 text-white shadow-sm flex items-center gap-1">
                       <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping"></span>
                       TOMORROW • غداً
                     </span>
