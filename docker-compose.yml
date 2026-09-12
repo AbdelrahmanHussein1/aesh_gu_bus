@@ -26,7 +26,8 @@ services:
   cloudflared:
     image: cloudflare/cloudflared:latest
     restart: unless-stopped
-    command: ${CLOUDFLARE_TUNNEL_COMMAND:-tunnel --no-autoupdate --url http://app:3001}
+    network_mode: host
+    command: ${CLOUDFLARE_TUNNEL_COMMAND:-tunnel --no-autoupdate --edge-ip-version 4 --protocol http2 --url http://127.0.0.1:3001}
     environment:
       - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN:-}
     depends_on:

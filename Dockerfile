@@ -57,7 +57,9 @@ COPY --from=builder /app/apps/api/dist ./apps/api/dist
 COPY --from=builder /app/apps/api/drizzle ./apps/api/drizzle
 COPY --from=builder /app/apps/web/.next ./apps/web/.next
 COPY --from=builder /app/apps/web/public ./apps/web/public
+COPY apps/web/next.config.js ./apps/web/next.config.js
 
 EXPOSE 3000 3001 3002
 
 ENTRYPOINT ["/bin/sh", "/app/scripts/docker-entrypoint.sh"]
+
