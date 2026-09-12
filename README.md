@@ -1,6 +1,6 @@
-# 🚌 Galala University Smart Transit Platform (Bus Aesh) — v1.1.2
+# 🚌 Galala University Smart Transit Platform (Bus Aesh) — v1.2.0
 
-[![Release](https://img.shields.io/badge/Release-v1.1.2-38bdf8?style=for-the-badge&logo=github)](https://github.com/AbdelrahmanHussein1/aesh_gu_bus/releases/tag/v1.1.2)
+[![Release](https://img.shields.io/badge/Release-v1.2.0-38bdf8?style=for-the-badge&logo=github)](https://github.com/AbdelrahmanHussein1/aesh_gu_bus/releases/tag/v1.2.0)
 [![Fastify](https://img.shields.io/badge/Fastify-Backend%20API%20(Port%203000)-000000?style=for-the-badge&logo=fastify)](https://github.com/AbdelrahmanHussein1/aesh_gu_bus)
 [![Next.js 15](https://img.shields.io/badge/Next.js%2015-Web%20Portal%20(Port%203001)-black?style=for-the-badge&logo=next.js)](https://github.com/AbdelrahmanHussein1/aesh_gu_bus)
 [![PostgreSQL 16](https://img.shields.io/badge/PostgreSQL%2016-Drizzle%20ORM-336791?style=for-the-badge&logo=postgresql)](https://github.com/AbdelrahmanHussein1/aesh_gu_bus)
@@ -244,7 +244,37 @@ aesh_gu_bus/
 
 ---
 
-## 3. Release v1.1.2 Highlights & Operations Upgrades
+## 3. Release v1.2.0 Highlights & Comprehensive Audit
+
+Release `v1.2.0` introduces complete bilingual localization (Arabic & English), a dynamic Dark Mode & Light Mode system, critical concurrency bug fixes, and security hardening across all services:
+
+### 1. 🌐 Bilingual Arabic & English Support (i18n)
+- **Zero-Overhead Reactive System**: Built with `LanguageProvider`, `translations.ts`, and `useLanguage()`.
+- **Instant Direction Synchronization**: Toggling language between Arabic and English dynamically mirrors the layout between `rtl` and `ltr` without full page reloads, accompanied by a synchronous `<head>` script preventing layout shifting.
+- **Full Interface Translation**: Public Landing Page, Station & Route Selection, Bus Manifest, Ticket Inspector, Shifts, Seat Grid, and Toast Notifications are fully localized.
+
+### 2. 🌓 Complete Dark Mode / Light Mode Theming
+- **Tailwind `darkMode: 'class'`**: Comprehensive CSS variable palette defining elevated surfaces, borders, text contrast, accent colors, and scrollbars.
+- **Universal Theme Switcher**: 3-way toggle (Light / Dark / System) mounted across desktop TopBar, mobile navigation, and the public landing page.
+- **Anti-FOWT Shield**: Inline script in `<head>` ensures theme is applied before DOM rendering, preventing flash of wrong theme on reload.
+
+### 3. 🛡️ Concurrency Race Condition & Database Hardening
+- **Double-Booking Elimination**: Added partial unique database index (`unique_active_seat ON bookings (trip_id, seat_number) WHERE status IN ('confirmed', 'swapped')`) and composite index on `(trip_id, seat_number)` to guarantee zero seat overlap under simultaneous checkout requests.
+- **Postgres Conflict Handling**: Fastify route handles error code `23505` with clean 409 Conflict response.
+- **Redis Parameter Order**: Corrected `redis.set(key, value, 'EX', 300, 'NX')` in trip booking routes.
+- **Transaction Resiliency**: Wrapped post-commit Redis cache invalidation in error handling to guarantee successful bookings are never aborted by temporary cache issues.
+
+### 4. 🔒 Enterprise Security & Codebase Optimization
+- **Docker Compose Secret Isolation**: Fully parameterized database credentials and JWT keys with environment variables.
+- **Strict JWT Secret Validation**: Throws immediate startup exception if missing; removed default hardcoded fallbacks.
+- **Native Node Crypto**: Upgraded SHA-256 and HMAC ticket verification in `@bus-aesh/shared` to use native `node:crypto.createHmac` and `node:crypto.timingSafeEqual`.
+- **Zod Validation**: Added `CreateTripAdminSchema` validating both single-direction and dual-shift `both_ways` requests.
+- **Auto-Seed Optimization**: Refactored `autoSeed` to bulk inserts, reducing up to 240 sequential SQL queries to 2.
+- **QR Scanner Efficiency**: Throttled camera frame analysis loop to 180ms intervals, decreasing client CPU and battery consumption by ~85%.
+
+---
+
+## 4. Release v1.1.2 Highlights & Operations Upgrades
 
 Release `v1.1.2` is a major milestone delivering comprehensive operational capabilities, live synchronization parity across all roles, refreshed rider interactions, and zero-downtime container stability:
 

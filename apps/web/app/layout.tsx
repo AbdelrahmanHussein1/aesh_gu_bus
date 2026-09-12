@@ -1,7 +1,9 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { AppProvider } from '@/hooks/useAppStore';
+import { LanguageProvider } from '@/lib/i18n/LanguageContext';
 import CookieConsentBanner from '@/components/layout/CookieConsentBanner';
+import ToastContainer from '@/components/ui/Toast';
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://bus.gu.edu.eg';
 
@@ -166,12 +168,20 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
         />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var t=localStorage.getItem('theme');var d=t==='dark'||(t!=='light'&&window.matchMedia('(prefers-color-scheme:dark)').matches);if(d)document.documentElement.classList.add('dark');var l=localStorage.getItem('aesh_locale')||'ar';document.documentElement.lang=l;document.documentElement.dir=l==='ar'?'rtl':'ltr'}catch(e){}})()`,
+          }}
+        />
       </head>
       <body className="antialiased bg-surface-bright text-text-primary selection:bg-blue-600 selection:text-white">
-        <AppProvider>
-          {children as any}
-          <CookieConsentBanner />
-        </AppProvider>
+        <LanguageProvider>
+          <AppProvider>
+            {children as any}
+            <CookieConsentBanner />
+            <ToastContainer />
+          </AppProvider>
+        </LanguageProvider>
       </body>
     </html>
   );

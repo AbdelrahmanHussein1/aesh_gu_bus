@@ -9,7 +9,7 @@ import CheckoutModal from '@/components/booking/CheckoutModal';
 import BookingPassCard from '@/components/booking/BookingPassCard';
 
 export default function RiderDashboardPage() {
-  const { user, role, isAuthLoading, refreshTrips, isTripsLoading } = useApp();
+  const { user, isAuthLoading, refreshTrips, isTripsLoading } = useApp();
   const router = useRouter();
   useEffect(() => { document.title = 'Rider Dashboard — Bus Aesh'; }, []);
 

@@ -1,21 +1,27 @@
 'use client';
 import { useApp } from '@/hooks/useAppStore';
+import ThemeToggle from '@/components/layout/ThemeToggle';
+import LanguageSwitcher from '@/components/layout/LanguageSwitcher';
+import { useLanguage } from '@/lib/i18n/LanguageContext';
 
 export default function TopBar() {
   const { role, switchRole, logout, user, isOffline, setIsOffline } = useApp();
+  const { t } = useLanguage();
 
   return (
     <header className="sticky top-0 bg-canvas-bg/90 backdrop-blur-md z-40 px-margin-desktop py-5 border-b border-border-whisper justify-between items-end hidden md:flex">
       <div>
         <h2 className="font-display-lg text-display-lg text-text-primary mb-1">
-          {role === 'rider' ? 'Book Trip' : role === 'supervisor' ? 'Control Hub' : 'Admin Panel'}
+          {role === 'rider' ? t('bookTrip') : role === 'supervisor' ? t('controlHub') : t('adminPanel')}
         </h2>
         <p className="font-body-sm text-body-sm text-text-secondary">
-          {role === 'rider' ? 'Select your route and seat' : role === 'supervisor' ? 'System operations and live audit tracking' : 'System configuration and monitoring'}
+          {role === 'rider' ? t('bookTripSubtitle') : role === 'supervisor' ? t('supervisorSubtitle') : t('adminSubtitle')}
         </p>
       </div>
 
       <div className="flex items-center gap-3">
+        <LanguageSwitcher />
+        <ThemeToggle />
 
         {user && (
           <div className="flex items-center gap-3 pl-3 border-l border-border-whisper">
@@ -45,7 +51,9 @@ export function MobileTopBar() {
         <span className="material-symbols-outlined text-primary-container">directions_bus</span>
         <span className="font-headline-md text-headline-md text-primary-container">Galala Transit</span>
       </div>
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2">
+        <LanguageSwitcher />
+        <ThemeToggle />
         <button onClick={logout} className="p-2 text-text-secondary hover:text-destructive-alt">
           <span className="material-symbols-outlined text-xl">logout</span>
         </button>

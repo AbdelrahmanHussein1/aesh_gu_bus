@@ -5,11 +5,15 @@ import LoginForm from '@/components/auth/LoginForm';
 import RegisterForm from '@/components/auth/RegisterForm';
 import { useApp } from '@/hooks/useAppStore';
 import StickyMobileContact from '@/components/layout/StickyMobileContact';
+import ThemeToggle from '@/components/layout/ThemeToggle';
+import LanguageSwitcher from '@/components/layout/LanguageSwitcher';
+import { useLanguage } from '@/lib/i18n/LanguageContext';
 
 type AuthView = 'login' | 'register';
 
 export default function HomePage() {
   const { user, isAuthLoading } = useApp();
+  const { t, locale } = useLanguage();
   const [authView, setAuthView] = useState<AuthView>('login');
   const [openFaq, setOpenFaq] = useState<number | null>(0);
 
@@ -117,12 +121,14 @@ export default function HomePage() {
           </div>
 
           <div className="flex items-center gap-2">
+            <LanguageSwitcher />
+            <ThemeToggle />
             <Link
               href="/pass"
               className="py-1.5 px-3 text-xs font-semibold text-slate-300 hover:text-white rounded-lg border border-slate-700 bg-slate-800/60 hover:bg-slate-800 transition-all flex items-center gap-1.5"
             >
               <span className="material-symbols-outlined text-sm text-emerald-400">qr_code</span>
-              <span>Verify Pass (التحقق من تذكرة)</span>
+              <span className="hidden sm:inline">{t('verifyPass')}</span>
             </Link>
             <button
               type="button"
@@ -130,7 +136,7 @@ export default function HomePage() {
               className="py-1.5 px-3 text-xs font-bold text-white bg-blue-600 hover:bg-blue-500 rounded-lg transition-all shadow-sm flex items-center gap-1 cursor-pointer"
             >
               <span className="material-symbols-outlined text-sm">login</span>
-              <span>Sign In (دخول)</span>
+              <span>{t('login')}</span>
             </button>
           </div>
         </div>

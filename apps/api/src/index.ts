@@ -16,7 +16,10 @@ dotenv.config();
 
 const port = parseInt(process.env.PORT || '3000');
 const host = process.env.HOST || '0.0.0.0';
-const jwtSecret = process.env.JWT_SECRET || 'super-secret-aesh-key';
+const jwtSecret = process.env.JWT_SECRET || '';
+if (!jwtSecret) {
+  throw new Error('JWT_SECRET environment variable is missing.');
+}
 const resendApiKey = process.env.RESEND_API_KEY || 're_mock_key';
 
 const fastify = Fastify({

@@ -64,11 +64,22 @@ export default function SeatGrid() {
               else if (isHeldByMe || isSelectedByMe) seatStyle = 'border-2 border-primary-container bg-primary-container text-on-primary-container shadow-sm font-bold';
               else if (seat.status === 'held') seatStyle = 'border border-outline bg-surface-variant text-text-secondary opacity-50 cursor-not-allowed';
 
+              const seatAriaLabel = `Seat ${seat.seatNumber}${
+                isSelectedByMe ? ', Selected' :
+                isHeldByMe ? ', Held by you' :
+                seat.status === 'booked' ? ', Booked' :
+                seat.status === 'held' ? ', Held' : ', Available'
+              }`;
+
               if (isAisle) {
                 return (
                   <React.Fragment key={`row-${index}`}>
                     <div className="col-span-1 flex items-center justify-center text-[10px] text-text-secondary font-mono">Aisle</div>
-                    <button type="button" disabled={isDisabled} onClick={() => handleSeatClick(seat.seatNumber, seat.status)}
+                    <button 
+                      type="button" 
+                      disabled={isDisabled} 
+                      onClick={() => handleSeatClick(seat.seatNumber, seat.status)}
+                      aria-label={seatAriaLabel}
                       className={`w-10 h-10 rounded flex items-center justify-center font-label-mono text-label-mono-sm transition-all ${seatStyle}`}>
                       {seat.seatNumber}
                     </button>
@@ -77,7 +88,12 @@ export default function SeatGrid() {
               }
 
               return (
-                <button key={seat.seatNumber} type="button" disabled={isDisabled} onClick={() => handleSeatClick(seat.seatNumber, seat.status)}
+                <button 
+                  key={seat.seatNumber} 
+                  type="button" 
+                  disabled={isDisabled} 
+                  onClick={() => handleSeatClick(seat.seatNumber, seat.status)}
+                  aria-label={seatAriaLabel}
                   className={`w-10 h-10 rounded flex items-center justify-center font-label-mono text-label-mono-sm transition-all ${seatStyle}`}>
                   {seat.seatNumber}
                 </button>

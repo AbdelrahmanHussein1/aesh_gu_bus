@@ -1,5 +1,5 @@
 import { FastifyInstance } from 'fastify';
-import { RegisterSchema, LoginSchema } from '@bus-aesh/shared';
+import { RegisterSchema, LoginSchema, GALALA_FACULTIES } from '@bus-aesh/shared';
 import { db } from '../db/index.js';
 import * as schema from '../db/schema.js';
 import { eq } from 'drizzle-orm';
@@ -115,6 +115,13 @@ export async function authRoutes(fastify: FastifyInstance) {
           return reply.status(400).send({
             error: 'Invalid Galala University Academic ID',
             messageAr: 'رقم القيد الأكاديمي غير صالح',
+          });
+        }
+
+        if (faculty && !GALALA_FACULTIES.includes(faculty as any)) {
+          return reply.status(400).send({
+            error: 'Invalid Galala University Faculty selection',
+            messageAr: 'الكلية المختارة غير صالحة',
           });
         }
       }

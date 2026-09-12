@@ -1,5 +1,7 @@
 import Link from 'next/link';
 import { useApp } from '@/hooks/useAppStore';
+import ThemeToggle from '@/components/layout/ThemeToggle';
+import LanguageSwitcher from '@/components/layout/LanguageSwitcher';
 
 export default function SideNavBar() {
   const {
@@ -28,7 +30,7 @@ export default function SideNavBar() {
           <Link href={user ? (user.role === 'admin' ? '/admin' : user.role === 'supervisor' ? '/supervisor' : '/rider') : '/'}>
             <img
               alt="Galala University"
-              className="h-9 w-auto object-contain cursor-pointer hover:opacity-90 transition-opacity"
+              className="h-9 w-auto object-contain cursor-pointer hover:opacity-90 transition-opacity dark:brightness-0 dark:invert"
               src="/gu-logo-colored.png"
             />
           </Link>
@@ -97,7 +99,15 @@ export default function SideNavBar() {
           </div>
         </div>
 
-        <div className="pt-4 border-t border-border-whisper flex flex-col gap-3">
+        <div className="pt-4 border-t border-border-whisper flex flex-col gap-2.5">
+          <div className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'justify-between px-3'}`}>
+            {!sidebarCollapsed && <span className="text-xs font-semibold text-text-secondary">Language / اللغة</span>}
+            <LanguageSwitcher />
+          </div>
+          <div className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'justify-between px-3'}`}>
+            {!sidebarCollapsed && <span className="text-xs font-semibold text-text-secondary">Theme / المظهر</span>}
+            <ThemeToggle />
+          </div>
           <button onClick={logout} className={`text-on-surface-variant hover:bg-surface-container-high transition-all flex items-center gap-3 px-3 py-2.5 rounded-xl w-full ${sidebarCollapsed ? 'justify-center' : ''}`} title="Logout">
             <span className="material-symbols-outlined">logout</span>
             {!sidebarCollapsed && <span className="font-body-md">Logout</span>}

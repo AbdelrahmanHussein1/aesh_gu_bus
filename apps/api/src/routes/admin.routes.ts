@@ -1,4 +1,5 @@
 import { FastifyInstance } from 'fastify';
+import { z } from 'zod';
 import { db } from '../db/index.js';
 import * as schema from '../db/schema.js';
 import { eq, and, or, desc, inArray, ne } from 'drizzle-orm';
@@ -90,11 +91,11 @@ export async function adminRoutes(fastify: FastifyInstance) {
       const freeSeats = Math.max(0, capacity - bookedSeats - heldSeats);
       const percent = Math.min(100, Math.round(((bookedSeats + heldSeats) / capacity) * 100));
 
-      const driverName = trip.driver ? (trip.driver.fullNameAr || trip.driver.fullName) : 'محمد صبحي (Mohamed Sobhi)';
-      const driverPhone = trip.driver?.phone || '01021561196';
+      const driverName = trip.driver ? (trip.driver.fullNameAr || trip.driver.fullName) : 'لم يتم التعيين (Unassigned)';
+      const driverPhone = trip.driver?.phone || '—';
       const firstSupervisor = trip.supervisors?.[0]?.user;
-      const superName = firstSupervisor ? (firstSupervisor.fullNameAr || firstSupervisor.fullName) : 'ممدوح بدران (Mamdouh Badran)';
-      const superPhone = firstSupervisor?.phone || '01275467090';
+      const superName = firstSupervisor ? (firstSupervisor.fullNameAr || firstSupervisor.fullName) : 'لم يتم التعيين (Unassigned)';
+      const superPhone = firstSupervisor?.phone || '—';
 
       let computedStatus = trip.status || 'scheduled';
       if (bookedSeats >= capacity) {
@@ -280,12 +281,16 @@ export async function adminRoutes(fastify: FastifyInstance) {
       });
     }
 
-    // TTL for held seats
+    // TTL for held seats (parallelized with Promise.all)
     const lockTtlMap: Record<number, number> = {};
-    for (const sn of Object.keys(lockHoldersMap).map(Number)) {
-      const ttl = await redis.ttl(`seat_lock:${tid}:${sn}`);
+    const seatNumbers = Object.keys(lockHoldersMap).map(Number);
+    const ttls = await Promise.all(
+      seatNumbers.map(sn => redis.ttl(`seat_lock:${tid}:${sn}`))
+    );
+    seatNumbers.forEach((sn, idx) => {
+      const ttl = ttls[idx];
       lockTtlMap[sn] = ttl > 0 ? ttl : 300;
-    }
+    });
 
     // Build complete 1..totalSeats map
     const seatDetails = Array.from({ length: totalSeats }, (_, i) => {
@@ -703,20 +708,41 @@ export async function adminRoutes(fastify: FastifyInstance) {
   });
 
   // 6. Create Trip
+  const CreateTripAdminSchema = z.object({
+    routeId: z.coerce.number().int().positive({ message: 'routeId must be a positive integer' }),
+    busId: z.coerce.number().int().positive().optional().nullable(),
+    driverId: z.string().optional().nullable(),
+    supervisorIds: z.array(z.string()).optional().nullable(),
+    tripDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, { message: 'tripDate must be in YYYY-MM-DD format' }),
+    departureTime: z.string().min(1, { message: 'departureTime is required' }),
+    returnTime: z.string().optional().nullable(),
+    returnDepartureTime: z.string().optional().nullable(),
+    direction: z.enum(['to_campus', 'from_campus', 'both_ways']).default('to_campus'),
+    timeSlot: z.string().optional().nullable(),
+    returnTimeSlot: z.string().optional().nullable(),
+    bothWays: z.boolean().optional(),
+    totalSeats: z.coerce.number().int().min(1).max(100).optional().nullable(),
+    priceEgp: z.coerce.number().min(0).optional().nullable(),
+  });
+
   fastify.post('/api/admin/trips', {
     preValidation: [(fastify as any).authenticate, requireRole(['admin'])],
   }, async (request: any, reply) => {
     try {
-      const body = request.body as any;
+      const parseResult = CreateTripAdminSchema.safeParse(request.body);
+      if (!parseResult.success) {
+        return reply.status(400).send({
+          error: 'Validation failed',
+          details: parseResult.error.flatten().fieldErrors,
+        });
+      }
+
       const {
         routeId, busId, driverId, supervisorIds,
-        tripDate, departureTime, returnTime, direction,
-        timeSlot, totalSeats, priceEgp
-      } = body;
-
-      if (!routeId || !tripDate || !departureTime) {
-        return reply.status(400).send({ error: 'routeId, tripDate, and departureTime are required' });
-      }
+        tripDate, departureTime, returnTime, returnDepartureTime,
+        direction, timeSlot, returnTimeSlot, bothWays,
+        totalSeats, priceEgp
+      } = parseResult.data;
 
       // Helper to safely parse date & time
       const parseTimeSafe = (dateStr: string, timeInput: any, defaultHour = 7, defaultMin = 0): Date => {
@@ -742,8 +768,8 @@ export async function adminRoutes(fastify: FastifyInstance) {
       const depDate = parseTimeSafe(tripDate, departureTime, 7, 0);
       const retDate = returnTime ? parseTimeSafe(tripDate, returnTime, 14, 30) : null;
 
-      let assignedBusId = busId ? parseInt(busId) : null;
-      if (!assignedBusId || isNaN(assignedBusId)) {
+      let assignedBusId: number = busId || 0;
+      if (!assignedBusId) {
         const firstBus = await db.query.buses.findFirst();
         assignedBusId = firstBus?.id || 1;
       }
@@ -798,21 +824,21 @@ export async function adminRoutes(fastify: FastifyInstance) {
         }
       }
 
-      const isBothWays = direction === 'both_ways' || body.bothWays === true;
+      const isBothWays = direction === 'both_ways' || bothWays === true;
 
       if (isBothWays) {
         const depDateArrival = parseTimeSafe(tripDate, departureTime || '07:00 AM', 7, 0);
         const retDateArrival = new Date(depDateArrival.getTime() + 2 * 60 * 60 * 1000);
 
-        const returnDepInput = body.returnDepartureTime || returnTime || '02:30 PM';
+        const returnDepInput = returnDepartureTime || returnTime || '02:30 PM';
         const depDateReturn = parseTimeSafe(tripDate, returnDepInput, 14, 30);
         const retDateReturn = new Date(depDateReturn.getTime() + 2 * 60 * 60 * 1000);
 
         const arrivalTimeSlot = timeSlot || 'morning_1';
-        const returnTimeSlot = body.returnTimeSlot || 'return_2';
+        const retTimeSlot = returnTimeSlot || 'return_2';
 
         const [arrivalTrip] = await db.insert(schema.trips).values({
-          routeId: parseInt(routeId),
+          routeId: routeId,
           busId: assignedBusId,
           driverId: resolvedDriverId,
           tripDate,
@@ -820,22 +846,22 @@ export async function adminRoutes(fastify: FastifyInstance) {
           returnTime: retDateArrival,
           direction: 'to_campus',
           timeSlot: arrivalTimeSlot,
-          totalSeats: totalSeats ? parseInt(totalSeats) : 50,
-          priceEgp: priceEgp ? String(priceEgp) : '160.00',
+          totalSeats: totalSeats ?? 50,
+          priceEgp: priceEgp != null ? String(priceEgp) : '160.00',
           status: 'scheduled',
         }).returning();
 
         const [returnTrip] = await db.insert(schema.trips).values({
-          routeId: parseInt(routeId),
+          routeId: routeId,
           busId: assignedBusId,
           driverId: resolvedDriverId,
           tripDate,
           departureTime: depDateReturn,
           returnTime: retDateReturn,
           direction: 'from_campus',
-          timeSlot: returnTimeSlot,
-          totalSeats: totalSeats ? parseInt(totalSeats) : 50,
-          priceEgp: priceEgp ? String(priceEgp) : '160.00',
+          timeSlot: retTimeSlot,
+          totalSeats: totalSeats ?? 50,
+          priceEgp: priceEgp != null ? String(priceEgp) : '160.00',
           status: 'scheduled',
         }).returning();
 
@@ -865,7 +891,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
 
         try {
           const route = await db.query.routes.findFirst({
-            where: eq(schema.routes.id, parseInt(routeId)),
+            where: eq(schema.routes.id, routeId),
           });
           WebSocketHub.broadcastToAll({
             type: 'NEW_TRIP_ANNOUNCED',
@@ -886,16 +912,16 @@ export async function adminRoutes(fastify: FastifyInstance) {
       }
 
       const [newTrip] = await db.insert(schema.trips).values({
-        routeId: parseInt(routeId),
+        routeId: routeId,
         busId: assignedBusId,
         driverId: resolvedDriverId,
         tripDate,
         departureTime: depDate,
         returnTime: retDate,
-        direction: direction || 'to_campus',
+        direction: direction,
         timeSlot: timeSlot || 'morning_1',
-        totalSeats: totalSeats ? parseInt(totalSeats) : 50,
-        priceEgp: priceEgp ? String(priceEgp) : '160.00',
+        totalSeats: totalSeats ?? 50,
+        priceEgp: priceEgp != null ? String(priceEgp) : '160.00',
         status: 'scheduled',
       }).returning();
 
@@ -919,7 +945,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
 
       try {
         const route = await db.query.routes.findFirst({
-          where: eq(schema.routes.id, parseInt(routeId)),
+          where: eq(schema.routes.id, routeId),
         });
         WebSocketHub.broadcastToAll({
           type: 'NEW_TRIP_ANNOUNCED',

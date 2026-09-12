@@ -2,6 +2,7 @@
 import { useMemo, useEffect, useState } from 'react';
 import { useApp } from '@/hooks/useAppStore';
 import { getDynamicOperationalDates, getTodayDateString, getTomorrowDateString } from '@/lib/dateUtils';
+import { useLanguage } from '@/lib/i18n/LanguageContext';
 import {
   ROUTE_CATEGORIES,
   RouteCategoryKey,
@@ -10,6 +11,7 @@ import {
 } from '@/lib/routes-config';
 
 export default function RouteSelector() {
+  const { t, locale } = useLanguage();
   const {
     routes, selectedRouteId, setSelectedRouteId,
     selectedDirection, setSelectedDirection,
@@ -72,9 +74,9 @@ export default function RouteSelector() {
     <div className="flex flex-col gap-2.5">
       <div className="flex items-center justify-between">
         <label className="text-body-sm text-text-secondary uppercase tracking-wider font-semibold">
-          {titleEn} / {titleAr}
+          {locale === 'ar' ? titleAr : titleEn}
         </label>
-        <span className="text-[11px] text-text-secondary font-medium">اختر المحافظة ثم المحطة</span>
+        <span className="text-[11px] text-text-secondary font-medium">{t('selectGovAndStation')}</span>
       </div>
 
       {/* Governorate / Region Category Tabs */}
@@ -93,7 +95,7 @@ export default function RouteSelector() {
               }`}
             >
               <span className="material-symbols-outlined text-[15px]">{cat.icon}</span>
-              <span className="truncate">{cat.labelAr}</span>
+              <span className="truncate">{locale === 'ar' ? cat.labelAr : cat.labelEn}</span>
             </button>
           );
         })}
@@ -111,7 +113,7 @@ export default function RouteSelector() {
         >
           {filteredCategoryRoutes.map(r => (
             <option key={r.id} value={r.id}>
-              {r.nameAr} ({r.nameEn})
+              {locale === 'ar' ? `${r.nameAr} (${r.nameEn})` : `${r.nameEn} (${r.nameAr})`}
             </option>
           ))}
         </select>
@@ -120,14 +122,14 @@ export default function RouteSelector() {
   );
 
   // Galala University Hub subcomponent
-  const renderGalalaHubCard = (titleAr: string, titleEn: string, subtitleAr: string) => (
+  const renderGalalaHubCard = (titleAr: string, titleEn: string, subtitleAr: string, subtitleEn?: string) => (
     <div className="flex flex-col gap-2.5">
       <div className="flex items-center justify-between">
         <label className="text-body-sm text-text-secondary uppercase tracking-wider font-semibold">
-          {titleEn} / {titleAr}
+          {locale === 'ar' ? titleAr : titleEn}
         </label>
         <span className="text-[10px] bg-primary-container/10 text-primary-container font-bold px-2 py-0.5 rounded-full border border-primary-container/20">
-          الحرم الجامعي المعتمد
+          {t('officialCampus')}
         </span>
       </div>
 
@@ -137,10 +139,10 @@ export default function RouteSelector() {
         </div>
         <div className="flex-1 min-w-0">
           <h4 className="font-bold text-sm text-text-primary truncate">
-            جامعة الجلالة (Galala University)
+            {locale === 'ar' ? 'جامعة الجلالة (Galala University)' : 'Galala University (جامعة الجلالة)'}
           </h4>
           <p className="text-xs text-text-secondary mt-0.5 truncate">
-            {subtitleAr}
+            {locale === 'ar' ? subtitleAr : (subtitleEn || subtitleAr)}
           </p>
           <div className="flex items-center gap-1.5 mt-1 text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold font-mono">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
@@ -165,23 +167,23 @@ export default function RouteSelector() {
           <div className="hidden md:flex col-span-2 flex-col items-center justify-center mt-6 gap-1">
             <div
               className="w-10 h-10 rounded-lg bg-surface border border-border-whisper flex items-center justify-center text-text-secondary cursor-not-allowed select-none opacity-80"
-              title="رحلة الذهاب والعودة محددة تلقائياً: الانطلاق من المحطة والعودة إليها"
+              title={locale === 'ar' ? 'رحلة الذهاب والعودة محددة تلقائياً: الانطلاق من المحطة والعودة إليها' : 'Round trip: departure and return to same station'}
             >
               <span className="material-symbols-outlined text-xl">sync_alt</span>
             </div>
-            <span className="text-[10px] font-bold text-text-secondary tracking-wider uppercase">ذهاب وعودة</span>
+            <span className="text-[10px] font-bold text-text-secondary tracking-wider uppercase">{t('roundTrip')}</span>
           </div>
 
           {/* Destination: Galala Campus */}
           <div className="col-span-1 md:col-span-5">
-            {renderGalalaHubCard('الوجهة', 'Destination', 'المقر الرئيسي - وجهة الوصول الصباحية ونقطة انطلاق العودة')}
+            {renderGalalaHubCard('الوجهة', 'Destination', 'المقر الرئيسي - وجهة الوصول الصباحية ونقطة انطلاق العودة', 'Main Campus - Morning Arrival & Afternoon Return Terminal')}
           </div>
         </>
       ) : selectedDirection === 'to_campus' ? (
         <>
           {/* From: Station */}
           <div className="col-span-1 md:col-span-5">
-            {renderStationSelector('من (نقطة الانطلاق)', 'From')}
+            {renderStationSelector('من (نقطة الانطلاق)', 'From (Pickup)')}
           </div>
 
           {/* Swap Button */}
@@ -190,7 +192,7 @@ export default function RouteSelector() {
               type="button"
               onClick={handleSwap}
               className="w-10 h-10 rounded-lg bg-surface border border-border-whisper flex items-center justify-center text-primary-container active:scale-95 transition-transform hover:bg-surface-container cursor-pointer"
-              title="تبديل الاتجاه إلى عودة فقط"
+              title={t('swapDirection')}
             >
               <span className="material-symbols-outlined">swap_horiz</span>
             </button>
@@ -198,14 +200,14 @@ export default function RouteSelector() {
 
           {/* To: Galala Campus */}
           <div className="col-span-1 md:col-span-5">
-            {renderGalalaHubCard('إلى (الوجهة)', 'To', 'المقر الرئيسي - مبنى الركاب المركزي')}
+            {renderGalalaHubCard('إلى (الوجهة)', 'To (Destination)', 'المقر الرئيسي - مبنى الركاب المركزي', 'Main Campus - Central Bus Terminal')}
           </div>
         </>
       ) : (
         <>
           {/* From: Galala Campus */}
           <div className="col-span-1 md:col-span-5">
-            {renderGalalaHubCard('من (نقطة الانطلاق)', 'From', 'المقر الرئيسي - نقطة انطلاق رحلات العودة')}
+            {renderGalalaHubCard('من (نقطة الانطلاق)', 'From (Departure Point)', 'المقر الرئيسي - نقطة انطلاق رحلات العودة', 'Main Campus - Return Departure Terminal')}
           </div>
 
           {/* Swap Button */}
@@ -214,7 +216,7 @@ export default function RouteSelector() {
               type="button"
               onClick={handleSwap}
               className="w-10 h-10 rounded-lg bg-surface border border-border-whisper flex items-center justify-center text-primary-container active:scale-95 transition-transform hover:bg-surface-container cursor-pointer"
-              title="تبديل الاتجاه إلى ذهاب فقط"
+              title={t('swapDirection')}
             >
               <span className="material-symbols-outlined">swap_horiz</span>
             </button>
@@ -222,7 +224,7 @@ export default function RouteSelector() {
 
           {/* To: Station */}
           <div className="col-span-1 md:col-span-5">
-            {renderStationSelector('إلى (محطة الوصول)', 'To')}
+            {renderStationSelector('إلى (محطة الوصول)', 'To (Destination)')}
           </div>
         </>
       )}
@@ -230,7 +232,9 @@ export default function RouteSelector() {
       {/* Trip Type + Shifts */}
       <div className="col-span-1 md:col-span-12 grid grid-cols-1 md:grid-cols-3 gap-4 mt-2 pt-4 border-t border-border-whisper">
         <div className="space-y-1">
-          <label className="text-body-sm text-text-secondary uppercase tracking-wider font-semibold">Trip Type / نوع الرحلة</label>
+          <label className="text-body-sm text-text-secondary uppercase tracking-wider font-semibold">
+            {t('tripType')}
+          </label>
           <div className="grid grid-cols-3 gap-2 bg-surface p-1 rounded-xl border border-border-whisper">
             {(['to_campus', 'from_campus', 'round_trip'] as const).map(type => (
               <button
@@ -248,7 +252,7 @@ export default function RouteSelector() {
                   bookingType === type ? 'bg-primary-container text-on-primary-container font-bold' : 'text-text-secondary hover:text-text-primary'
                 }`}
               >
-                {type === 'to_campus' ? 'ذهاب فقط' : type === 'from_campus' ? 'عودة فقط' : 'ذهاب وعودة'}
+                {type === 'to_campus' ? (locale === 'ar' ? 'ذهاب فقط' : 'To Campus') : type === 'from_campus' ? (locale === 'ar' ? 'عودة فقط' : 'From Campus') : (locale === 'ar' ? 'ذهاب وعودة' : 'Round Trip')}
               </button>
             ))}
           </div>
@@ -256,7 +260,9 @@ export default function RouteSelector() {
 
         {(bookingType === 'to_campus' || bookingType === 'round_trip') && (
           <div className="space-y-1">
-            <label className="text-body-sm text-text-secondary uppercase tracking-wider font-semibold">Arrival Shift / شفت الوصول</label>
+            <label className="text-body-sm text-text-secondary uppercase tracking-wider font-semibold">
+              {t('arrivalShift')}
+            </label>
             <div className="grid grid-cols-2 gap-2 bg-surface p-1 rounded-xl border border-border-whisper">
               {(['morning_1', 'morning_2'] as const).map(slot => (
                 <button
@@ -267,7 +273,7 @@ export default function RouteSelector() {
                     timeSlot === slot ? 'bg-primary-container text-on-primary-container font-bold' : 'text-text-secondary hover:text-text-primary'
                   }`}
                 >
-                  {slot === 'morning_1' ? '9:00 AM (شفت 1)' : '11:30 AM (شفت 2)'}
+                  {slot === 'morning_1' ? (locale === 'ar' ? '9:00 ص (شفت 1)' : '9:00 AM (Shift 1)') : (locale === 'ar' ? '11:30 ص (شفت 2)' : '11:30 AM (Shift 2)')}
                 </button>
               ))}
             </div>
@@ -276,7 +282,9 @@ export default function RouteSelector() {
 
         {(bookingType === 'from_campus' || bookingType === 'round_trip') && (
           <div className="space-y-1">
-            <label className="text-body-sm text-text-secondary uppercase tracking-wider font-semibold">Return Shift / شفت العودة</label>
+            <label className="text-body-sm text-text-secondary uppercase tracking-wider font-semibold">
+              {t('returnShift')}
+            </label>
             <div className="grid grid-cols-3 gap-1.5 bg-surface p-1 rounded-xl border border-border-whisper">
               {(['return_1', 'return_2', 'return_3'] as const).map(slot => (
                 <button
@@ -287,7 +295,7 @@ export default function RouteSelector() {
                     returnTimeSlot === slot ? 'bg-primary-container text-on-primary-container font-bold' : 'text-text-secondary hover:text-text-primary'
                   }`}
                 >
-                  {slot === 'return_1' ? '12:30 PM' : slot === 'return_2' ? '02:30 PM' : '05:30 PM'}
+                  {slot === 'return_1' ? (locale === 'ar' ? '12:30 م' : '12:30 PM') : slot === 'return_2' ? (locale === 'ar' ? '02:30 م' : '02:30 PM') : (locale === 'ar' ? '05:30 م' : '05:30 PM')}
                 </button>
               ))}
             </div>
@@ -300,11 +308,11 @@ export default function RouteSelector() {
         <div className="flex items-center justify-between">
           <label className="text-body-sm text-text-secondary uppercase tracking-wider font-semibold flex items-center gap-2">
             <span className="material-symbols-outlined text-base text-primary-container">calendar_month</span>
-            Operational Dates / مواعيد التشغيل
+            {t('operationalDates')}
           </label>
           <span className="inline-flex items-center gap-1.5 text-xs text-sky-400 font-semibold bg-sky-500/10 px-2.5 py-1 rounded-full border border-sky-500/20">
             <span className="w-2 h-2 rounded-full bg-sky-400 animate-pulse"></span>
-            الحجز متاح لرحلات الغد (Booking Open for Tomorrow)
+            {t('bookingOpenTomorrow')}
           </span>
         </div>
 

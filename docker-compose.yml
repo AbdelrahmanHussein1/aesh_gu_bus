@@ -12,9 +12,9 @@ services:
       - NODE_ENV=production
       - PORT=3000
       - HOST=0.0.0.0
-      - DATABASE_URL=postgres://aesh_user:aesh_password@postgres:5432/aesh_db
+      - DATABASE_URL=postgres://${POSTGRES_USER:-aesh_user}:${POSTGRES_PASSWORD:-aesh_password}@postgres:5432/${POSTGRES_DB:-aesh_db}
       - REDIS_URL=redis://redis:6379
-      - JWT_SECRET=super-secret-production-aesh-jwt-key
+      - JWT_SECRET=${JWT_SECRET:-changeme-in-production}
       - NEXT_PUBLIC_API_URL=http://localhost:3000
     depends_on:
       postgres:

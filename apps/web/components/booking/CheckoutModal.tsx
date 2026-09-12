@@ -1,5 +1,6 @@
 'use client';
 import { useApp } from '@/hooks/useAppStore';
+import { TRANSIT_CONFIG } from '@/lib/config';
 
 export default function CheckoutModal() {
   const {
@@ -14,7 +15,7 @@ export default function CheckoutModal() {
   if (bookingType === 'round_trip' && (!activeArrivalTrip || !activeReturnTrip)) return null;
   if (bookingType !== 'round_trip' && !activeTrip) return null;
 
-  const fare = activeTrip?.priceEgp || activeArrivalTrip?.priceEgp || 160;
+  const fare = activeTrip?.priceEgp || activeArrivalTrip?.priceEgp || TRANSIT_CONFIG.DEFAULT_FARE_EGP;
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">

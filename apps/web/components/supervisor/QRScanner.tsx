@@ -14,9 +14,18 @@ export default function QRScanner() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animRef = useRef<number>(0);
   const lastScannedRef = useRef<{ token: string; at: number } | null>(null);
+  const lastDecodeTimeRef = useRef<number>(0);
 
   const decodeFrame = useCallback(() => {
     if (!videoRef.current || !canvasRef.current || !isCameraActive) return;
+    const now = Date.now();
+    // Throttle decoding to once every 180ms to prevent excessive CPU and battery drain
+    if (now - lastDecodeTimeRef.current < 180) {
+      animRef.current = requestAnimationFrame(decodeFrame);
+      return;
+    }
+    lastDecodeTimeRef.current = now;
+
     const video = videoRef.current;
     const canvas = canvasRef.current;
     if (video.readyState < 2) { animRef.current = requestAnimationFrame(decodeFrame); return; }
@@ -28,7 +37,6 @@ export default function QRScanner() {
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const code = jsQR(imageData.data, imageData.width, imageData.height);
     if (code) {
-      const now = Date.now();
       if (lastScannedRef.current?.token === code.data && now - lastScannedRef.current.at < 3000) {
         animRef.current = requestAnimationFrame(decodeFrame);
         return;

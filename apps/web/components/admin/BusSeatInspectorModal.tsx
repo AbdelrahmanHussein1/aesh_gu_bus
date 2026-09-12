@@ -6,6 +6,7 @@ import { getApiBaseUrl, getApiUrls } from '@/lib/api';
 import BoardingManifestPdfModal from '../supervisor/BoardingManifestPdfModal';
 import { checkManifestUnlock } from '@/lib/manifest-unlock';
 import type { ManifestItem } from '@/lib/types';
+import { SIMULATED_STUDENTS } from '@/lib/mock-data';
 
 interface BusSeatInspectorModalProps {
   tripId: number;
@@ -88,19 +89,7 @@ export default function BusSeatInspectorModal({ tripId, onClose }: BusSeatInspec
     }
 
     // Offline simulation dataset
-    const mockStudents = [
-      { name: 'عبدالرحمن إيهاب حسين', email: 'aes400196@gu.edu.eg', academicId: 'aes400196', faculty: 'Computer Science & AI', phone: '01021561196' },
-      { name: 'أحمد مصطفى محمود', email: 'eng202100@gu.edu.eg', academicId: 'eng202100', faculty: 'Engineering (Mechatronics)', phone: '01123456789' },
-      { name: 'سارة علي حسن', email: 'med300214@gu.edu.eg', academicId: 'med300214', faculty: 'Faculty of Medicine', phone: '01234567890' },
-      { name: 'عمر خالد السعيد', email: 'dent401201@gu.edu.eg', academicId: 'dent401201', faculty: 'Dentistry', phone: '01098765432' },
-      { name: 'مريم محمد إبراهيم', email: 'pharma10293@gu.edu.eg', academicId: 'pharma10293', faculty: 'Pharmacy', phone: '01512345678' },
-      { name: 'يوسف طارق السيد', email: 'bus502194@gu.edu.eg', academicId: 'bus502194', faculty: 'Business Administration', phone: '01055566778' },
-      { name: 'نور الدين وليد', email: 'art601928@gu.edu.eg', academicId: 'art601928', faculty: 'Art & Design', phone: '01199887766' },
-      { name: 'كريم هاني صبحي', email: 'ai702110@gu.edu.eg', academicId: 'ai702110', faculty: 'Artificial Intelligence', phone: '01211223344' },
-      { name: 'حبيبة شريف زكي', email: 'nurs801290@gu.edu.eg', academicId: 'nurs801290', faculty: 'Applied Health Sciences', phone: '01033445566' },
-      { name: 'مازن سامح عبدالجواد', email: 'arch902188@gu.edu.eg', academicId: 'arch902188', faculty: 'Architecture Engineering', phone: '01144556677' },
-    ];
-
+    const mockStudents = SIMULATED_STUDENTS;
     const totalSeats = 50;
     const generatedSeats = Array.from({ length: totalSeats }, (_, i) => {
       const sn = i + 1;

@@ -79,7 +79,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <img
             src="/gu-logo-colored.png"
             alt="Galala University"
-            className="h-12 w-auto object-contain"
+            className="h-12 w-auto object-contain dark:brightness-0 dark:invert"
           />
           <div className="w-14 h-14 rounded-full bg-primary-container/20 flex items-center justify-center text-primary-container">
             <span className="material-symbols-outlined text-3xl">login</span>
@@ -95,6 +95,33 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <span className="material-symbols-outlined text-lg">arrow_forward</span>
             <span>الانتقال لبوابة التسجيل والدخول</span>
           </button>
+        </div>
+      </div>
+    );
+  }
+
+  const isLocalhost = typeof window !== 'undefined' && (
+    window.location.hostname === 'localhost' ||
+    window.location.hostname === '127.0.0.1'
+  );
+  const isDev = isLocalhost || (Boolean(process.env.NEXT_PUBLIC_DEV_EMAIL) && user.email === process.env.NEXT_PUBLIC_DEV_EMAIL);
+
+  const isUnauthorized = !isDev && (
+    (user.role === 'rider' && (pathname.startsWith('/supervisor') || pathname.startsWith('/admin'))) ||
+    (user.role === 'supervisor' && pathname.startsWith('/admin'))
+  );
+
+  if (isUnauthorized) {
+    return (
+      <div className="min-h-screen bg-surface-bright flex flex-col items-center justify-center p-4">
+        <div className="max-w-md w-full bg-surface-container border border-border-whisper rounded-2xl p-6 shadow-xl text-center flex flex-col items-center gap-4">
+          <div className="w-14 h-14 rounded-full bg-destructive-alt/20 flex items-center justify-center text-destructive-alt">
+            <span className="material-symbols-outlined text-3xl">lock</span>
+          </div>
+          <div>
+            <h3 className="text-lg font-bold text-text-primary mb-1">غير مصرح بالوصول (Access Restricted)</h3>
+            <p className="text-sm text-text-secondary">ليس لديك صلاحية الوصول لهذه اللوحة. جاري توجيهك إلى بوابتك المخصصة...</p>
+          </div>
         </div>
       </div>
     );

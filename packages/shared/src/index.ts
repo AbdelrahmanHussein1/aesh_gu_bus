@@ -77,7 +77,27 @@ function hexToBytes(hex: string): string {
   return str;
 }
 
+// Native crypto detection with bundler-safe fallback
+declare const __non_webpack_require__: any;
+let nodeCrypto: any = null;
+try {
+  if (typeof process !== 'undefined' && process.versions && process.versions.node) {
+    const req = typeof __non_webpack_require__ !== 'undefined' 
+      ? __non_webpack_require__ 
+      : (typeof require !== 'undefined' ? require : null);
+    if (req) {
+      nodeCrypto = req('crypto');
+    }
+  }
+} catch {
+  // In browser/edge environments, nodeCrypto will be null
+}
+
 function universalHmacSha256(message: string, key: string): string {
+  if (nodeCrypto && typeof nodeCrypto.createHmac === 'function') {
+    return nodeCrypto.createHmac('sha256', key).update(message).digest('hex');
+  }
+  // Fallback implementation for non-Node environments
   const blockSize = 64;
   if (key.length > blockSize) {
     key = hexToBytes(sha256Hex(key));
@@ -96,6 +116,13 @@ function universalHmacSha256(message: string, key: string): string {
 
 function constantTimeEqual(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
+  if (nodeCrypto && typeof nodeCrypto.timingSafeEqual === 'function' && typeof Buffer !== 'undefined') {
+    try {
+      return nodeCrypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
+    } catch {
+      return false;
+    }
+  }
   let result = 0;
   for (let i = 0; i < a.length; i++) {
     result |= a.charCodeAt(i) ^ b.charCodeAt(i);
@@ -172,6 +199,20 @@ export const VerifyScanSchema = z.object({
   longitude: z.number().optional(),
   deviceInfo: z.string().optional()
 });
+
+export const GALALA_FACULTIES = [
+  'Computer Science & Engineering',
+  'Engineering',
+  'Medicine',
+  'Dentistry',
+  'Pharmacy',
+  'Administrative Sciences',
+  'Art & Design',
+  'Applied Health Sciences',
+  'Physiotherapy',
+  'Basic Sciences',
+] as const;
+export type GalalaFaculty = typeof GALALA_FACULTIES[number];
 
 export const RegisterSchema = z.object({
   email: z.string().email({ message: "Invalid email address" }),

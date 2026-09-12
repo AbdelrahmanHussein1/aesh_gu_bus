@@ -2,6 +2,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useApp } from '@/hooks/useAppStore';
 import { getApiBaseUrl } from '@/lib/api';
+import { SIMULATED_AUDIT_LOGS } from '@/lib/mock-data';
 
 export default function AuditLogTable() {
   const { isOffline, token } = useApp();
@@ -34,129 +35,7 @@ export default function AuditLogTable() {
     }
 
     // Offline rich simulation records
-    const simulatedLogs = [
-      {
-        id: 101,
-        action: 'BOOKING_CONFIRMED',
-        entityType: 'booking',
-        entityId: 'bk-9901',
-        time: new Date(Date.now() - 15 * 60000).toISOString(),
-        ipAddress: '192.168.1.7',
-        user: {
-          fullName: 'عبدالرحمن إيهاب حسين',
-          email: 'aes400196@gu.edu.eg',
-          academicId: 'aes400196',
-          phone: '01021561196',
-          faculty: 'Computer Science & AI',
-          role: 'rider',
-        },
-        details: { seatNumber: 14, tripId: 2901, boardingCode: 'GU-8A2F', fare: 160, paymentMethod: 'Instapay', receiptRef: 'INSTA-88291' },
-      },
-      {
-        id: 102,
-        action: 'SEAT_LOCK_HELD',
-        entityType: 'trip_seat',
-        entityId: '2901:14',
-        time: new Date(Date.now() - 20 * 60000).toISOString(),
-        ipAddress: '192.168.1.7',
-        user: {
-          fullName: 'عبدالرحمن إيهاب حسين',
-          email: 'aes400196@gu.edu.eg',
-          academicId: 'aes400196',
-          phone: '01021561196',
-          faculty: 'Computer Science & AI',
-          role: 'rider',
-        },
-        details: { tripId: 2901, seatNumber: 14, durationSeconds: 300 },
-      },
-      {
-        id: 103,
-        action: 'USER_LOGIN',
-        entityType: 'user',
-        entityId: 'usr-01',
-        time: new Date(Date.now() - 25 * 60000).toISOString(),
-        ipAddress: '192.168.1.7',
-        user: {
-          fullName: 'عبدالرحمن إيهاب حسين',
-          email: 'aes400196@gu.edu.eg',
-          academicId: 'aes400196',
-          phone: '01021561196',
-          faculty: 'Computer Science & AI',
-          role: 'rider',
-        },
-        details: { deviceInfo: 'Chrome / Windows 11 (Galala Rider Portal)' },
-      },
-      {
-        id: 104,
-        action: 'USER_REGISTERED',
-        entityType: 'user',
-        entityId: 'usr-01',
-        time: new Date(Date.now() - 40 * 60000).toISOString(),
-        ipAddress: '192.168.1.7',
-        user: {
-          fullName: 'عبدالرحمن إيهاب حسين',
-          email: 'aes400196@gu.edu.eg',
-          academicId: 'aes400196',
-          phone: '01021561196',
-          faculty: 'Computer Science & AI',
-          role: 'rider',
-        },
-        details: { verifiedSheerId: true, method: 'Official Galala Outlook OTP' },
-      },
-      {
-        id: 105,
-        action: 'BOARDING_PASS_SCANNED',
-        entityType: 'boarding',
-        entityId: 'bk-9800',
-        time: new Date(Date.now() - 65 * 60000).toISOString(),
-        ipAddress: '192.168.1.15',
-        user: {
-          fullName: 'ممدوح بدران',
-          email: 'super.badran@gu.edu.eg',
-          academicId: 'SUP-202',
-          phone: '01275467090',
-          faculty: 'Line Operations',
-          role: 'supervisor',
-        },
-        details: { scanResult: 'valid', student: 'Ahmed Mostafa', seatNumber: 5, busPlate: 'أ ب ج 101' },
-      },
-      {
-        id: 106,
-        action: 'SEAT_SWAPPED',
-        entityType: 'booking',
-        entityId: 'bk-9750',
-        time: new Date(Date.now() - 90 * 60000).toISOString(),
-        ipAddress: '192.168.1.15',
-        user: {
-          fullName: 'ممدوح بدران',
-          email: 'super.badran@gu.edu.eg',
-          academicId: 'SUP-202',
-          phone: '01275467090',
-          faculty: 'Line Operations',
-          role: 'supervisor',
-        },
-        details: { student: 'Sara Ali', oldSeat: 12, newSeat: 22, reason: 'Passenger medical accommodation' },
-      },
-      {
-        id: 107,
-        action: 'POLICY_UPDATED',
-        entityType: 'policy',
-        entityId: 'cancellation_lock_hours',
-        time: new Date(Date.now() - 120 * 60000).toISOString(),
-        ipAddress: '192.168.1.1',
-        user: {
-          fullName: 'System Administrator',
-          email: 'admin@gu.edu.eg',
-          academicId: 'ADM-001',
-          phone: '01000000001',
-          faculty: 'Transport Admin',
-          role: 'admin',
-        },
-        details: { policyKey: 'cancellation_lock_hours', oldValue: 3, newValue: 5 },
-      },
-    ];
-
-    setLogs(simulatedLogs);
+    setLogs(SIMULATED_AUDIT_LOGS);
     setLoading(false);
   }, [isOffline, token, API_URL]);
 

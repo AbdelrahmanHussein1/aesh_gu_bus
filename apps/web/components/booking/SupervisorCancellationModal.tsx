@@ -1,6 +1,7 @@
 'use client';
 import React from 'react';
 import { useApp } from '@/hooks/useAppStore';
+import { TRANSIT_CONFIG } from '@/lib/config';
 
 export interface SupervisorCancellationAlertData {
   visible: boolean;
@@ -23,7 +24,7 @@ export default function SupervisorCancellationModal({ alertData, onDismiss }: Pr
   const { role } = useApp();
   if (role !== 'rider' || !alertData || !alertData.visible) return null;
 
-  const refundAmt = alertData.refundAmount ?? 160;
+  const refundAmt = alertData.refundAmount ?? TRANSIT_CONFIG.DEFAULT_FARE_EGP;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">

@@ -10,7 +10,7 @@ import DatabaseViewer from '@/components/admin/DatabaseViewer';
 type AdminTab = 'schedules' | 'fleet' | 'policies' | 'database';
 
 export default function AdminDashboardPage() {
-  const { user, role, switchRole, isAuthLoading } = useApp();
+  const { user, role, isAuthLoading } = useApp();
   const [activeTab, setActiveTab] = useState<AdminTab>('schedules');
 
   useEffect(() => { document.title = 'Admin Console — Bus Aesh'; }, []);

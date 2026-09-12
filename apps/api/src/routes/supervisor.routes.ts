@@ -5,10 +5,10 @@ import * as schema from '../db/schema.js';
 import { eq, and, desc, inArray, or, sql } from 'drizzle-orm';
 import { WebSocketHub } from '../websocket/hub.js';
 import { EmailService } from '../services/email.service.js';
-import { getHoursUntilDeparture, getTripDepartureDateTime } from '../utils/trip-time.js';
+import { getHoursUntilDeparture } from '../utils/trip-time.js';
 import { CacheService } from '../services/cache.service.js';
 
-const jwtSecret = process.env.JWT_SECRET || 'super-secret-aesh-key';
+const jwtSecret = process.env.JWT_SECRET || '';
 const QR_EXPIRY_HOURS = 24;
 
 function getQrExpiresAt(): Date {

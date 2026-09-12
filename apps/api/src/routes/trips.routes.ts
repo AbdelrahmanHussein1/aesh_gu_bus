@@ -79,11 +79,18 @@ export async function tripsRoutes(fastify: FastifyInstance) {
       const [defaultSupervisor] = await db.select().from(schema.users).where(eq(schema.users.role, 'supervisor')).limit(1);
 
       if (defaultBus && allRoutes.length > 0) {
+        const returnSlots = [
+          { slot: 'return_1', hour: 12, min: 30 },
+          { slot: 'return_2', hour: 14, min: 30 },
+          { slot: 'return_3', hour: 17, min: 30 },
+        ];
+
+        const tripsToInsert: any[] = [];
         for (const r of allRoutes) {
           // Morning trip (07:00 AM)
           const depMorning = new Date(`${date}T07:00:00+02:00`);
           const arrMorning = new Date(`${date}T09:00:00+02:00`);
-          const [mTrip] = await db.insert(schema.trips).values({
+          tripsToInsert.push({
             routeId: r.id,
             busId: defaultBus.id,
             driverId: defaultSupervisor?.id || null,
@@ -95,26 +102,13 @@ export async function tripsRoutes(fastify: FastifyInstance) {
             totalSeats: 50,
             status: 'scheduled',
             cancellationLockHours: 3,
-          }).onConflictDoNothing().returning();
-
-          if (mTrip && defaultSupervisor) {
-            await db.insert(schema.tripSupervisors).values({
-              tripId: mTrip.id,
-              userId: defaultSupervisor.id,
-              assignedRole: 'line_supervisor',
-            }).onConflictDoNothing();
-          }
+          });
 
           // Return trips (12:30, 14:30, 17:30)
-          const returnSlots = [
-            { slot: 'return_1', hour: 12, min: 30 },
-            { slot: 'return_2', hour: 14, min: 30 },
-            { slot: 'return_3', hour: 17, min: 30 },
-          ];
           for (const ret of returnSlots) {
             const depRet = new Date(`${date}T${ret.hour}:${ret.min}:00+02:00`);
             const arrRet = new Date(depRet.getTime() + 2 * 60 * 60 * 1000);
-            const [rTrip] = await db.insert(schema.trips).values({
+            tripsToInsert.push({
               routeId: r.id,
               busId: defaultBus.id,
               driverId: defaultSupervisor?.id || null,
@@ -126,15 +120,25 @@ export async function tripsRoutes(fastify: FastifyInstance) {
               totalSeats: 50,
               status: 'scheduled',
               cancellationLockHours: 3,
-            }).onConflictDoNothing().returning();
+            });
+          }
+        }
 
-            if (rTrip && defaultSupervisor) {
-              await db.insert(schema.tripSupervisors).values({
-                tripId: rTrip.id,
-                userId: defaultSupervisor.id,
-                assignedRole: 'line_supervisor',
-              }).onConflictDoNothing();
-            }
+        if (tripsToInsert.length > 0) {
+          const insertedTrips = await db.insert(schema.trips)
+            .values(tripsToInsert)
+            .onConflictDoNothing()
+            .returning();
+
+          if (defaultSupervisor && insertedTrips.length > 0) {
+            const supervisorMappings = insertedTrips.map(t => ({
+              tripId: t.id,
+              userId: defaultSupervisor.id,
+              assignedRole: 'line_supervisor',
+            }));
+            await db.insert(schema.tripSupervisors)
+              .values(supervisorMappings)
+              .onConflictDoNothing();
           }
         }
 
@@ -322,7 +326,7 @@ export async function tripsRoutes(fastify: FastifyInstance) {
     }
 
     const lockKey = `seat_lock:${tid}:${sn}`;
-    const acquired = await (redis as any).set(lockKey, String(userId), 'NX', 'EX', 300);
+    const acquired = await (redis as any).set(lockKey, String(userId), 'EX', 300, 'NX');
 
     if (acquired === 'OK') {
       WebSocketHub.broadcastToTripRoom(tid, {

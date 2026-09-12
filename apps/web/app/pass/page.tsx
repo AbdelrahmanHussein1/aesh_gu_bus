@@ -27,36 +27,10 @@ export default function PassVerificationPage() {
         const data = await res.json();
         setResult(data);
       } else {
-        // Mock fallback for client demo lookup
-        if (cleanCode.startsWith('GU-') || cleanCode.length >= 4) {
-          setResult({
-            boardingCode: cleanCode.startsWith('GU-') ? cleanCode : `GU-${cleanCode}`,
-            status: 'confirmed',
-            route: 'Cairo (Nasr City & Heliopolis) ➔ Galala University Campus',
-            shift: 'Morning Shift 1 (07:00 AM Departure - 09:00 AM Arrival)',
-            busPlate: 'ط ق ن ٤١٩ (Luxury 50-Seat Coach)',
-            seatNumber: 18,
-            passengerMasked: 'A. E*** (GU Faculty of Engineering)',
-            supervisorName: 'Capt. Mohamed Samy (م. محمد سامي)',
-            verifiedAt: new Date().toLocaleDateString('en-GB'),
-          });
-        } else {
-          setError('No active or confirmed boarding pass found matching this code. Please check your code and try again.');
-        }
+        setError('Pass not found or service unavailable');
       }
     } catch {
-      // In offline or tunnel mock mode
-      setResult({
-        boardingCode: cleanCode.startsWith('GU-') ? cleanCode : `GU-${cleanCode}`,
-        status: 'confirmed',
-        route: 'Cairo (Nasr City & Heliopolis) ➔ Galala University Campus',
-        shift: 'Morning Shift 1 (07:00 AM Departure - 09:00 AM Arrival)',
-        busPlate: 'ط ق ن ٤١٩ (Luxury 50-Seat Coach)',
-        seatNumber: 18,
-        passengerMasked: 'A. E*** (GU Faculty of Engineering)',
-        supervisorName: 'Capt. Mohamed Samy (م. محمد سامي)',
-        verifiedAt: new Date().toLocaleDateString('en-GB'),
-      });
+      setError('Pass not found or service unavailable');
     } finally {
       setIsSearching(false);
     }
