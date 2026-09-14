@@ -15,6 +15,7 @@
     "build:all": "npm run build --workspaces --if-present",
     "package:release": "node scripts/package-release.js",
     "package:vbox": "node scripts/package-vbox.js",
+    "serve:zip": "node scripts/serve-zip.js",
     "install:all": "npm install"
   },
   "devDependencies": {
