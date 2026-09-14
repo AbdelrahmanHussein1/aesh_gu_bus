@@ -1,8 +1,12 @@
 'use client';
 import { useState } from 'react';
 import Link from 'next/link';
+import ThemeToggle from '@/components/layout/ThemeToggle';
+import LanguageSwitcher from '@/components/layout/LanguageSwitcher';
+import { useLanguage } from '@/lib/i18n/LanguageContext';
 
 export default function PassVerificationPage() {
+  const { t, locale } = useLanguage();
   const [queryCode, setQueryCode] = useState('');
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
@@ -12,7 +16,7 @@ export default function PassVerificationPage() {
     e.preventDefault();
     const cleanCode = queryCode.trim().toUpperCase();
     if (!cleanCode) {
-      setError('Please enter a valid 4-character Boarding Code (e.g. GU-4A9B) or Ticket Reference.');
+      setError(locale === 'ar' ? 'يرجى إدخال كود صعود صحيح (مثال: GU-4A9B)' : 'Please enter a valid 4-character Boarding Code (e.g. GU-4A9B) or Ticket Reference.');
       return;
     }
 
@@ -27,36 +31,43 @@ export default function PassVerificationPage() {
         const data = await res.json();
         setResult(data);
       } else {
-        setError('Pass not found or service unavailable');
+        setError(locale === 'ar' ? 'التذكرة غير موجودة أو الخدمة غير متوفرة حالياً' : 'Pass not found or service unavailable');
       }
     } catch {
-      setError('Pass not found or service unavailable');
+      setError(locale === 'ar' ? 'التذكرة غير موجودة أو الخدمة غير متوفرة حالياً' : 'Pass not found or service unavailable');
     } finally {
       setIsSearching(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
+    <div className="min-h-screen bg-[var(--landing-bg)] text-[var(--landing-text-primary)] flex flex-col transition-colors duration-200">
       {/* Header */}
-      <header className="border-b border-slate-800 bg-slate-900/80 backdrop-blur-md sticky top-0 z-30">
+      <header className="border-b border-[var(--landing-nav-border)] bg-[var(--landing-nav-bg)] backdrop-blur-md sticky top-0 z-30 transition-colors duration-200">
         <div className="max-w-4xl mx-auto px-4 py-3.5 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2.5">
             <img
               src="/gu-logo-colored.png"
               alt="Galala University Official Emblem"
-              className="h-9 w-auto object-contain"
+              className="h-9 w-auto object-contain dark:hidden"
             />
-            <span className="font-bold text-white tracking-tight text-sm sm:text-base">
-              Bus Aesh <span className="text-amber-400 font-normal">| Pass Verification</span>
+            <img
+              src="/gu-logo-white.png"
+              alt="Galala University Official Emblem"
+              className="h-9 w-auto object-contain hidden dark:block"
+            />
+            <span className="font-bold text-[var(--landing-text-primary)] tracking-tight text-sm sm:text-base">
+              Bus Aesh <span className="text-[var(--landing-accent-amber)] font-normal">| {locale === 'ar' ? 'التحقق من التذاكر' : 'Pass Verification'}</span>
             </span>
           </Link>
           <div className="flex items-center gap-2">
+            <LanguageSwitcher />
+            <ThemeToggle />
             <Link
               href="/"
-              className="text-xs font-semibold text-slate-300 hover:text-white py-1.5 px-3 rounded-lg border border-slate-700 bg-slate-800/60 hover:bg-slate-800 transition-all"
+              className="text-xs font-semibold text-[var(--landing-text-secondary)] hover:text-[var(--landing-text-primary)] py-1.5 px-3 rounded-lg border border-[var(--landing-card-border)] bg-[var(--landing-card-bg)] transition-all"
             >
-              Back to Home
+              {locale === 'ar' ? 'العودة للرئيسية' : 'Back to Home'}
             </Link>
           </div>
         </div>
@@ -66,37 +77,41 @@ export default function PassVerificationPage() {
       <main className="flex-1 max-w-4xl mx-auto px-4 py-10 w-full">
         {/* Breadcrumb Navigation */}
         <nav aria-label="Breadcrumbs" className="mb-6">
-          <ol className="flex items-center gap-2 text-xs text-slate-400 font-mono">
+          <ol className="flex items-center gap-2 text-xs text-[var(--landing-text-muted)] font-mono">
             <li>
-              <Link href="/" className="hover:text-blue-400 transition-colors">
-                Home
+              <Link href="/" className="hover:text-[var(--landing-accent-blue)] transition-colors">
+                {locale === 'ar' ? 'الرئيسية' : 'Home'}
               </Link>
             </li>
             <li>/</li>
-            <li className="text-slate-200 font-medium">Pass Verification</li>
+            <li className="text-[var(--landing-text-primary)] font-medium">
+              {locale === 'ar' ? 'التحقق من التذكرة' : 'Pass Verification'}
+            </li>
           </ol>
         </nav>
 
         {/* Semantic Single H1 */}
-        <div className="mb-8 border-b border-slate-800 pb-6">
-          <div className="inline-flex items-center gap-2 px-2.5 py-1 bg-emerald-500/10 border border-emerald-500/20 rounded-lg text-emerald-400 text-xs font-mono font-semibold mb-3">
+        <div className="mb-8 border-b border-[var(--landing-card-border)] pb-6 text-start">
+          <div className="inline-flex items-center gap-2 px-2.5 py-1 bg-[var(--landing-accent-emerald)]/10 border border-[var(--landing-accent-emerald)]/20 rounded-lg text-[var(--landing-accent-emerald)] text-xs font-mono font-semibold mb-3">
             <span className="material-symbols-outlined text-base">verified</span>
-            <span>Digital Transit Verification Tool</span>
+            <span>{locale === 'ar' ? 'أداة التحقق الرقمي من التذاكر' : 'Digital Transit Verification Tool'}</span>
           </div>
-          <h1 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">
-            Digital Boarding Pass Verification
+          <h1 className="text-3xl sm:text-4xl font-extrabold text-[var(--landing-text-primary)] tracking-tight">
+            {locale === 'ar' ? 'التحقق الرقمي من تذكرة الصعود' : 'Digital Boarding Pass Verification'}
           </h1>
-          <p className="text-sm text-slate-400 mt-2">
-            Enter your 4-character Boarding Code (<code className="text-amber-400 font-mono">GU-XXXX</code>) or booking reference to verify seat allocation, driver status, and trip departure details.
+          <p className="text-sm text-[var(--landing-text-muted)] mt-2">
+            {locale === 'ar'
+              ? 'أدخل كود الصعود المكون من 4 خانات (مثل GU-4A9B) للتحقق من بيانات المقعد، السائق، وموعد الانطلاق.'
+              : 'Enter your 4-character Boarding Code (GU-XXXX) or booking reference to verify seat allocation, driver status, and trip departure details.'}
           </p>
         </div>
 
         {/* Search Form Card */}
-        <div className="bg-slate-900/70 border border-slate-800 rounded-lg p-6 mb-8 max-w-xl">
+        <div className="bg-[var(--landing-card-bg)] border border-[var(--landing-card-border)] rounded-xl p-6 mb-8 max-w-xl shadow-sm transition-colors duration-200 text-start">
           <form onSubmit={handleSearch} className="space-y-4">
             <div>
-              <label htmlFor="boardingCode" className="block text-xs font-bold text-slate-200 mb-1.5 uppercase tracking-wider">
-                Boarding Code / كود الصعود
+              <label htmlFor="boardingCode" className="block text-xs font-bold text-[var(--landing-text-primary)] mb-1.5 uppercase tracking-wider">
+                {locale === 'ar' ? 'كود الصعود (Boarding Code)' : 'Boarding Code / كود الصعود'}
               </label>
               <div className="relative">
                 <input
@@ -106,10 +121,10 @@ export default function PassVerificationPage() {
                   onChange={(e) => setQueryCode(e.target.value.toUpperCase())}
                   placeholder="e.g. GU-4A9B or 4A9B"
                   maxLength={10}
-                  className="w-full bg-slate-950 border border-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded-lg py-3 px-4 text-base font-mono font-bold tracking-widest text-white placeholder-slate-600 uppercase transition-all"
+                  className="w-full bg-[var(--landing-input-bg)] border border-[var(--landing-input-border)] focus:border-[var(--landing-accent-blue)] focus:ring-1 focus:ring-[var(--landing-accent-blue)] rounded-lg py-3 px-4 text-base font-mono font-bold tracking-widest text-[var(--landing-text-primary)] placeholder-[var(--landing-text-muted)] uppercase transition-all"
                   required
                 />
-                <span className="absolute right-3 top-3 text-slate-600 material-symbols-outlined">
+                <span className="absolute end-3 top-3 text-[var(--landing-text-muted)] material-symbols-outlined pointer-events-none">
                   search
                 </span>
               </div>
@@ -124,17 +139,17 @@ export default function PassVerificationPage() {
             <button
               type="submit"
               disabled={isSearching}
-              className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-500 active:scale-[0.98] text-white font-bold text-sm rounded-lg transition-all shadow-md shadow-blue-600/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+              className="w-full py-2.5 px-4 bg-[var(--landing-cta-primary-bg)] hover:bg-[var(--landing-cta-primary-hover)] active:scale-[0.98] text-white font-bold text-sm rounded-lg transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
             >
               {isSearching ? (
                 <>
                   <span className="material-symbols-outlined text-lg animate-spin">progress_activity</span>
-                  <span>Verifying Transit Registry...</span>
+                  <span>{locale === 'ar' ? 'جاري التحقق من سجلات النقل...' : 'Verifying Transit Registry...'}</span>
                 </>
               ) : (
                 <>
                   <span className="material-symbols-outlined text-lg">check_circle</span>
-                  <span>Verify Ticket Status (تحقق من التذكرة)</span>
+                  <span>{locale === 'ar' ? 'التحقق من حالة التذكرة' : 'Verify Ticket Status'}</span>
                 </>
               )}
             </button>
@@ -143,70 +158,72 @@ export default function PassVerificationPage() {
 
         {/* Result Display */}
         {result && (
-          <div className="bg-slate-900 border border-emerald-500/30 rounded-lg p-6 max-w-xl animate-in fade-in duration-300">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-4 mb-4">
+          <div className="bg-[var(--landing-card-bg)] border border-[var(--landing-accent-emerald)]/30 rounded-xl p-6 max-w-xl shadow-lg animate-in fade-in duration-300 text-start">
+            <div className="flex items-center justify-between border-b border-[var(--landing-card-border)] pb-4 mb-4">
               <div>
-                <span className="text-[10px] font-mono text-slate-400 uppercase">Boarding Code</span>
-                <div className="text-xl font-mono font-black text-amber-400 tracking-wider">
+                <span className="text-[10px] font-mono text-[var(--landing-text-muted)] uppercase">
+                  {locale === 'ar' ? 'كود الصعود' : 'Boarding Code'}
+                </span>
+                <div className="text-xl font-mono font-black text-[var(--landing-accent-amber)] tracking-wider">
                   {result.boardingCode}
                 </div>
               </div>
-              <div className="px-3 py-1 bg-emerald-500/15 border border-emerald-500/30 rounded-lg text-emerald-400 text-xs font-bold flex items-center gap-1.5">
+              <div className="px-3 py-1 bg-[var(--landing-accent-emerald)]/15 border border-[var(--landing-accent-emerald)]/30 rounded-lg text-[var(--landing-accent-emerald)] text-xs font-bold flex items-center gap-1.5">
                 <span className="material-symbols-outlined text-base">verified</span>
-                <span>Active & Confirmed</span>
+                <span>{locale === 'ar' ? 'مؤكد وصالح للصعود' : 'Active & Confirmed'}</span>
               </div>
             </div>
 
             <dl className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
               <div>
-                <dt className="text-slate-400 font-medium mb-0.5">Assigned Seat</dt>
-                <dd className="text-white font-mono font-bold text-base">Seat #{result.seatNumber}</dd>
+                <dt className="text-[var(--landing-text-muted)] font-medium mb-0.5">{locale === 'ar' ? 'المقعد المخصص' : 'Assigned Seat'}</dt>
+                <dd className="text-[var(--landing-text-primary)] font-mono font-bold text-base">Seat #{result.seatNumber}</dd>
               </div>
               <div>
-                <dt className="text-slate-400 font-medium mb-0.5">Passenger</dt>
-                <dd className="text-slate-200 font-medium">{result.passengerMasked}</dd>
+                <dt className="text-[var(--landing-text-muted)] font-medium mb-0.5">{locale === 'ar' ? 'اسم الراكب' : 'Passenger'}</dt>
+                <dd className="text-[var(--landing-text-secondary)] font-medium">{result.passengerMasked}</dd>
               </div>
               <div className="sm:col-span-2">
-                <dt className="text-slate-400 font-medium mb-0.5">Transit Route</dt>
-                <dd className="text-slate-200 font-semibold">{result.route}</dd>
+                <dt className="text-[var(--landing-text-muted)] font-medium mb-0.5">{locale === 'ar' ? 'خط السير' : 'Transit Route'}</dt>
+                <dd className="text-[var(--landing-text-secondary)] font-semibold">{result.route}</dd>
               </div>
               <div className="sm:col-span-2">
-                <dt className="text-slate-400 font-medium mb-0.5">Shift & Departure</dt>
-                <dd className="text-amber-300 font-mono font-medium">{result.shift}</dd>
+                <dt className="text-[var(--landing-text-muted)] font-medium mb-0.5">{locale === 'ar' ? 'الشفت والموعد' : 'Shift & Departure'}</dt>
+                <dd className="text-[var(--landing-accent-amber)] font-mono font-medium">{result.shift}</dd>
               </div>
               <div>
-                <dt className="text-slate-400 font-medium mb-0.5">Assigned Coach</dt>
-                <dd className="text-slate-300 font-mono">{result.busPlate}</dd>
+                <dt className="text-[var(--landing-text-muted)] font-medium mb-0.5">{locale === 'ar' ? 'الحافلة' : 'Assigned Coach'}</dt>
+                <dd className="text-[var(--landing-text-secondary)] font-mono">{result.busPlate}</dd>
               </div>
               <div>
-                <dt className="text-slate-400 font-medium mb-0.5">Line Supervisor</dt>
-                <dd className="text-slate-300">{result.supervisorName}</dd>
+                <dt className="text-[var(--landing-text-muted)] font-medium mb-0.5">{locale === 'ar' ? 'مشرف الخط' : 'Line Supervisor'}</dt>
+                <dd className="text-[var(--landing-text-secondary)]">{result.supervisorName}</dd>
               </div>
             </dl>
 
-            <div className="mt-5 pt-4 border-t border-slate-800 text-[11px] text-slate-400 flex items-center justify-between">
-              <span>Verified on Galala Transit Mesh</span>
-              <span className="font-mono text-slate-400">{result.verifiedAt}</span>
+            <div className="mt-5 pt-4 border-t border-[var(--landing-card-border)] text-[11px] text-[var(--landing-text-muted)] flex items-center justify-between">
+              <span>{locale === 'ar' ? 'تم التحقق عبر شبكة نقل جامعة الجلالة' : 'Verified on Galala Transit Mesh'}</span>
+              <span className="font-mono text-[var(--landing-text-muted)]">{result.verifiedAt}</span>
             </div>
           </div>
         )}
 
         {/* Footer Links */}
-        <div className="mt-12 pt-6 border-t border-slate-800 text-xs text-slate-400 flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div className="mt-12 pt-6 border-t border-[var(--landing-card-border)] text-xs text-[var(--landing-text-muted)] flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <Link href="/privacy" className="text-blue-400 hover:underline">
-              Privacy Policy
+            <Link href="/privacy" className="text-[var(--landing-accent-blue)] hover:underline">
+              {locale === 'ar' ? 'سياسة الخصوصية' : 'Privacy Policy'}
             </Link>
             <span>•</span>
-            <Link href="/terms" className="text-blue-400 hover:underline">
-              Terms of Transit
+            <Link href="/terms" className="text-[var(--landing-accent-blue)] hover:underline">
+              {locale === 'ar' ? 'شروط وأحكام النقل' : 'Terms of Transit'}
             </Link>
             <span>•</span>
-            <Link href="/" className="text-blue-400 hover:underline">
-              Login Portal
+            <Link href="/" className="text-[var(--landing-accent-blue)] hover:underline">
+              {locale === 'ar' ? 'بوابة الدخول' : 'Login Portal'}
             </Link>
           </div>
-          <div className="text-slate-400 font-mono">
+          <div className="text-[var(--landing-text-muted)] font-mono">
             © 2026 Galala University Transport Department
           </div>
         </div>

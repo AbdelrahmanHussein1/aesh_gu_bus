@@ -18,24 +18,29 @@ export const metadata: Metadata = {
 
 export default function TermsPage() {
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
+    <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)] flex flex-col transition-colors duration-200">
       {/* Top Header */}
-      <header className="border-b border-slate-800 bg-slate-900/80 backdrop-blur-md sticky top-0 z-30">
+      <header className="border-b border-[var(--card-border)] bg-[var(--card-bg)]/80 backdrop-blur-md sticky top-0 z-30">
         <div className="max-w-4xl mx-auto px-4 py-3.5 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2.5">
             <img
               src="/gu-logo-colored.png"
               alt="Galala University Emblem"
-              className="h-9 w-auto object-contain"
+              className="h-9 w-auto object-contain dark:hidden"
             />
-            <span className="font-bold text-white tracking-tight text-sm sm:text-base">
-              Bus Aesh <span className="text-amber-400 font-normal">| Terms</span>
+            <img
+              src="/gu-logo-white.png"
+              alt="Galala University Emblem"
+              className="h-9 w-auto object-contain hidden dark:block"
+            />
+            <span className="font-bold text-[var(--foreground)] tracking-tight text-sm sm:text-base">
+              Bus Aesh <span className="text-[var(--warning)] font-normal">| Terms</span>
             </span>
           </Link>
           <div className="flex items-center gap-2">
             <Link
               href="/"
-              className="text-xs font-semibold text-slate-300 hover:text-white py-1.5 px-3 rounded-lg border border-slate-700 bg-slate-800/60 hover:bg-slate-800 transition-all"
+              className="text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--foreground)] py-1.5 px-3 rounded-lg border border-[var(--card-border)] bg-[var(--card-bg)] transition-all"
             >
               Back to Home
             </Link>

@@ -61,7 +61,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <img
             src="/gu-logo-colored.png"
             alt="Galala University"
-            className="h-12 w-auto object-contain"
+            className="h-12 w-auto object-contain dark:hidden"
+          />
+          <img
+            src="/gu-logo-white.png"
+            alt="Galala University"
+            className="h-12 w-auto object-contain hidden dark:block"
           />
           <div className="flex items-center gap-2 text-text-secondary text-sm">
             <span className="material-symbols-outlined animate-spin text-primary-container">sync</span>
@@ -79,7 +84,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <img
             src="/gu-logo-colored.png"
             alt="Galala University"
-            className="h-12 w-auto object-contain dark:brightness-0 dark:invert"
+            className="h-12 w-auto object-contain dark:hidden"
+          />
+          <img
+            src="/gu-logo-white.png"
+            alt="Galala University"
+            className="h-12 w-auto object-contain hidden dark:block"
           />
           <div className="w-14 h-14 rounded-full bg-primary-container/20 flex items-center justify-center text-primary-container">
             <span className="material-symbols-outlined text-3xl">login</span>

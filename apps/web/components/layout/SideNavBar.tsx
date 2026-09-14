@@ -30,8 +30,13 @@ export default function SideNavBar() {
           <Link href={user ? (user.role === 'admin' ? '/admin' : user.role === 'supervisor' ? '/supervisor' : '/rider') : '/'}>
             <img
               alt="Galala University"
-              className="h-9 w-auto object-contain cursor-pointer hover:opacity-90 transition-opacity dark:brightness-0 dark:invert"
+              className="h-9 w-auto object-contain cursor-pointer hover:opacity-90 transition-opacity dark:hidden"
               src="/gu-logo-colored.png"
+            />
+            <img
+              alt="Galala University"
+              className="h-9 w-auto object-contain cursor-pointer hover:opacity-90 transition-opacity hidden dark:block"
+              src="/gu-logo-white.png"
             />
           </Link>
         )}

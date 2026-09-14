@@ -36,14 +36,38 @@ export function useTheme() {
         applyTheme('system');
       }
     };
-    mq.addEventListener('change', handler);
-    return () => mq.removeEventListener('change', handler);
+    // Listen for custom theme change events across components
+    const customThemeHandler = (e: Event) => {
+      const customEvent = e as CustomEvent<Theme>;
+      if (customEvent.detail) {
+        setThemeState(customEvent.detail);
+        applyTheme(customEvent.detail);
+      }
+    };
+    window.addEventListener('theme_change', customThemeHandler);
+
+    // Listen for storage events across tabs
+    const storageHandler = (e: StorageEvent) => {
+      if (e.key === 'theme' && e.newValue) {
+        const nextTheme = e.newValue as Theme;
+        setThemeState(nextTheme);
+        applyTheme(nextTheme);
+      }
+    };
+    window.addEventListener('storage', storageHandler);
+
+    return () => {
+      mq.removeEventListener('change', handler);
+      window.removeEventListener('theme_change', customThemeHandler);
+      window.removeEventListener('storage', storageHandler);
+    };
   }, []);
 
   const setTheme = (t: Theme) => {
     setThemeState(t);
     localStorage.setItem('theme', t);
     applyTheme(t);
+    window.dispatchEvent(new CustomEvent('theme_change', { detail: t }));
   };
 
   const resolvedTheme = theme === 'system' ? getSystemTheme() : theme;

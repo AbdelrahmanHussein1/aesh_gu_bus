@@ -88,7 +88,12 @@ export default function HomePage() {
             <img
               src="/gu-logo-colored.png"
               alt="Galala University Official Emblem"
-              className="h-10 w-auto object-contain dark:brightness-0 dark:invert transition-all"
+              className="h-10 w-auto object-contain dark:hidden"
+            />
+            <img
+              src="/gu-logo-white.png"
+              alt="Galala University Official Emblem"
+              className="h-10 w-auto object-contain hidden dark:block"
             />
             <div className="hidden sm:block border-s border-[var(--landing-card-border)] ps-3">
               <span className="font-bold text-[var(--landing-text-primary)] text-sm tracking-tight block">
@@ -632,7 +637,12 @@ export default function HomePage() {
               <img
                 src="/gu-logo-colored.png"
                 alt="Galala University Official Emblem"
-                className="h-8 w-auto object-contain dark:brightness-0 dark:invert transition-all"
+                className="h-8 w-auto object-contain dark:hidden"
+              />
+              <img
+                src="/gu-logo-white.png"
+                alt="Galala University Official Emblem"
+                className="h-8 w-auto object-contain hidden dark:block"
               />
               <span className="font-bold text-[var(--landing-text-primary)] text-sm">{t('footerBrandName')}</span>
             </div>
