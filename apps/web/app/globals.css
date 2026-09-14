@@ -28,6 +28,32 @@
   --input-border: #E2E8F0;
   --nav-bg: #0A0F1D;
   --badge-bg: #F1F5F9;
+
+  /* Landing page light mode */
+  --landing-bg: #F8FAFC;
+  --landing-bg-hero: linear-gradient(to bottom, #F1F5F9, #F8FAFC, #FFFFFF);
+  --landing-nav-bg: rgba(255, 255, 255, 0.9);
+  --landing-nav-border: #E2E8F0;
+  --landing-card-bg: #FFFFFF;
+  --landing-card-border: #E2E8F0;
+  --landing-text-primary: #0F172A;
+  --landing-text-secondary: #475569;
+  --landing-text-muted: #94A3B8;
+  --landing-badge-bg: rgba(241, 245, 249, 0.8);
+  --landing-badge-border: #E2E8F0;
+  --landing-input-bg: #F8FAFC;
+  --landing-input-border: #E2E8F0;
+  --landing-footer-bg: #F1F5F9;
+  --landing-footer-border: #E2E8F0;
+  --landing-metric-bg: rgba(241, 245, 249, 0.8);
+  --landing-cta-primary-bg: #2563EB;
+  --landing-cta-primary-hover: #1D4ED8;
+  --landing-cta-secondary-bg: #F1F5F9;
+  --landing-cta-secondary-hover: #E2E8F0;
+  --landing-cta-secondary-text: #334155;
+  --landing-accent-amber: #D97706;
+  --landing-accent-emerald: #059669;
+  --landing-accent-blue: #2563EB;
 }
 
 .dark {
@@ -56,6 +82,32 @@
   --input-border: #475569;
   --nav-bg: #020617;
   --badge-bg: #334155;
+
+  /* Landing page dark mode */
+  --landing-bg: #0F172A;
+  --landing-bg-hero: linear-gradient(to bottom, #1E293B, #0F172A, #0F172A);
+  --landing-nav-bg: rgba(15, 23, 42, 0.9);
+  --landing-nav-border: #1E293B;
+  --landing-card-bg: #1E293B;
+  --landing-card-border: #334155;
+  --landing-text-primary: #F1F5F9;
+  --landing-text-secondary: #CBD5E1;
+  --landing-text-muted: #94A3B8;
+  --landing-badge-bg: rgba(30, 41, 59, 0.8);
+  --landing-badge-border: #334155;
+  --landing-input-bg: #1E293B;
+  --landing-input-border: #334155;
+  --landing-footer-bg: #0F172A;
+  --landing-footer-border: #1E293B;
+  --landing-metric-bg: rgba(15, 23, 42, 0.8);
+  --landing-cta-primary-bg: #3B82F6;
+  --landing-cta-primary-hover: #60A5FA;
+  --landing-cta-secondary-bg: #1E293B;
+  --landing-cta-secondary-hover: #334155;
+  --landing-cta-secondary-text: #CBD5E1;
+  --landing-accent-amber: #FBBF24;
+  --landing-accent-emerald: #34D399;
+  --landing-accent-blue: #60A5FA;
 }
 
 body {
