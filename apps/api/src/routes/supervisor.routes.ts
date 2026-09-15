@@ -8,7 +8,9 @@ import { EmailService } from '../services/email.service.js';
 import { getHoursUntilDeparture, getTripDepartureDateTime } from '../utils/trip-time.js';
 import { CacheService } from '../services/cache.service.js';
 
-const jwtSecret = process.env.JWT_SECRET || 'super-secret-aesh-key';
+const jwtSecret = process.env.JWT_SECRET ?? (() => {
+  throw new Error('JWT_SECRET must be configured');
+})();
 const QR_EXPIRY_HOURS = 24;
 
 function getQrExpiresAt(): Date {
