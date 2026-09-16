@@ -7,6 +7,11 @@ import { WebSocketHub } from '../websocket/hub.js';
 import { redis } from '../redis.js';
 import { logSecurityEvent } from '../services/audit.service.js';
 import { CacheService } from '../services/cache.service.js';
+import {
+  countHeldSeatsForTrips,
+  getSeatLockHolders,
+  getSeatLockTtls,
+} from '../services/seat-lock.service.js';
 
 const requireRole = (roles: string[]) => async (request: any, reply: any) => {
   const user = request.user;
@@ -70,23 +75,39 @@ export async function adminRoutes(fastify: FastifyInstance) {
         supervisors: { with: { user: true } },
         bookings: {
           where: inArray(schema.bookings.status, ['confirmed', 'swapped']),
-          with: { user: true },
+          limit: 5,
+          columns: { seatNumber: true },
+          with: { user: { columns: { fullName: true, academicId: true, email: true } } },
         },
       },
       orderBy: [desc(schema.trips.tripDate), schema.trips.departureTime],
     });
 
-    const fleetResults = await Promise.all(activeTrips.map(async (trip) => {
-      const capacity = trip.bus?.totalSeats || trip.totalSeats || 50;
-      const bookedSeats = trip.bookings.length;
+    const bookedCounts = new Map<number, number>();
+    if (activeTrips.length > 0) {
+      const bookingCounts = await db
+        .select({ tripId: schema.bookings.tripId, count: count() })
+        .from(schema.bookings)
+        .where(and(
+          inArray(schema.bookings.tripId, activeTrips.map(trip => trip.id)),
+          inArray(schema.bookings.status, ['confirmed', 'swapped'])
+        ))
+        .groupBy(schema.bookings.tripId);
+      for (const row of bookingCounts) bookedCounts.set(row.tripId, Number(row.count));
+    }
 
-      // Check live Redis locks for in-progress held seats
-      let heldSeats = 0;
-      try {
-        const lockKeys = Array.from({ length: capacity }, (_, i) => `seat_lock:${trip.id}:${i + 1}`);
-        const locks = await redis.mget(...lockKeys);
-        heldSeats = locks.filter(Boolean).length;
-      } catch {}
+    // One Redis round-trip for all trips (pipeline), instead of 1 mget per trip
+    const heldCounts = await countHeldSeatsForTrips(
+      activeTrips.map(t => ({
+        id: t.id,
+        capacity: t.bus?.totalSeats || t.totalSeats || 50,
+      }))
+    );
+
+    const fleetResults = activeTrips.map((trip) => {
+      const capacity = trip.bus?.totalSeats || trip.totalSeats || 50;
+      const bookedSeats = bookedCounts.get(trip.id) ?? 0;
+      const heldSeats = heldCounts.get(trip.id) ?? 0;
 
       const freeSeats = Math.max(0, capacity - bookedSeats - heldSeats);
       const percent = Math.min(100, Math.round(((bookedSeats + heldSeats) / capacity) * 100));
@@ -133,7 +154,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
           academicId: b.user?.academicId || (b.user?.email ? b.user.email.split('@')[0] : 'N/A'),
         })),
       };
-    }));
+    });
 
     // Post-filter by status or search text if specified
     let filtered = fleetResults;
@@ -164,15 +185,30 @@ export async function adminRoutes(fastify: FastifyInstance) {
     const { limit = 150, search, action } = request.query as { limit?: string; search?: string; action?: string };
     const maxLimit = Math.min(Number(limit) || 150, 500);
 
-    const logs = await db.query.auditLogs.findMany({
-      orderBy: desc(schema.auditLogs.createdAt),
-      limit: maxLimit,
-      with: {
-        user: true,
-      },
-    });
+    const conditions = [];
+    if (action && action !== 'all') conditions.push(ilike(schema.auditLogs.action, `%${action}%`));
+    if (search) {
+      const pattern = `%${String(search)}%`;
+      conditions.push(or(
+        ilike(schema.auditLogs.action, pattern),
+        ilike(schema.auditLogs.entityId, pattern),
+        ilike(schema.auditLogs.ipAddress, pattern),
+        ilike(schema.users.email, pattern),
+        ilike(schema.users.fullName, pattern),
+        ilike(schema.users.academicId, pattern),
+        sql`${schema.auditLogs.details}::text ILIKE ${pattern}`
+      ));
+    }
 
-    let results = logs.map(l => ({
+    const logs = await db
+      .select({ log: schema.auditLogs, user: schema.users })
+      .from(schema.auditLogs)
+      .leftJoin(schema.users, eq(schema.auditLogs.userId, schema.users.id))
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(desc(schema.auditLogs.createdAt))
+      .limit(maxLimit);
+
+    return logs.map(({ log: l, user }) => ({
       id: l.id,
       action: l.action,
       entityType: l.entityType,
@@ -180,36 +216,17 @@ export async function adminRoutes(fastify: FastifyInstance) {
       details: l.details,
       ipAddress: l.ipAddress || '127.0.0.1',
       time: l.createdAt,
-      user: l.user ? {
-        id: l.user.id,
-        fullName: l.user.fullName,
-        fullNameAr: l.user.fullNameAr,
-        email: l.user.email,
-        phone: l.user.phone,
-        role: l.user.role,
-        academicId: l.user.academicId || l.user.email.split('@')[0],
-        faculty: l.user.faculty,
+      user: user ? {
+        id: user.id,
+        fullName: user.fullName,
+        fullNameAr: user.fullNameAr,
+        email: user.email,
+        phone: user.phone,
+        role: user.role,
+        academicId: user.academicId || user.email.split('@')[0],
+        faculty: user.faculty,
       } : null,
     }));
-
-    if (action && action !== 'all') {
-      results = results.filter(l => l.action.toLowerCase().includes(action.toLowerCase()));
-    }
-
-    if (search) {
-      const q = String(search).toLowerCase();
-      results = results.filter(l =>
-        l.action.toLowerCase().includes(q) ||
-        (l.entityId && String(l.entityId).toLowerCase().includes(q)) ||
-        (l.user?.email && l.user.email.toLowerCase().includes(q)) ||
-        (l.user?.fullName && l.user.fullName.toLowerCase().includes(q)) ||
-        (l.user?.academicId && l.user.academicId.toLowerCase().includes(q)) ||
-        (l.ipAddress && l.ipAddress.includes(q)) ||
-        JSON.stringify(l.details || {}).toLowerCase().includes(q)
-      );
-    }
-
-    return results;
   });
 
   // 2.1. Trip Full Seat Breakdown & Visual Inspector (Admin & Supervisor)
@@ -259,20 +276,9 @@ export async function adminRoutes(fastify: FastifyInstance) {
     });
 
     // 2. Active temporary Redis locks (Orange In-Progress Seats)
-    const lockKeys = Array.from({ length: totalSeats }, (_, i) => `seat_lock:${tid}:${i + 1}`);
-    const lockValues = await redis.mget(...lockKeys);
-    const lockHoldersMap: Record<number, string> = {};
-    const lockUserIds: string[] = [];
-
-    for (let i = 0; i < lockValues.length; i++) {
-      const val = lockValues[i];
-      if (val) {
-        lockHoldersMap[i + 1] = val;
-        if (!lockUserIds.includes(val)) {
-          lockUserIds.push(val);
-        }
-      }
-    }
+    const lockHoldersBySeat = await getSeatLockHolders(tid, totalSeats);
+    const lockHoldersMap: Record<number, string> = Object.fromEntries(lockHoldersBySeat);
+    const lockUserIds = [...new Set(lockHoldersBySeat.values())];
 
     let lockUsers: any[] = [];
     if (lockUserIds.length > 0) {
@@ -418,33 +424,39 @@ export async function adminRoutes(fastify: FastifyInstance) {
     preValidation: [(fastify as any).authenticate, requireRole(['admin'])],
   }, async (request: any) => {
     const { search, role, limit = 200 } = request.query as any;
-    const allUsers = await db.query.users.findMany({
-      orderBy: desc(schema.users.createdAt),
-      limit: Math.min(Number(limit) || 200, 500),
-    });
-
-    let filtered = allUsers;
-    if (role && role !== 'all') {
-      filtered = filtered.filter(u => u.role === role);
-    }
+    const conditions = [];
+    if (role && role !== 'all') conditions.push(eq(schema.users.role, role));
     if (search) {
-      const q = String(search).toLowerCase();
-      filtered = filtered.filter(u =>
-        u.email.toLowerCase().includes(q) ||
-        u.fullName.toLowerCase().includes(q) ||
-        (u.academicId && u.academicId.toLowerCase().includes(q)) ||
-        (u.phone && u.phone.includes(q))
-      );
+      const pattern = `%${String(search)}%`;
+      conditions.push(or(
+        ilike(schema.users.email, pattern),
+        ilike(schema.users.fullName, pattern),
+        ilike(schema.users.academicId, pattern),
+        ilike(schema.users.phone, pattern)
+      ));
     }
 
-    const counts = {
-      total: allUsers.length,
-      riders: allUsers.filter(u => u.role === 'rider').length,
-      supervisors: allUsers.filter(u => u.role === 'supervisor').length,
-      admins: allUsers.filter(u => u.role === 'admin').length,
-    };
+    const [users, roleCounts] = await Promise.all([
+      db.query.users.findMany({
+        where: conditions.length > 0 ? and(...conditions) : undefined,
+        orderBy: desc(schema.users.createdAt),
+        limit: Math.min(Number(limit) || 200, 500),
+      }),
+      db.select({ role: schema.users.role, count: count() })
+        .from(schema.users)
+        .groupBy(schema.users.role),
+    ]);
+    const countsByRole = new Map(roleCounts.map(row => [row.role, Number(row.count)]));
 
-    return { users: filtered, counts };
+    return {
+      users,
+      counts: {
+        total: roleCounts.reduce((total, row) => total + Number(row.count), 0),
+        riders: countsByRole.get('rider') || 0,
+        supervisors: countsByRole.get('supervisor') || 0,
+        admins: countsByRole.get('admin') || 0,
+      },
+    };
   });
 
   // 2.3. Database Explorer: Bookings
@@ -687,18 +699,21 @@ export async function adminRoutes(fastify: FastifyInstance) {
     preValidation: [(fastify as any).authenticate, requireRole(['admin'])],
   }, async () => {
     const users = await db.query.users.findMany({
-      where: inArray(schema.users.role, ['supervisor', 'admin', 'rider']),
+      where: eq(schema.users.role, 'supervisor'),
       columns: { id: true, fullName: true, fullNameAr: true, email: true, phone: true, role: true },
     });
 
+    const drivers = users.filter(user => user.email.startsWith('driver.'));
+    const supervisors = users.filter(user => user.email.startsWith('super.'));
+
     return {
-      drivers: users.map(u => ({
+      drivers: drivers.map(u => ({
         id: u.id,
         nameAr: u.fullNameAr || u.fullName,
         nameEn: u.fullName,
         phone: u.phone || '',
       })),
-      supervisors: users.map(u => ({
+      supervisors: supervisors.map(u => ({
         id: u.id,
         nameAr: u.fullNameAr || u.fullName,
         nameEn: u.fullName,
