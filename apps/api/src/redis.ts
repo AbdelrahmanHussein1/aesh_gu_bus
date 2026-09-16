@@ -39,6 +39,36 @@ class MemoryRedis {
     return Promise.all(keys.map(k => this.get(k)));
   }
 
+  pipeline() {
+    const commands: Array<{ method: 'get' | 'set' | 'mget' | 'ttl' | 'del'; args: unknown[] }> = [];
+    const self = this;
+
+    const chain = {
+      mget(...keys: string[]) {
+        commands.push({ method: 'mget', args: keys });
+        return chain;
+      },
+      ttl(key: string) {
+        commands.push({ method: 'ttl', args: [key] });
+        return chain;
+      },
+      async exec(): Promise<Array<[Error | null, unknown]>> {
+        const results: Array<[Error | null, unknown]> = [];
+        for (const cmd of commands) {
+          try {
+            const result = await (self as any)[cmd.method](...cmd.args);
+            results.push([null, result]);
+          } catch (err) {
+            results.push([err as Error, null]);
+          }
+        }
+        return results;
+      },
+    };
+
+    return chain;
+  }
+
   async del(...keys: string[]): Promise<number> {
     let count = 0;
     for (const k of keys) {
@@ -62,6 +92,10 @@ class MemoryRedis {
       }
     }
     return matched;
+  }
+
+  async *scanStream(options: { match?: string } = {}): AsyncGenerator<string[]> {
+    yield await this.keys(options.match || '*');
   }
 
   async ttl(key: string): Promise<number> {

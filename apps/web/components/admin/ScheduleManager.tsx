@@ -118,11 +118,33 @@ export default function ScheduleManager() {
 
   // Load personnel directory
   useEffect(() => {
-    const p = getAllPersonnel();
-    setPersonnel(p);
-    if (p.drivers.length > 0) setNewDriverPhone(p.drivers[0].phone);
-    if (p.supervisors.length > 0) setNewSupervisorPhone(p.supervisors[0].phone);
-  }, []);
+    let cancelled = false;
+    const loadPersonnel = async () => {
+      const fallback = getAllPersonnel();
+      if (!token || isOffline) {
+        if (!cancelled) setPersonnel(fallback);
+        return;
+      }
+      try {
+        const response = await fetch(`${API_URL}/api/admin/personnel`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!response.ok) throw new Error(`Personnel request failed: ${response.status}`);
+        const livePersonnel = await response.json();
+        if (!cancelled) setPersonnel(livePersonnel);
+      } catch (error) {
+        console.warn('Live personnel fetch failed, using offline fallback', error);
+        if (!cancelled) setPersonnel(fallback);
+      }
+    };
+    loadPersonnel();
+    return () => { cancelled = true; };
+  }, [API_URL, isOffline, token]);
+
+  useEffect(() => {
+    if (personnel.drivers.length > 0 && !newDriverPhone) setNewDriverPhone(personnel.drivers[0].phone);
+    if (personnel.supervisors.length > 0 && !newSupervisorPhone) setNewSupervisorPhone(personnel.supervisors[0].phone);
+  }, [personnel, newDriverPhone, newSupervisorPhone]);
 
   useEffect(() => {
     loadSchedules();
