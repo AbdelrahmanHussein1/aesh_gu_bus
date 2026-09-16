@@ -23,7 +23,7 @@ function copyFiltered(src, dest) {
   const stat = fs.statSync(src);
   if (stat.isDirectory()) {
     const base = path.basename(src);
-    if (['node_modules', '.next', '.git', '.turbo', 'dist-release', 'dist', 'build', '.expo'].includes(base)) {
+    if (['node_modules', '.next', '.git', '.turbo', 'dist-release', 'dist', 'build', '.expo', 'android', 'ios', 'mobile'].includes(base)) {
       return;
     }
     fs.mkdirSync(dest, { recursive: true });
@@ -73,7 +73,12 @@ console.log('🗜️ Compressing Linux VBox release archive...');
 const zipFile = path.join(distReleaseDir, `${releaseName}.zip`);
 
 if (process.platform === 'win32') {
-  execSync(`powershell -Command "Compress-Archive -Path '${stageDir}\\*' -DestinationPath '${zipFile}' -Force"`, { stdio: 'inherit' });
+  try {
+    if (fs.existsSync(zipFile)) fs.unlinkSync(zipFile);
+    execSync(`tar -a -c -f "${zipFile}" -C "${stageDir}" .`, { stdio: 'inherit' });
+  } catch {
+    execSync(`powershell -Command "Compress-Archive -Path '${stageDir}\\*' -DestinationPath '${zipFile}' -Force"`, { stdio: 'inherit' });
+  }
 } else {
   execSync(`cd "${distReleaseDir}" && zip -r "${releaseName}.zip" "${releaseName}"`, { stdio: 'inherit' });
 }

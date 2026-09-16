@@ -1,5 +1,5 @@
 import { FastifyInstance } from 'fastify';
-import { RegisterSchema, LoginSchema } from '@bus-aesh/shared';
+import { RegisterSchema, LoginSchema, GALALA_FACULTIES } from '@bus-aesh/shared';
 import { db } from '../db/index.js';
 import * as schema from '../db/schema.js';
 import { eq } from 'drizzle-orm';
@@ -9,6 +9,7 @@ import { EmailService } from '../services/email.service.js';
 import { WebSocketHub } from '../websocket/hub.js';
 import { authenticateOdoo } from '../auth/odoo.js';
 import { logSecurityEvent } from '../services/audit.service.js';
+import { redisClient } from '../redis.js';
 import crypto from 'node:crypto';
 
 export function hashPassword(password: string): string {
@@ -116,6 +117,13 @@ export async function authRoutes(fastify: FastifyInstance) {
             messageAr: 'رقم القيد الأكاديمي غير صالح',
           });
         }
+
+        if (faculty && !GALALA_FACULTIES.includes(faculty as any)) {
+          return reply.status(400).send({
+            error: 'Invalid Galala University Faculty selection',
+            messageAr: 'الكلية المختارة غير صالحة',
+          });
+        }
       }
 
       const getDeterministicId = (str: string, seed: number) => {
@@ -217,42 +225,118 @@ export async function authRoutes(fastify: FastifyInstance) {
     const { email, password } = bodyResult.data;
     const deviceInfo = (request.body as any)?.deviceInfo || request.headers['user-agent'] || 'Web Browser';
 
+    const normalizedEmail = email.toLowerCase().trim();
+    const lockoutKey = `login_lockout:${normalizedEmail}`;
+    const attemptKey = `login_attempts:${normalizedEmail}`;
+
     try {
+      // Check if account is currently locked due to >= 5 failed attempts
+      const isLocked = await redisClient.get(lockoutKey);
+      if (isLocked) {
+        const ttl = await redisClient.ttl(lockoutKey);
+        const remainingSec = ttl > 0 ? ttl : 300;
+        const remainingMin = Math.ceil(remainingSec / 60);
+        return reply.status(429).send({
+          error: `Too many failed login attempts. Your account is temporarily locked for 5 minutes. Try again in ${remainingMin} minute(s).`,
+          messageAr: `تم تجاوز الحد الأقصى لمحاولات الدخول الخاطئة (5 محاولات). تم إيقاف تسجيل الدخول مؤقتاً لمدة 5 دقائق. يرجى الانتظار ${remainingMin} دقيقة.`,
+          retryAfter: remainingSec,
+        });
+      }
+
+      const recordFailedAttempt = async () => {
+        const attempts = await redisClient.incr(attemptKey);
+        if (attempts === 1) {
+          await redisClient.expire(attemptKey, 900); // 15-minute sliding window
+        }
+        if (attempts >= 5) {
+          await redisClient.set(lockoutKey, 'locked', 'EX', 300); // 5-minute timeout lockout
+          await redisClient.del(attemptKey);
+          return { locked: true, attempts };
+        }
+        return { locked: false, attempts, remaining: 5 - attempts };
+      };
+
       let user = await db.query.users.findFirst({
-        where: eq(schema.users.email, email.toLowerCase().trim()),
+        where: eq(schema.users.email, normalizedEmail),
       });
 
       if (user) {
-        if (user.password && !verifyPassword(password, user.password)) {
+        // If user has no password set in database (legacy/seeded user), securely initialize with the entered password
+        if (!user.password) {
+          const newHashed = hashPassword(password);
+          await db.update(schema.users)
+            .set({ password: newHashed })
+            .where(eq(schema.users.id, user.id));
+          user.password = newHashed;
+        }
+
+        if (!verifyPassword(password, user.password)) {
+          const failResult = await recordFailedAttempt();
+          if (failResult.locked) {
+            return reply.status(429).send({
+              error: 'Too many failed login attempts (5 attempts). Account is locked for 5 minutes.',
+              messageAr: 'تم إيقاف الدخول مؤقتاً لمدة 5 دقائق بسبب 5 محاولات خاطئة متتالية.',
+              retryAfter: 300,
+            });
+          }
           return reply.status(401).send({
-            error: 'Invalid email or password',
-            messageAr: 'بيانات الدخول غير صحيحة',
+            error: `Invalid email or password. ${failResult.remaining} attempt(s) remaining before temporary lockout.`,
+            messageAr: `بيانات الدخول غير صحيحة. متبقي ${failResult.remaining} محاولات قبل الإيقاف المؤقت.`,
+            remainingAttempts: failResult.remaining,
           });
         }
       } else {
         // Only allow fallback to Odoo ERP for pre-authorized admin/supervisor/driver personnel
-        if (email === 'admin@gu.edu.eg' || email.startsWith('supervisor') || email.startsWith('driver')) {
-          const erpUser = await authenticateOdoo(email, password);
+        if (normalizedEmail === 'admin@gu.edu.eg' || normalizedEmail.startsWith('supervisor') || normalizedEmail.startsWith('driver')) {
+          try {
+            const erpUser = await authenticateOdoo(normalizedEmail, password);
+            let role = 'supervisor';
+            if (normalizedEmail === 'admin@gu.edu.eg') role = 'admin';
 
-          let role = 'supervisor';
-          if (email === 'admin@gu.edu.eg') role = 'admin';
-
-          const [newUser] = await db.insert(schema.users).values({
-            email: email.toLowerCase().trim(),
-            fullName: erpUser.name,
-            role,
-            erpUid: erpUser.uid,
-            erpPartnerId: erpUser.partner_id,
-          }).returning();
-          user = newUser;
+            const [newUser] = await db.insert(schema.users).values({
+              email: normalizedEmail,
+              fullName: erpUser.name,
+              role,
+              erpUid: erpUser.uid,
+              erpPartnerId: erpUser.partner_id,
+            }).returning();
+            user = newUser;
+          } catch {
+            const failResult = await recordFailedAttempt();
+            if (failResult.locked) {
+              return reply.status(429).send({
+                error: 'Too many failed login attempts (5 attempts). Account is locked for 5 minutes.',
+                messageAr: 'تم إيقاف الدخول مؤقتاً لمدة 5 دقائق بسبب 5 محاولات خاطئة متتالية.',
+                retryAfter: 300,
+              });
+            }
+            return reply.status(401).send({
+              error: `Invalid credentials. ${failResult.remaining} attempt(s) remaining.`,
+              messageAr: `بيانات الدخول غير صحيحة. متبقي ${failResult.remaining} محاولات.`,
+              remainingAttempts: failResult.remaining,
+            });
+          }
         } else {
           // Unregistered student account
+          const failResult = await recordFailedAttempt();
+          if (failResult.locked) {
+            return reply.status(429).send({
+              error: 'Too many failed login attempts (5 attempts). Account is locked for 5 minutes.',
+              messageAr: 'تم إيقاف الدخول مؤقتاً لمدة 5 دقائق بسبب 5 محاولات خاطئة متتالية.',
+              retryAfter: 300,
+            });
+          }
           return reply.status(401).send({
-            error: 'Account not registered. Please register first as a student to verify your academic credentials.',
-            messageAr: 'هذا الحساب غير مسجل. يرجى إنشاء حساب طالب أولاً لتأكيد القيد الجامعي.',
+            error: `Account not registered. Please register first as a student. (${failResult.remaining} attempt(s) remaining).`,
+            messageAr: `هذا الحساب غير مسجل. يرجى إنشاء حساب طالب أولاً. (متبقي ${failResult.remaining} محاولات).`,
+            remainingAttempts: failResult.remaining,
           });
         }
       }
+
+      // Successful login: clear any failed attempt history
+      await redisClient.del(attemptKey);
+      await redisClient.del(lockoutKey);
 
       // Single-Device Concurrency:
       // 1. Terminate any previous WebSocket sessions for this user on other devices

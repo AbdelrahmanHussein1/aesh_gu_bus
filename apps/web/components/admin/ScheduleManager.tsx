@@ -5,6 +5,13 @@ import type { Trip, Route, TimeSlot, Direction, PersonnelContact } from '@/lib/t
 import { getOfflineAllTrips, cloneOfflineSchedule, getAllPersonnel, saveCustomOfflineTrips, getCustomOfflineTrips, addMockAuditLog, purgeOfflineShifts, createSingleOfflineTestShift } from '@/lib/offline';
 import { getApiBaseUrl } from '@/lib/api';
 import { getTodayDateString, formatDateString, getScheduleManagerDates } from '@/lib/dateUtils';
+import {
+  ROUTE_CATEGORIES,
+  RouteCategoryKey,
+  getRouteCategory,
+  formatShiftDisplay,
+  PREDEFINED_ROUTES,
+} from '@/lib/routes-config';
 import BusSeatInspectorModal from './BusSeatInspectorModal';
 
 const ADMIN_OPERATIONAL_DATES = getScheduleManagerDates(3, 10);
@@ -23,6 +30,7 @@ export default function ScheduleManager() {
   const todayStr = useMemo(() => getTodayDateString(), []);
   const [selectedDate, setSelectedDate] = useState(() => getTodayDateString());
   const [selectedShift, setSelectedShift] = useState<TimeSlot | 'all'>('all');
+  const [selectedCategory, setSelectedCategory] = useState<'all' | RouteCategoryKey>('all');
   const [selectedRouteId, setSelectedRouteId] = useState<number | 'all'>('all');
   const [allSchedules, setAllSchedules] = useState<Trip[]>([]);
   const [loading, setLoading] = useState(false);
@@ -30,6 +38,7 @@ export default function ScheduleManager() {
 
   // Modals state
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [modalCategory, setModalCategory] = useState<RouteCategoryKey>('suez');
   const [showCloneModal, setShowCloneModal] = useState(false);
   const [showPurgeModal, setShowPurgeModal] = useState(false);
   const [purgeTarget, setPurgeTarget] = useState<'all' | 'date'>('all');
@@ -40,11 +49,14 @@ export default function ScheduleManager() {
   const inFlightRef = useRef(false);
 
   // New Trip Form state
+  const [newTripType, setNewTripType] = useState<'both_ways' | 'to_campus' | 'from_campus'>('both_ways');
   const [newRouteId, setNewRouteId] = useState<number>(29);
   const [newDirection, setNewDirection] = useState<Direction>('to_campus');
   const [newTimeSlot, setNewTimeSlot] = useState<TimeSlot>('morning_1');
+  const [newReturnTimeSlot, setNewReturnTimeSlot] = useState<TimeSlot>('return_2');
   const [newTripDate, setNewTripDate] = useState(() => getTodayDateString());
   const [newDepartureTime, setNewDepartureTime] = useState('07:00 AM');
+  const [newReturnDepartureTime, setNewReturnDepartureTime] = useState('02:30 PM');
   const [newDriverPhone, setNewDriverPhone] = useState('');
   const [newSupervisorPhone, setNewSupervisorPhone] = useState('');
   const [newTotalSeats, setNewTotalSeats] = useState(50);
@@ -159,21 +171,39 @@ export default function ScheduleManager() {
       loadSchedules(true);
     };
     window.addEventListener('schedule_updated', handleScheduleUpdated);
+    window.addEventListener('fleet_purged', handleScheduleUpdated);
 
     return () => {
       clearInterval(timer);
       document.removeEventListener('visibilitychange', handleVisibility);
       window.removeEventListener('schedule_updated', handleScheduleUpdated);
+      window.removeEventListener('fleet_purged', handleScheduleUpdated);
     };
   }, [loadSchedules, pollingDisabled, token, isOffline]);
+
+  // Filtered routes by selected category for the main selector
+  const filteredRoutes = useMemo(() => {
+    if (selectedCategory === 'all') return routes;
+    const catIds = new Set(PREDEFINED_ROUTES.filter(r => r.category === selectedCategory).map(r => r.id));
+    return routes.filter(r => catIds.has(r.id));
+  }, [routes, selectedCategory]);
+
+  // Filtered routes by modal category for the Create Shift modal
+  const modalRoutes = useMemo(() => {
+    const catIds = new Set(PREDEFINED_ROUTES.filter(r => r.category === modalCategory).map(r => r.id));
+    const inLoaded = routes.filter(r => catIds.has(r.id));
+    if (inLoaded.length > 0) return inLoaded;
+    return PREDEFINED_ROUTES.filter(r => r.category === modalCategory);
+  }, [routes, modalCategory]);
 
   // Filtered schedules
   const filteredTrips = useMemo(() => {
     return allSchedules.filter(t => {
       if (selectedShift !== 'all' && t.timeSlot !== selectedShift) return false;
+      if (selectedCategory !== 'all' && getRouteCategory(t.routeId) !== selectedCategory) return false;
       return true;
     });
-  }, [allSchedules, selectedShift]);
+  }, [allSchedules, selectedShift, selectedCategory]);
 
   // Stats
   const stats = useMemo(() => {
@@ -197,61 +227,128 @@ export default function ScheduleManager() {
     const supervisor = personnel.supervisors.find(s => s.phone === newSupervisorPhone);
     const supervisors = supervisor ? [supervisor] : [];
     const matchedRoute = routes.find(r => r.id === newRouteId);
-
-    const newTripObj: Trip = {
-      id: Date.now(),
-      routeId: newRouteId,
-      tripDate: newTripDate,
-      direction: newDirection,
-      timeSlot: newTimeSlot,
-      priceEgp: newPrice,
-      departureTime: newDepartureTime,
-      status: 'scheduled',
-      totalSeats: newTotalSeats,
-      bookedSeats: 0,
-      bus: {
-        name: `${matchedRoute?.nameEn || 'Line'}/${newDirection === 'to_campus' ? 'Arrival' : 'Return'}`,
-        licensePlate: `أ ب ج ${100 + newRouteId}`,
-        totalSeats: newTotalSeats,
-      },
-      route: matchedRoute,
-      driver,
-      supervisors,
-    };
+    const isBothWays = newTripType === 'both_ways';
 
     if (!isOffline) {
       try {
+        const payload: any = {
+          routeId: newRouteId,
+          driverId: driver ? (driver.id || driver.phone) : null,
+          supervisorIds: supervisor ? [(supervisor.id || supervisor.phone)] : [],
+          tripDate: newTripDate,
+          direction: isBothWays ? 'both_ways' : newDirection,
+          bothWays: isBothWays,
+          timeSlot: newTimeSlot,
+          departureTime: newDepartureTime,
+          totalSeats: newTotalSeats,
+          priceEgp: newPrice,
+        };
+
+        if (isBothWays) {
+          payload.returnTimeSlot = newReturnTimeSlot;
+          payload.returnDepartureTime = newReturnDepartureTime;
+        }
+
         const res = await fetch(`${API_URL}/api/admin/trips`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
           },
-          body: JSON.stringify({
-            routeId: newRouteId,
-            driverId: driver ? driver.phone : null,
-            tripDate: newTripDate,
-            departureTime: new Date(`${newTripDate} ${newDepartureTime}`).toISOString(),
-            direction: newDirection,
-            timeSlot: newTimeSlot,
-            totalSeats: newTotalSeats,
-            priceEgp: newPrice,
-          }),
+          body: JSON.stringify(payload),
         });
         if (res.ok) {
-          triggerNotice('success', `Shift created successfully for ${newTripDate}!`);
+          triggerNotice('success', isBothWays 
+            ? `Both-way shifts (ذهاب وعودة) created successfully for ${newTripDate}!` 
+            : `Shift created successfully for ${newTripDate}!`);
           setShowCreateModal(false);
           loadSchedules();
           return;
+        } else {
+          const errData = await res.json().catch(() => ({}));
+          triggerNotice('error', errData.error || 'Failed to create shift on server');
+          return;
         }
-      } catch {}
+      } catch (err) {
+        console.warn('Network error creating shift, falling back to offline:', err);
+      }
     }
 
     // Save offline
     const custom = getCustomOfflineTrips();
-    saveCustomOfflineTrips([...custom, newTripObj]);
-    addMockAuditLog('TRIP_CREATED', `Created new shift for ${newTripDate} (${matchedRoute?.nameEn})`);
-    triggerNotice('success', `Shift created successfully for ${newTripDate}!`);
+    if (isBothWays) {
+      const arrivalTripObj: Trip = {
+        id: Date.now(),
+        routeId: newRouteId,
+        tripDate: newTripDate,
+        direction: 'to_campus',
+        timeSlot: newTimeSlot,
+        priceEgp: newPrice,
+        departureTime: newDepartureTime,
+        status: 'scheduled',
+        totalSeats: newTotalSeats,
+        bookedSeats: 0,
+        bus: {
+          name: `${matchedRoute?.nameEn || 'Line'}/Arrival`,
+          licensePlate: `أ ب ج ${100 + newRouteId}`,
+          totalSeats: newTotalSeats,
+        },
+        route: matchedRoute,
+        driver,
+        supervisors,
+      };
+
+      const returnTripObj: Trip = {
+        id: Date.now() + 1,
+        routeId: newRouteId,
+        tripDate: newTripDate,
+        direction: 'from_campus',
+        timeSlot: newReturnTimeSlot,
+        priceEgp: newPrice,
+        departureTime: newReturnDepartureTime,
+        status: 'scheduled',
+        totalSeats: newTotalSeats,
+        bookedSeats: 0,
+        bus: {
+          name: `${matchedRoute?.nameEn || 'Line'}/Return`,
+          licensePlate: `أ ب ج ${100 + newRouteId}`,
+          totalSeats: newTotalSeats,
+        },
+        route: matchedRoute,
+        driver,
+        supervisors,
+      };
+
+      saveCustomOfflineTrips([...custom, arrivalTripObj, returnTripObj]);
+      addMockAuditLog('TRIP_CREATED', `Created both-way shifts (ذهاب وعودة) for ${newTripDate} (${matchedRoute?.nameEn})`);
+      triggerNotice('success', `Both-way shifts (ذهاب وعودة) created successfully for ${newTripDate}!`);
+    } else {
+      const newTripObj: Trip = {
+        id: Date.now(),
+        routeId: newRouteId,
+        tripDate: newTripDate,
+        direction: newDirection,
+        timeSlot: newTimeSlot,
+        priceEgp: newPrice,
+        departureTime: newDepartureTime,
+        status: 'scheduled',
+        totalSeats: newTotalSeats,
+        bookedSeats: 0,
+        bus: {
+          name: `${matchedRoute?.nameEn || 'Line'}/${newDirection === 'to_campus' ? 'Arrival' : 'Return'}`,
+          licensePlate: `أ ب ج ${100 + newRouteId}`,
+          totalSeats: newTotalSeats,
+        },
+        route: matchedRoute,
+        driver,
+        supervisors,
+      };
+
+      saveCustomOfflineTrips([...custom, newTripObj]);
+      addMockAuditLog('TRIP_CREATED', `Created new shift for ${newTripDate} (${matchedRoute?.nameEn})`);
+      triggerNotice('success', `Shift created successfully for ${newTripDate}!`);
+    }
+
     setShowCreateModal(false);
     loadSchedules();
   };
@@ -285,8 +382,14 @@ export default function ScheduleManager() {
           setSelectedDate(cloneTargetDate);
           loadSchedules();
           return;
+        } else {
+          const errData = await res.json().catch(() => ({}));
+          triggerNotice('error', errData.error || 'Failed to clone schedule on server');
+          return;
         }
-      } catch {}
+      } catch (err) {
+        console.warn('Network error cloning schedule, falling back to offline:', err);
+      }
     }
 
     // Offline clone
@@ -330,25 +433,42 @@ export default function ScheduleManager() {
   // Handle Purge All Shifts / Clear Roster
   const handlePurgeShifts = async () => {
     setPurging(true);
-    const dateParam = purgeTarget === 'date' ? selectedDate : undefined;
+    const isAll = purgeTarget === 'all';
+    const dateParam = isAll ? undefined : selectedDate;
 
     if (!isOffline) {
       try {
-        const queryStr = dateParam ? `?date=${dateParam}` : '';
+        const queryStr = isAll ? '?allDates=true' : `?date=${dateParam}`;
         const res = await fetch(`${API_URL}/api/admin/shifts/purge-all${queryStr}`, {
           method: 'DELETE',
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({
+            allDates: isAll,
+            date: dateParam,
+          }),
         });
         if (res.ok) {
           const data = await res.json();
+          purgeOfflineShifts(dateParam);
           triggerNotice('success', data.message || `Successfully purged shifts.`);
           setShowPurgeModal(false);
           setPurging(false);
           loadSchedules();
           return;
+        } else {
+          const errData = await res.json().catch(() => ({}));
+          triggerNotice('error', errData.error || 'Failed to purge shifts on server');
+          setPurging(false);
+          return;
         }
-      } catch (err) {
-        console.warn('Backend purge failed, using offline purge:', err);
+      } catch (err: any) {
+        console.error('Backend purge failed:', err);
+        triggerNotice('error', err?.message || 'Network error purging shifts');
+        setPurging(false);
+        return;
       }
     }
 
@@ -527,6 +647,52 @@ export default function ScheduleManager() {
           </div>
         </div>
 
+        {/* Regional Category Filter Tabs */}
+        <div className="pt-3 border-t border-border-whisper">
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin">
+            <span className="text-[11px] font-bold text-text-secondary uppercase shrink-0">
+              المنطقة / Region:
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedCategory('all');
+                setSelectedRouteId('all');
+              }}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold shrink-0 transition-all flex items-center gap-1.5 ${
+                selectedCategory === 'all'
+                  ? 'bg-primary-container text-on-primary-container shadow-sm'
+                  : 'bg-surface-container-low text-text-secondary hover:text-text-primary border border-border-whisper'
+              }`}
+            >
+              <span className="material-symbols-outlined text-sm">hub</span>
+              <span>جميع المناطق (All)</span>
+            </button>
+            {ROUTE_CATEGORIES.map(cat => {
+              const isSel = selectedCategory === cat.key;
+              return (
+                <button
+                  key={cat.key}
+                  type="button"
+                  onClick={() => {
+                    setSelectedCategory(cat.key);
+                    setSelectedRouteId('all');
+                  }}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold shrink-0 transition-all flex items-center gap-1.5 ${
+                    isSel
+                      ? 'bg-primary-container text-on-primary-container shadow-sm'
+                      : 'bg-surface-container-low text-text-secondary hover:text-text-primary border border-border-whisper'
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-sm">{cat.icon}</span>
+                  <span>{cat.labelAr}</span>
+                  <span className="text-[10px] opacity-75">({cat.count} خط)</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         {/* Shift Filter Pills */}
         <div className="pt-3 border-t border-border-whisper">
           <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin">
@@ -554,8 +720,8 @@ export default function ScheduleManager() {
             onChange={(e) => setSelectedRouteId(e.target.value === 'all' ? 'all' : parseInt(e.target.value))}
             className="text-xs px-3 py-1.5 rounded-lg bg-surface-container-low border border-border-whisper text-text-primary focus:outline-none focus:ring-1 focus:ring-primary-container font-medium"
           >
-            <option value="all">All Lines (بورتوفيق، نبي الله، السلام...)</option>
-            {routes.map(r => (
+            <option value="all">All Lines {selectedCategory !== 'all' ? `(${selectedCategory === 'cairo' ? 'القاهرة' : selectedCategory === 'suez' ? 'السويس' : 'الشروق وبدر'})` : ''}</option>
+            {filteredRoutes.map(r => (
               <option key={r.id} value={r.id}>{r.nameEn} — {r.nameAr}</option>
             ))}
           </select>
@@ -581,9 +747,10 @@ export default function ScheduleManager() {
             <div className="flex justify-center gap-3 pt-2">
               <button
                 onClick={() => setShowCloneModal(true)}
-                className="px-4 py-2 bg-surface-container-high hover:bg-surface-container-highest border border-border-whisper rounded-lg text-xs font-bold text-text-primary"
+                className="px-4 py-2 bg-surface-container-high hover:bg-surface-container-highest border border-border-whisper rounded-lg text-xs font-bold text-text-primary flex items-center gap-1.5"
               >
-                Reuse June 4 Schedule
+                <span className="material-symbols-outlined text-sm">content_copy</span>
+                <span>Reuse / Clone Schedule (إعادة استخدام جدول)</span>
               </button>
               <button
                 onClick={() => {
@@ -602,6 +769,7 @@ export default function ScheduleManager() {
               const booked = trip.bookedSeats || 0;
               const total = trip.totalSeats || trip.bus.totalSeats || 50;
               const percent = Math.min(100, Math.round((booked / total) * 100));
+              const shiftInfo = formatShiftDisplay(trip);
 
               return (
                 <div
@@ -614,18 +782,23 @@ export default function ScheduleManager() {
                   <div>
                     <div className="flex items-start justify-between gap-2">
                       <div>
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${trip.direction === 'to_campus' ? 'bg-primary-container/10 text-primary-container' : 'bg-secondary-fixed/30 text-amber-800'}`}>
-                          {trip.direction === 'to_campus' ? 'To University / ذهاب' : 'Return Home / عودة'}
-                        </span>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-primary-container/15 text-primary-container">
+                            {shiftInfo.categoryLabelAr}
+                          </span>
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${trip.direction === 'to_campus' ? 'bg-primary-container/10 text-primary-container' : 'bg-secondary-fixed/30 text-amber-800'}`}>
+                            {shiftInfo.directionAr}
+                          </span>
+                        </div>
                         <h4 className="font-bold text-sm text-text-primary mt-1.5 font-arabic group-hover:text-primary-container transition-colors">
-                          {trip.route?.nameAr || trip.bus.name.split('/')[0]}
+                          خط {shiftInfo.routeNameAr}
                         </h4>
-                        <p className="text-[11px] text-text-secondary">{trip.route?.nameEn || 'Galala Route'}</p>
+                        <p className="text-[11px] text-text-secondary font-medium">{shiftInfo.shiftTimeTitleAr}</p>
                       </div>
 
                       <div className="text-right">
-                        <span className="font-mono font-bold text-xs text-text-primary block">{trip.departureTime}</span>
-                        <span className="text-[10px] text-text-secondary uppercase">{trip.timeSlot}</span>
+                        <span className="font-mono font-bold text-xs text-text-primary block">{shiftInfo.departureDisplay}</span>
+                        <span className="text-[10px] text-text-secondary uppercase">{shiftInfo.timeBadgeAr}</span>
                       </div>
                     </div>
                   </div>
@@ -733,15 +906,105 @@ export default function ScheduleManager() {
             </div>
 
             <form onSubmit={handleCreateTrip} className="p-5 space-y-4 text-xs">
+              {/* Trip Type Selector (Both Ways / To Campus / From Campus) */}
+              <div>
+                <label className="font-bold text-text-primary block mb-1">
+                  نوع الرحلة والشفتات / Trip Type & Runs
+                </label>
+                <div className="grid grid-cols-3 rounded-xl border border-border-whisper overflow-hidden bg-surface-container-low p-1 gap-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNewTripType('both_ways');
+                      setNewDirection('to_campus');
+                      setNewTimeSlot('morning_1');
+                      setNewDepartureTime('07:00 AM');
+                      setNewReturnTimeSlot('return_2');
+                      setNewReturnDepartureTime('02:30 PM');
+                    }}
+                    className={`py-2 px-1 text-center text-xs font-bold transition rounded-lg flex items-center justify-center gap-1.5 cursor-pointer ${
+                      newTripType === 'both_ways'
+                        ? 'bg-primary-container text-white shadow-xs'
+                        : 'text-text-secondary hover:text-text-primary'
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-sm">sync_alt</span>
+                    <span>ذهاب وعودة (Both Ways)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNewTripType('to_campus');
+                      setNewDirection('to_campus');
+                      setNewTimeSlot('morning_1');
+                      setNewDepartureTime('07:00 AM');
+                    }}
+                    className={`py-2 px-1 text-center text-xs font-bold transition rounded-lg flex items-center justify-center gap-1.5 cursor-pointer ${
+                      newTripType === 'to_campus'
+                        ? 'bg-primary-container text-white shadow-xs'
+                        : 'text-text-secondary hover:text-text-primary'
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-sm">trending_flat</span>
+                    <span>ذهاب فقط (To Campus)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNewTripType('from_campus');
+                      setNewDirection('from_campus');
+                      setNewTimeSlot('return_2');
+                      setNewDepartureTime('02:30 PM');
+                    }}
+                    className={`py-2 px-1 text-center text-xs font-bold transition rounded-lg flex items-center justify-center gap-1.5 cursor-pointer ${
+                      newTripType === 'from_campus'
+                        ? 'bg-primary-container text-white shadow-xs'
+                        : 'text-text-secondary hover:text-text-primary'
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-sm">keyboard_backspace</span>
+                    <span>عودة فقط (From Campus)</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Region Category Selector */}
+              <div>
+                <label className="font-bold text-text-primary block mb-1">المنطقة / Region Category</label>
+                <div className="flex rounded-lg border border-border-whisper overflow-hidden bg-surface-container">
+                  {ROUTE_CATEGORIES.map(cat => (
+                    <button
+                      key={cat.key}
+                      type="button"
+                      onClick={() => {
+                        setModalCategory(cat.key);
+                        const first = PREDEFINED_ROUTES.find(r => r.category === cat.key);
+                        if (first) setNewRouteId(first.id);
+                      }}
+                      className={`flex-1 py-1.5 text-center text-xs font-bold transition flex items-center justify-center gap-1 ${
+                        modalCategory === cat.key ? 'bg-primary-container text-white' : 'text-text-secondary hover:text-text-primary'
+                      }`}
+                    >
+                      <span className="material-symbols-outlined text-sm">{cat.icon}</span>
+                      <span>{cat.labelAr} ({cat.count})</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="font-bold text-text-primary block mb-1">Route / الخط</label>
+                  <label className="font-bold text-text-primary block mb-1">
+                    Route / الخط ({modalCategory === 'cairo' ? 'القاهرة' : modalCategory === 'suez' ? 'السويس' : 'الشروق وبدر'})
+                  </label>
                   <select
                     value={newRouteId}
                     onChange={(e) => setNewRouteId(parseInt(e.target.value))}
                     className="w-full px-3 py-2 rounded-lg bg-surface-container-low border border-border-whisper text-text-primary font-medium focus:ring-1 focus:ring-primary-container"
                   >
-                    {routes.map(r => (
+                    {modalRoutes.map(r => (
                       <option key={r.id} value={r.id}>{r.nameAr} ({r.nameEn})</option>
                     ))}
                   </select>
@@ -759,56 +1022,186 @@ export default function ScheduleManager() {
                 </div>
               </div>
 
+              {/* Both Ways Dual Shift Configuration */}
+              {newTripType === 'both_ways' ? (
+                <div className="space-y-3 bg-primary-container/5 border border-primary-container/20 rounded-xl p-3.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-xs text-primary-container flex items-center gap-1">
+                      <span className="material-symbols-outlined text-base">swap_horiz</span>
+                      جدولة شفتي الذهاب والعودة معاً (Dual Shift Scheduling)
+                    </span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 font-bold border border-emerald-500/30">
+                      2 حافلات متزامنة
+                    </span>
+                  </div>
+
+                  {/* Arrival Leg (To Campus) */}
+                  <div className="p-2.5 rounded-lg bg-surface-container border border-border-whisper space-y-2">
+                    <span className="font-bold text-text-primary text-[11px] flex items-center gap-1 text-emerald-500">
+                      <span className="material-symbols-outlined text-sm">login</span>
+                      1. شفت الذهاب للجامعة / Morning Arrival Leg
+                    </span>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[10px] font-semibold text-text-secondary block mb-1">الشفت / Arrival Shift</label>
+                        <select
+                          value={newTimeSlot}
+                          onChange={(e) => {
+                            const s = e.target.value as TimeSlot;
+                            setNewTimeSlot(s);
+                            if (s === 'morning_1') setNewDepartureTime('07:00 AM');
+                            if (s === 'morning_2') setNewDepartureTime('09:30 AM');
+                          }}
+                          className="w-full px-2.5 py-1.5 rounded-lg bg-surface-container-low border border-border-whisper text-text-primary text-xs font-medium focus:ring-1 focus:ring-primary-container"
+                        >
+                          <option value="morning_1">Morning 1 (09:00 AM Arrival)</option>
+                          <option value="morning_2">Morning 2 (11:30 AM Arrival)</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-semibold text-text-secondary block mb-1">وقت التحرك / Departure</label>
+                        <input
+                          type="text"
+                          value={newDepartureTime}
+                          onChange={(e) => setNewDepartureTime(e.target.value)}
+                          placeholder="07:00 AM"
+                          className="w-full px-2.5 py-1.5 rounded-lg bg-surface-container-low border border-border-whisper text-text-primary font-mono text-xs focus:ring-1 focus:ring-primary-container"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Return Leg (From Campus) */}
+                  <div className="p-2.5 rounded-lg bg-surface-container border border-border-whisper space-y-2">
+                    <span className="font-bold text-text-primary text-[11px] flex items-center gap-1 text-blue-400">
+                      <span className="material-symbols-outlined text-sm">logout</span>
+                      2. شفت العودة للمنزل / Afternoon Return Leg
+                    </span>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[10px] font-semibold text-text-secondary block mb-1">شفت العودة / Return Shift</label>
+                        <select
+                          value={newReturnTimeSlot}
+                          onChange={(e) => {
+                            const s = e.target.value as TimeSlot;
+                            setNewReturnTimeSlot(s);
+                            if (s === 'return_1') setNewReturnDepartureTime('12:30 PM');
+                            if (s === 'return_2') setNewReturnDepartureTime('02:30 PM');
+                            if (s === 'return_3') setNewReturnDepartureTime('05:30 PM');
+                          }}
+                          className="w-full px-2.5 py-1.5 rounded-lg bg-surface-container-low border border-border-whisper text-text-primary text-xs font-medium focus:ring-1 focus:ring-primary-container"
+                        >
+                          <option value="return_1">Return 1 (12:30 PM)</option>
+                          <option value="return_2">Return 2 (02:30 PM)</option>
+                          <option value="return_3">Return 3 (05:30 PM)</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-semibold text-text-secondary block mb-1">وقت التحرك / Departure</label>
+                        <input
+                          type="text"
+                          value={newReturnDepartureTime}
+                          onChange={(e) => setNewReturnDepartureTime(e.target.value)}
+                          placeholder="02:30 PM"
+                          className="w-full px-2.5 py-1.5 rounded-lg bg-surface-container-low border border-border-whisper text-text-primary font-mono text-xs focus:ring-1 focus:ring-primary-container"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="font-bold text-text-primary block mb-1">Direction / الاتجاه</label>
+                      <select
+                        value={newDirection}
+                        onChange={(e) => {
+                          const dir = e.target.value as Direction;
+                          setNewDirection(dir);
+                          setNewTripType(dir);
+                          if (dir === 'to_campus') {
+                            setNewTimeSlot('morning_1');
+                            setNewDepartureTime('07:00 AM');
+                          } else {
+                            setNewTimeSlot('return_1');
+                            setNewDepartureTime('12:30 PM');
+                          }
+                        }}
+                        className="w-full px-3 py-2 rounded-lg bg-surface-container-low border border-border-whisper text-text-primary font-medium focus:ring-1 focus:ring-primary-container"
+                      >
+                        <option value="to_campus">To Campus (ذهاب للجامعة)</option>
+                        <option value="from_campus">From Campus (عودة للمنزل)</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="font-bold text-text-primary block mb-1">Shift / الشفت</label>
+                      <select
+                        value={newTimeSlot}
+                        onChange={(e) => {
+                          const slot = e.target.value as TimeSlot;
+                          setNewTimeSlot(slot);
+                          if (slot === 'morning_1') setNewDepartureTime('07:00 AM');
+                          else if (slot === 'morning_2') setNewDepartureTime('09:30 AM');
+                          else if (slot === 'return_1') setNewDepartureTime('12:30 PM');
+                          else if (slot === 'return_2') setNewDepartureTime('02:30 PM');
+                          else if (slot === 'return_3') setNewDepartureTime('05:30 PM');
+                        }}
+                        className="w-full px-3 py-2 rounded-lg bg-surface-container-low border border-border-whisper text-text-primary font-medium focus:ring-1 focus:ring-primary-container"
+                      >
+                        {newDirection === 'to_campus' ? (
+                          <>
+                            <option value="morning_1">Morning 1 (09:00 AM Arrival)</option>
+                            <option value="morning_2">Morning 2 (11:30 AM Arrival)</option>
+                          </>
+                        ) : (
+                          <>
+                            <option value="return_1">Return 1 (12:30 PM)</option>
+                            <option value="return_2">Return 2 (02:30 PM)</option>
+                            <option value="return_3">Return 3 (05:30 PM)</option>
+                          </>
+                        )}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="font-bold text-text-primary block mb-1">Departure Time / وقت التحرك</label>
+                    <input
+                      type="text"
+                      value={newDepartureTime}
+                      onChange={(e) => setNewDepartureTime(e.target.value)}
+                      placeholder="e.g. 07:00 AM"
+                      required
+                      className="w-full px-3 py-2 rounded-lg bg-surface-container-low border border-border-whisper text-text-primary font-mono focus:ring-1 focus:ring-primary-container"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Seats & Price */}
               <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="font-bold text-text-primary block mb-1">Direction / الاتجاه</label>
-                  <select
-                    value={newDirection}
-                    onChange={(e) => setNewDirection(e.target.value as Direction)}
-                    className="w-full px-3 py-2 rounded-lg bg-surface-container-low border border-border-whisper text-text-primary font-medium focus:ring-1 focus:ring-primary-container"
-                  >
-                    <option value="to_campus">To Campus (ذهاب للجامعة)</option>
-                    <option value="from_campus">From Campus (عودة للمنزل)</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="font-bold text-text-primary block mb-1">Shift / الشفت</label>
-                  <select
-                    value={newTimeSlot}
-                    onChange={(e) => setNewTimeSlot(e.target.value as TimeSlot)}
-                    className="w-full px-3 py-2 rounded-lg bg-surface-container-low border border-border-whisper text-text-primary font-medium focus:ring-1 focus:ring-primary-container"
-                  >
-                    <option value="morning_1">Morning 1 (09:00 AM Arrival)</option>
-                    <option value="morning_2">Morning 2 (11:30 AM Arrival)</option>
-                    <option value="return_1">Return 1 (12:30 PM)</option>
-                    <option value="return_2">Return 2 (02:30 PM)</option>
-                    <option value="return_3">Return 3 (05:30 PM)</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="font-bold text-text-primary block mb-1">Departure Time / وقت التحرك</label>
-                  <input
-                    type="text"
-                    value={newDepartureTime}
-                    onChange={(e) => setNewDepartureTime(e.target.value)}
-                    placeholder="e.g. 07:00 AM"
-                    required
-                    className="w-full px-3 py-2 rounded-lg bg-surface-container-low border border-border-whisper text-text-primary font-mono focus:ring-1 focus:ring-primary-container"
-                  />
-                </div>
-
                 <div>
                   <label className="font-bold text-text-primary block mb-1">Seats / عدد المقاعد</label>
                   <input
                     type="number"
                     value={newTotalSeats}
-                    onChange={(e) => setNewTotalSeats(parseInt(e.target.value))}
+                    onChange={(e) => setNewTotalSeats(parseInt(e.target.value) || 50)}
                     min={1}
                     max={100}
+                    className="w-full px-3 py-2 rounded-lg bg-surface-container-low border border-border-whisper text-text-primary font-mono focus:ring-1 focus:ring-primary-container"
+                  />
+                </div>
+
+                <div>
+                  <label className="font-bold text-text-primary block mb-1">Price (EGP) / سعر المقعد</label>
+                  <input
+                    type="number"
+                    value={newPrice}
+                    onChange={(e) => setNewPrice(parseFloat(e.target.value) || 160)}
+                    min={0}
+                    step={10}
                     className="w-full px-3 py-2 rounded-lg bg-surface-container-low border border-border-whisper text-text-primary font-mono focus:ring-1 focus:ring-primary-container"
                   />
                 </div>
@@ -852,15 +1245,22 @@ export default function ScheduleManager() {
                 <button
                   type="button"
                   onClick={() => setShowCreateModal(false)}
-                  className="px-4 py-2 rounded-lg text-text-secondary hover:bg-surface-container font-semibold"
+                  className="px-4 py-2 rounded-lg text-text-secondary hover:bg-surface-container font-semibold cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-lg bg-primary-container text-on-primary-container font-bold hover:opacity-90 shadow-sm"
+                  className="px-5 py-2 rounded-lg bg-primary-container text-white font-bold hover:opacity-90 shadow-sm flex items-center gap-1.5 cursor-pointer active:scale-95 transition"
                 >
-                  Confirm & Schedule Shift
+                  <span className="material-symbols-outlined text-base">
+                    {newTripType === 'both_ways' ? 'sync_alt' : 'add_circle'}
+                  </span>
+                  <span>
+                    {newTripType === 'both_ways'
+                      ? 'جدولة الذهاب والعودة معاً (Schedule Both Ways)'
+                      : 'Confirm & Schedule Shift'}
+                  </span>
                 </button>
               </div>
             </form>
@@ -966,16 +1366,16 @@ export default function ScheduleManager() {
                   onClick={() => setPurgeTarget('all')}
                   className={`p-3 rounded-xl border text-left transition-all ${purgeTarget === 'all' ? 'bg-rose-500/20 border-rose-500 text-text-primary font-bold' : 'bg-surface border-border-whisper text-text-secondary'}`}
                 >
-                  <div className="text-xs font-bold">Wipe All Shifts</div>
-                  <div className="text-[10px] text-text-tertiary">All shifts across all dates</div>
+                  <div className="text-xs font-bold">تصفير الكل / Wipe All Dates</div>
+                  <div className="text-[10px] text-text-tertiary">حذف كافة الشفتات لجميع التواريخ (All dates)</div>
                 </button>
                 <button
                   type="button"
                   onClick={() => setPurgeTarget('date')}
                   className={`p-3 rounded-xl border text-left transition-all ${purgeTarget === 'date' ? 'bg-rose-500/20 border-rose-500 text-text-primary font-bold' : 'bg-surface border-border-whisper text-text-secondary'}`}
                 >
-                  <div className="text-xs font-bold">Wipe For Date Only</div>
-                  <div className="text-[10px] text-text-tertiary">Only shifts on {selectedDate}</div>
+                  <div className="text-xs font-bold">تاريخ اليوم فقط / Selected Date</div>
+                  <div className="text-[10px] text-text-tertiary">فقط شفتات يوم {selectedDate}</div>
                 </button>
               </div>
             </div>

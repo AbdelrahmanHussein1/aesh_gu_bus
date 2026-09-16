@@ -1,5 +1,7 @@
 import Link from 'next/link';
 import { useApp } from '@/hooks/useAppStore';
+import ThemeToggle from '@/components/layout/ThemeToggle';
+import LanguageSwitcher from '@/components/layout/LanguageSwitcher';
 
 export default function SideNavBar() {
   const {
@@ -28,8 +30,13 @@ export default function SideNavBar() {
           <Link href={user ? (user.role === 'admin' ? '/admin' : user.role === 'supervisor' ? '/supervisor' : '/rider') : '/'}>
             <img
               alt="Galala University"
-              className="h-9 w-auto object-contain cursor-pointer hover:opacity-90 transition-opacity"
+              className="h-9 w-auto object-contain cursor-pointer hover:opacity-90 transition-opacity dark:hidden"
               src="/gu-logo-colored.png"
+            />
+            <img
+              alt="Galala University"
+              className="h-9 w-auto object-contain cursor-pointer hover:opacity-90 transition-opacity hidden dark:block"
+              src="/gu-logo-white.png"
             />
           </Link>
         )}
@@ -42,7 +49,7 @@ export default function SideNavBar() {
       </div>
 
       <div className="flex-1 overflow-y-auto px-3 py-4 space-y-4 scrollbar-thin">
-        {!sidebarCollapsed && (
+        {!sidebarCollapsed && role === 'rider' && (
           <Link href="/rider" className="bg-primary-container text-on-primary-container font-headline-sm py-3 rounded-lg w-full flex justify-center items-center gap-2 hover:opacity-90 transition-opacity">
             <span className="material-symbols-outlined icon-fill text-[20px]">add</span>
             New Booking
@@ -97,7 +104,15 @@ export default function SideNavBar() {
           </div>
         </div>
 
-        <div className="pt-4 border-t border-border-whisper flex flex-col gap-3">
+        <div className="pt-4 border-t border-border-whisper flex flex-col gap-2.5">
+          <div className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'justify-between px-3'}`}>
+            {!sidebarCollapsed && <span className="text-xs font-semibold text-text-secondary">Language / اللغة</span>}
+            <LanguageSwitcher />
+          </div>
+          <div className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'justify-between px-3'}`}>
+            {!sidebarCollapsed && <span className="text-xs font-semibold text-text-secondary">Theme / المظهر</span>}
+            <ThemeToggle />
+          </div>
           <button onClick={logout} className={`text-on-surface-variant hover:bg-surface-container-high transition-all flex items-center gap-3 px-3 py-2.5 rounded-xl w-full ${sidebarCollapsed ? 'justify-center' : ''}`} title="Logout">
             <span className="material-symbols-outlined">logout</span>
             {!sidebarCollapsed && <span className="font-body-md">Logout</span>}

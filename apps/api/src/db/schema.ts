@@ -1,5 +1,6 @@
+import * as dCore from 'drizzle-orm/pg-core';
 import { pgTable, uuid, integer, varchar, boolean, timestamp, numeric, jsonb, serial, text } from 'drizzle-orm/pg-core';
-import { relations } from 'drizzle-orm';
+import { relations, sql } from 'drizzle-orm';
 
 // Users
 export const users = pgTable('users', {
@@ -133,7 +134,10 @@ export const bookings = pgTable('bookings', {
   swappedFromBookingId: uuid('swapped_from_booking_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
-});
+}, (table) => ({
+  uniqueActiveSeat: dCore.uniqueIndex('unique_active_seat').on(table.tripId, table.seatNumber).where(sql`status IN ('confirmed', 'swapped')`),
+  tripSeatIdx: dCore.index('idx_bookings_trip_seat').on(table.tripId, table.seatNumber),
+}));
 
 // Boarding Logs
 export const boardingLogs = pgTable('boarding_logs', {
@@ -146,7 +150,9 @@ export const boardingLogs = pgTable('boarding_logs', {
   deviceInfo: varchar('device_info', { length: 255 }),
   latitude: numeric('latitude', { precision: 10, scale: 8 }),
   longitude: numeric('longitude', { precision: 11, scale: 8 }),
-});
+}, (table) => ({
+  bookingScannedIdx: dCore.index('idx_boarding_logs_booking_scanned').on(table.bookingId, table.scannedAt),
+}));
 
 // Swap Logs
 export const swapLogs = pgTable('swap_logs', {

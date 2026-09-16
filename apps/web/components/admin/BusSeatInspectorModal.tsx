@@ -3,6 +3,10 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useApp } from '@/hooks/useAppStore';
 import { getApiBaseUrl, getApiUrls } from '@/lib/api';
+import BoardingManifestPdfModal from '../supervisor/BoardingManifestPdfModal';
+import { checkManifestUnlock } from '@/lib/manifest-unlock';
+import type { ManifestItem } from '@/lib/types';
+import { SIMULATED_STUDENTS } from '@/lib/mock-data';
 
 interface BusSeatInspectorModalProps {
   tripId: number;
@@ -21,6 +25,7 @@ export default function BusSeatInspectorModal({ tripId, onClose }: BusSeatInspec
   const [lastSyncTime, setLastSyncTime] = useState<Date>(new Date());
   const [pollingDisabled, setPollingDisabled] = useState(false);
   const [tripNotFound, setTripNotFound] = useState(false);
+  const [showPdfModal, setShowPdfModal] = useState(false);
   const inFlightRef = useRef(false);
 
   const API_URL = getApiBaseUrl();
@@ -84,19 +89,7 @@ export default function BusSeatInspectorModal({ tripId, onClose }: BusSeatInspec
     }
 
     // Offline simulation dataset
-    const mockStudents = [
-      { name: 'عبدالرحمن إيهاب حسين', email: 'aes400196@gu.edu.eg', academicId: 'aes400196', faculty: 'Computer Science & AI', phone: '01021561196' },
-      { name: 'أحمد مصطفى محمود', email: 'eng202100@gu.edu.eg', academicId: 'eng202100', faculty: 'Engineering (Mechatronics)', phone: '01123456789' },
-      { name: 'سارة علي حسن', email: 'med300214@gu.edu.eg', academicId: 'med300214', faculty: 'Faculty of Medicine', phone: '01234567890' },
-      { name: 'عمر خالد السعيد', email: 'dent401201@gu.edu.eg', academicId: 'dent401201', faculty: 'Dentistry', phone: '01098765432' },
-      { name: 'مريم محمد إبراهيم', email: 'pharma10293@gu.edu.eg', academicId: 'pharma10293', faculty: 'Pharmacy', phone: '01512345678' },
-      { name: 'يوسف طارق السيد', email: 'bus502194@gu.edu.eg', academicId: 'bus502194', faculty: 'Business Administration', phone: '01055566778' },
-      { name: 'نور الدين وليد', email: 'art601928@gu.edu.eg', academicId: 'art601928', faculty: 'Art & Design', phone: '01199887766' },
-      { name: 'كريم هاني صبحي', email: 'ai702110@gu.edu.eg', academicId: 'ai702110', faculty: 'Artificial Intelligence', phone: '01211223344' },
-      { name: 'حبيبة شريف زكي', email: 'nurs801290@gu.edu.eg', academicId: 'nurs801290', faculty: 'Applied Health Sciences', phone: '01033445566' },
-      { name: 'مازن سامح عبدالجواد', email: 'arch902188@gu.edu.eg', academicId: 'arch902188', faculty: 'Architecture Engineering', phone: '01144556677' },
-    ];
-
+    const mockStudents = SIMULATED_STUDENTS;
     const totalSeats = 50;
     const generatedSeats = Array.from({ length: totalSeats }, (_, i) => {
       const sn = i + 1;
@@ -284,6 +277,33 @@ export default function BusSeatInspectorModal({ tripId, onClose }: BusSeatInspec
   const heldCount = useMemo(() => seats.filter(s => s.status === 'held').length, [seats]);
   const freeCount = useMemo(() => seats.filter(s => s.status === 'free').length, [seats]);
 
+  const inspectorManifest: ManifestItem[] = useMemo(() => {
+    return seats
+      .filter(s => s.booking)
+      .map(s => ({
+        bookingId: s.booking.id,
+        seatNumber: s.seatNumber,
+        status: 'confirmed',
+        bookingType: s.booking.bookingType || 'one_way',
+        legType: s.booking.legType || 'to_campus',
+        paymentStatus: s.booking.paymentStatus || 'paid',
+        receiptRef: s.booking.receiptRef || '—',
+        riderName: s.booking.student?.name || s.booking.riderName || 'Galala Student',
+        riderEmail: s.booking.student?.email || s.booking.riderEmail || 'student@gu.edu.eg',
+        academicId: s.booking.student?.academicId || '—',
+        faculty: s.booking.student?.faculty || '—',
+        phone: s.booking.student?.phone || '—',
+        boardingCode: s.booking.boardingCode || ('GU-' + s.seatNumber),
+        isBoarded: Boolean(s.booking.isBoarded || s.booking.boardingStatus === 'boarded' || s.booking.qrUsedAt),
+        boardedAt: s.booking.boardedAt || s.booking.qrUsedAt || null,
+      }));
+  }, [seats]);
+
+  const unlockStatus = useMemo(() => {
+    const boardedCount = inspectorManifest.filter(m => m.isBoarded).length;
+    return checkManifestUnlock(tripData, boardedCount);
+  }, [tripData, inspectorManifest]);
+
   if (!mounted) return null;
 
   return createPortal(
@@ -328,6 +348,28 @@ export default function BusSeatInspectorModal({ tripId, onClose }: BusSeatInspec
                 </div>
               </div>
             )}
+            {/* Official Boarding Manifest PDF Button */}
+            <button
+              type="button"
+              onClick={() => setShowPdfModal(true)}
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-sm cursor-pointer ${
+                unlockStatus.isUnlocked
+                  ? 'bg-blue-600 hover:bg-blue-700 text-white active:scale-95'
+                  : 'bg-surface text-text-secondary border border-border-whisper hover:border-blue-500/50'
+              }`}
+              title={unlockStatus.isUnlocked ? unlockStatus.reasonEn : unlockStatus.reasonAr}
+            >
+              <span className="material-symbols-outlined text-base">
+                {unlockStatus.isUnlocked ? 'picture_as_pdf' : 'lock'}
+              </span>
+              <span>{unlockStatus.isUnlocked ? 'Boarding PDF' : 'Boarding PDF'}</span>
+              {!unlockStatus.isUnlocked && (
+                <span className="text-[10px] bg-amber-500/15 text-amber-400 px-1 rounded font-mono font-normal">
+                  {unlockStatus.unlockTimeFormatted}
+                </span>
+              )}
+            </button>
+
             <button
               onClick={onClose}
               className="w-9 h-9 rounded-xl hover:bg-surface-container-high text-text-secondary hover:text-text-primary flex items-center justify-center transition-colors border border-border-whisper"
@@ -731,6 +773,16 @@ export default function BusSeatInspectorModal({ tripId, onClose }: BusSeatInspec
           </div>
         </div>
       </div>
+
+      {showPdfModal && (
+        <BoardingManifestPdfModal
+          trip={tripData}
+          manifest={inspectorManifest}
+          onClose={() => setShowPdfModal(false)}
+          supervisorName={tripData?.supervisors?.[0]?.nameEn || tripData?.supervisors?.[0]?.nameAr || 'Galala Line Supervisor'}
+          supervisorEmail={tripData?.supervisors?.[0]?.email || 'supervisor@gu.edu.eg'}
+        />
+      )}
     </div>,
     document.body
   );

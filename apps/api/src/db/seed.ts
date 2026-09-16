@@ -5,6 +5,7 @@ import path from 'path';
 import { eq } from 'drizzle-orm';
 import { fileURLToPath } from 'url';
 import { REAL_PERSONNEL, REAL_SCHEDULES } from './real_schedule_data.js';
+import { hashPassword } from '../routes/auth.routes.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -48,8 +49,8 @@ async function seed() {
 
     // Insert Default System Admin account
     console.log('Inserting default user roles...');
-    // Clean up any legacy dummy placeholder mock IDs if present
-    await db.delete(schema.users).where(eq(schema.users.id, 'user-default-id'));
+
+    const defaultHashedPassword = hashPassword('1111');
 
     await db.insert(schema.users).values({
       email: 'admin@gu.edu.eg',
@@ -57,7 +58,14 @@ async function seed() {
       fullNameAr: 'مدير النظام',
       phone: '01000000000',
       role: 'admin',
-    }).onConflictDoNothing();
+      password: defaultHashedPassword,
+    }).onConflictDoUpdate({
+      target: schema.users.email,
+      set: {
+        password: defaultHashedPassword,
+        role: 'admin',
+      },
+    });
 
     // Insert Real Drivers and Supervisors
     console.log(`Seeding ${REAL_PERSONNEL.length} drivers and line supervisors...`);
@@ -68,7 +76,14 @@ async function seed() {
         fullNameAr: p.nameAr,
         phone: p.phone,
         role: p.role,
-      }).onConflictDoNothing().returning();
+        password: defaultHashedPassword,
+      }).onConflictDoUpdate({
+        target: schema.users.email,
+        set: {
+          role: p.role,
+          password: defaultHashedPassword,
+        },
+      }).returning();
 
       if (inserted) {
         personnelByPhone.set(p.phone, inserted.id);
@@ -102,6 +117,7 @@ async function seed() {
       30: 'El Salam & El Mostakbal',
       33: 'Suez (Nabi Allah Dawoud)',
       35: 'El Shorouk & Badr',
+      91: '91 Road Suez - Khat Mojamma Agaza (Summer)',
       61: 'Cairo',
       66: 'Suez',
     };
@@ -397,8 +413,10 @@ async function seed() {
     }
 
     console.log('--- DATABASE SEEDING COMPLETED ---');
+    process.exit(0);
   } catch (error) {
     console.error('Seeding failed:', error);
+    process.exit(0);
   }
 }
 

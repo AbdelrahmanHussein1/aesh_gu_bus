@@ -16,8 +16,10 @@ dotenv.config();
 
 const port = parseInt(process.env.PORT || '3000');
 const host = process.env.HOST || '0.0.0.0';
-const jwtSecret = process.env.JWT_SECRET;
-if (!jwtSecret) throw new Error('JWT_SECRET must be configured');
+const jwtSecret = process.env.JWT_SECRET || '';
+if (!jwtSecret) {
+  throw new Error('JWT_SECRET environment variable is missing.');
+}
 const resendApiKey = process.env.RESEND_API_KEY || 're_mock_key';
 
 const fastify = Fastify({
@@ -28,6 +30,64 @@ const fastify = Fastify({
 await fastify.register(cors, {
   origin: true, // Allow all origins for production web + mobile app
   credentials: true,
+});
+
+// Security Headers Hook
+fastify.addHook('onSend', async (request, reply) => {
+  reply.header('X-Content-Type-Options', 'nosniff');
+  reply.header('X-Frame-Options', 'SAMEORIGIN');
+  reply.header('X-XSS-Protection', '1; mode=block');
+  reply.header('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');
+  reply.header('Referrer-Policy', 'strict-origin-when-cross-origin');
+});
+
+// In-Memory Rate Limiting for Auth Endpoints (15 requests per 60s per IP)
+const authRateLimitMap = new Map<string, { count: number; expiresAt: number }>();
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, data] of authRateLimitMap.entries()) {
+    if (data.expiresAt <= now) {
+      authRateLimitMap.delete(ip);
+    }
+  }
+}, 30000);
+
+fastify.addHook('onRequest', async (request, reply) => {
+  if (request.url.startsWith('/api/auth/')) {
+    const ip = request.ip || 'unknown';
+    const now = Date.now();
+    const entry = authRateLimitMap.get(ip);
+
+    if (!entry || entry.expiresAt <= now) {
+      authRateLimitMap.set(ip, { count: 1, expiresAt: now + 60000 });
+    } else {
+      entry.count += 1;
+      if (entry.count > 25) {
+        reply.status(429).send({
+          error: 'RATE_LIMIT_EXCEEDED',
+          message: 'Too many requests. Please wait one minute before trying again.',
+          messageAr: 'تم تجاوز الحد الأقصى للمحاولات. يرجى الانتظار لمدة دقيقة والمحاولة مجدداً.',
+        });
+        return;
+      }
+    }
+  }
+});
+
+// Request Body Sanitizer Hook (Guards against script injections)
+fastify.addHook('preValidation', async (request: any) => {
+  if (request.body && typeof request.body === 'object') {
+    const sanitize = (obj: any) => {
+      for (const key of Object.keys(obj)) {
+        if (typeof obj[key] === 'string') {
+          obj[key] = obj[key].replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '').trim();
+        } else if (obj[key] && typeof obj[key] === 'object') {
+          sanitize(obj[key]);
+        }
+      }
+    };
+    sanitize(request.body);
+  }
 });
 
 await fastify.register(jwt, {

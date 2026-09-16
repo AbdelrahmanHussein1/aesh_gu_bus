@@ -6,12 +6,10 @@ import { redis } from '../redis.js';
 import { eq, and, desc, inArray, sql } from 'drizzle-orm';
 import { WebSocketHub } from '../websocket/hub.js';
 import { EmailService } from '../services/email.service.js';
-import { getHoursUntilDeparture, getTripDepartureDateTime } from '../utils/trip-time.js';
+import { getHoursUntilDeparture } from '../utils/trip-time.js';
 import { CacheService } from '../services/cache.service.js';
 
-const jwtSecret = process.env.JWT_SECRET ?? (() => {
-  throw new Error('JWT_SECRET must be configured');
-})();
+const jwtSecret = process.env.JWT_SECRET || '';
 const QR_EXPIRY_HOURS = 24;
 
 function getQrExpiresAt(): Date {
@@ -130,7 +128,11 @@ export async function bookingsRoutes(fastify: FastifyInstance) {
     const { booking, trip, qrToken } = bookingResult;
 
     // Release temporary Redis lock
-    await redis.del(`seat_lock:${tripId}:${seatNumber}`);
+    try {
+      await redis.del(`seat_lock:${tripId}:${seatNumber}`);
+    } catch (err) {
+      console.warn(`Failed to delete seat lock for trip ${tripId} seat ${seatNumber}:`, err);
+    }
 
     // Broadcast seat booked event to all connected clients
     WebSocketHub.broadcastToTripRoom(tripId, {
@@ -313,8 +315,12 @@ export async function bookingsRoutes(fastify: FastifyInstance) {
 
     const { arrivalBooking, returnBooking, toCampusTrip, fromCampusTrip, arrivalQR, returnQR, paymentId } = roundTripResult;
 
-    await redis.del(`seat_lock:${toCampusTripId}:${toCampusSeatNumber}`);
-    await redis.del(`seat_lock:${fromCampusTripId}:${fromCampusSeatNumber}`);
+    try {
+      await redis.del(`seat_lock:${toCampusTripId}:${toCampusSeatNumber}`);
+      await redis.del(`seat_lock:${fromCampusTripId}:${fromCampusSeatNumber}`);
+    } catch (err) {
+      console.warn('Failed to delete seat locks for round trip:', err);
+    }
 
     WebSocketHub.broadcastToTripRoom(toCampusTripId, { type: 'seat_booked', tripId: toCampusTripId, seatNumber: toCampusSeatNumber });
     WebSocketHub.broadcastToTripRoom(fromCampusTripId, { type: 'seat_booked', tripId: fromCampusTripId, seatNumber: fromCampusSeatNumber });

@@ -3,17 +3,33 @@ import { generateBoardingCode } from '@bus-aesh/shared';
 import { getTodayDateString } from './dateUtils';
 
 const ERP_ROUTES: Route[] = [
-  { id: 29, nameAr: 'بورتوفيق - السويس', nameEn: 'Port Tawfik (Suez)' },
-  { id: 33, nameAr: 'السويس (مسجد نبى الله داوود)', nameEn: 'Suez (Nabi Allah Dawoud)' },
-  { id: 30, nameAr: 'السلام - المستقبل', nameEn: 'El Salam & El Mostakbal' },
+  // Cairo
   { id: 1, nameAr: 'العبور', nameEn: 'El Obour' },
-  { id: 3, nameAr: 'اكتوبر', nameEn: '6th of October' },
-  { id: 4, nameAr: 'حدائق الاهرام', nameEn: 'Hadayek Al Ahram' },
+  { id: 3, nameAr: '6 أكتوبر', nameEn: '6th of October' },
+  { id: 4, nameAr: 'حدائق الأهرام', nameEn: 'Hadayek Al Ahram' },
   { id: 6, nameAr: 'جامعة القاهرة', nameEn: 'Cairo University' },
-  { id: 7, nameAr: 'المعادى', nameEn: 'Maadi' },
+  { id: 7, nameAr: 'المعادي', nameEn: 'Maadi' },
+  { id: 11, nameAr: 'الحلمية وجسر السويس', nameEn: 'El Helmeya & Gesr El Suez' },
   { id: 12, nameAr: 'مدينة نصر', nameEn: 'Nasr City' },
-  { id: 25, nameAr: 'مدينتى', nameEn: 'Madinaty' },
-  { id: 27, nameAr: 'التجمع الخامس', nameEn: 'New Cairo (5th Settlement)' },
+  { id: 14, nameAr: 'المقطم', nameEn: 'El Mokattam' },
+  { id: 15, nameAr: 'حلوان و 15 مايو', nameEn: 'Helwan & 15 May' },
+  { id: 16, nameAr: 'العاشر من رمضان', nameEn: '10th of Ramadan' },
+  { id: 17, nameAr: 'الرحاب', nameEn: 'El Rehab' },
+  { id: 19, nameAr: 'مصر الجديدة وكوبري القبة', nameEn: 'Heliopolis & Kobri El Kobba' },
+  { id: 24, nameAr: 'الدائري', nameEn: 'Ring Road' },
+  { id: 25, nameAr: 'مدينتي', nameEn: 'Madinaty' },
+  { id: 26, nameAr: 'شبرا ورمسيس', nameEn: 'Shobra & Ramses' },
+  { id: 27, nameAr: 'القاهرة الجديدة (التجمع الخامس)', nameEn: 'New Cairo (5th Settlement)' },
+  { id: 28, nameAr: 'زهراء مدينة نصر والتجمع الأول', nameEn: 'Zahraa Nasr City & 1st Settlement' },
+
+  // Suez
+  { id: 29, nameAr: 'بورتوفيق - السويس', nameEn: 'Port Tawfik (Suez)' },
+  { id: 30, nameAr: 'السلام والمستقبل', nameEn: 'El Salam & El Mostakbal' },
+  { id: 33, nameAr: 'السويس (مسجد نبي الله داوود)', nameEn: 'Suez (Nabi Allah Dawoud)' },
+  { id: 91, nameAr: 'طريق 91 السويس - خط مجمع إجازة (صيفي)', nameEn: '91 Road Suez - Summer Vacation' },
+
+  // Shorouk & Badr
+  { id: 35, nameAr: 'الشروق وبدر', nameEn: 'El Shorouk & Badr' },
 ];
 
 // Real Drivers and Line Supervisors directory

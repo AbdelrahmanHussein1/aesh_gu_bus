@@ -71,7 +71,9 @@ export class SessionService {
           // Re-populate Redis cache
           try {
             await redis.set(redisKey, sessionId, 'EX', SESSION_TTL_SECONDS);
-          } catch {}
+          } catch (err) {
+            console.warn('[SessionService] Redis cache re-population failed:', err);
+          }
           return true;
         }
       }
@@ -89,7 +91,9 @@ export class SessionService {
     const redisKey = `active_session:${userId}`;
     try {
       await redis.del(redisKey);
-    } catch {}
+    } catch (err) {
+      console.warn('[SessionService] Redis cache re-population failed:', err);
+    }
 
     try {
       await db.update(schema.users)

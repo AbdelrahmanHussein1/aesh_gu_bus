@@ -1,5 +1,11 @@
 User-agent: *
 Allow: /
+Allow: /rider
+Allow: /pass
+Allow: /privacy
+Allow: /terms
 Disallow: /admin
 Disallow: /supervisor
 Disallow: /api/
+
+Sitemap: https://bus.gu.edu.eg/sitemap.xml

@@ -41,8 +41,10 @@ jobs:
       - name: Build Next.js Web Frontend
         run: npm run build --workspace=apps/web
 
-      - name: Package Production Distribution Bundle
-        run: node scripts/package-release.js
+      - name: Package Production Distribution Bundles
+        run: |
+          node scripts/package-release.js
+          node scripts/package-vbox.js
 
       - name: Determine Release Tag
         id: vars
@@ -62,14 +64,16 @@ jobs:
           prerelease: false
           files: dist-release/*.zip
           body: |
-            ## 🚌 Bus Aesh — Galala University Transport Service
+            ## 🚌 Bus Aesh — Galala University Smart Transit Platform
             ### Production Release ${{ steps.vars.outputs.tag }}
 
-            This release package contains the complete, pre-built, production-ready system:
-            - **Web Booking Portal**: Next.js 15 SSR & client application with 5-shift scheduling and role switcher.
-            - **Fastify API Server**: Real-time seat reservation, atomic transactions, QR pass generation, and administrative hub.
-            - **Admin Operations Console**: Shift creation, roster replication (reuse old schedules across dates), and occupancy monitors.
-            - **Personnel Directory**: Integrated driver and line supervisor (*مرافقي الخطوط*) profiles with direct contact actions.
+            This release delivers major operational features, stability enhancements, and critical sync fixes:
+            - **Both-Way (ذهاب وعودة) Dual-Shift Scheduling**: 3-option trip type selector in Admin Console to atomically schedule coordinated morning arrival and afternoon return shifts with unified fleet assignments.
+            - **Supervisor Live Boarding & Manual Check-In**: One-click manual check-in button (`تسجيل صعود`) for each passenger on the live manifest, with real-time boarding count synchronization and audio feedback.
+            - **Rider UI Refresh & Real-Time Sync**: Instant manual refresh button (`تحديث الرحلات`) for live bus availability, redesigned shift cards, and improved seat locking clarity.
+            - **Schedule Purge Parity**: Instant synchronization between PostgreSQL and Redis cache when clearing shifts, eliminating ghost scheduled trips.
+            - **Optimized PDF Manifests**: Professional, well-structured passenger manifests with clear Arabic typography, driver/supervisor headers, and seat layouts.
+            - **Rock-Solid Docker Boot**: Cleaned seeding queries and enforced process termination to prevent container hangs and eliminate Cloudflare 502 Bad Gateway errors.
 
             ---
 

@@ -14,8 +14,11 @@ const stageDir = path.join(distReleaseDir, releaseName);
 console.log(`📦 Packaging ${releaseName}...`);
 
 // 1. Ensure fresh release staging directory
-if (fs.existsSync(distReleaseDir)) {
-  fs.rmSync(distReleaseDir, { recursive: true, force: true });
+if (fs.existsSync(stageDir)) {
+  fs.rmSync(stageDir, { recursive: true, force: true });
+}
+if (!fs.existsSync(distReleaseDir)) {
+  fs.mkdirSync(distReleaseDir, { recursive: true });
 }
 fs.mkdirSync(stageDir, { recursive: true });
 

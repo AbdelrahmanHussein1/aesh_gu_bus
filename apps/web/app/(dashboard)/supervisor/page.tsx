@@ -7,7 +7,7 @@ import QRScanner from '@/components/supervisor/QRScanner';
 import SwapModal from '@/components/supervisor/SwapModal';
 
 export default function SupervisorDashboardPage() {
-  const { user, role, switchRole, isAuthLoading } = useApp();
+  const { user, role, isAuthLoading } = useApp();
   useEffect(() => { document.title = 'Supervisor Operations — Bus Aesh'; }, []);
 
   if (isAuthLoading) {

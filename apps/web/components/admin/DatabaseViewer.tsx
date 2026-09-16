@@ -2,6 +2,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useApp } from '@/hooks/useAppStore';
 import { getApiBaseUrl } from '@/lib/api';
+import { SIMULATED_DATABASE_USERS, SIMULATED_DATABASE_BOOKINGS, SIMULATED_DATABASE_BUSES } from '@/lib/mock-data';
 
 type DatasetTab = 'users' | 'bookings' | 'trips' | 'buses';
 
@@ -52,14 +53,7 @@ export default function DatabaseViewer() {
     }
 
     // Offline mock users
-    const mockUsersList = [
-      { id: 'usr-01', fullName: 'عبدالرحمن إيهاب حسين', fullNameAr: 'عبدالرحمن إيهاب حسين', email: 'aes400196@gu.edu.eg', phone: '01021561196', role: 'rider', academicId: 'aes400196', faculty: 'Computer Science & AI', isSheerIdVerified: true, createdAt: '2026-09-07T10:15:00Z' },
-      { id: 'usr-02', fullName: 'أحمد مصطفى محمود', fullNameAr: 'أحمد مصطفى محمود', email: 'eng202100@gu.edu.eg', phone: '01123456789', role: 'rider', academicId: 'eng202100', faculty: 'Engineering', isSheerIdVerified: true, createdAt: '2026-09-06T14:20:00Z' },
-      { id: 'usr-03', fullName: 'سارة علي حسن', fullNameAr: 'سارة علي حسن', email: 'med300214@gu.edu.eg', phone: '01234567890', role: 'rider', academicId: 'med300214', faculty: 'Medicine', isSheerIdVerified: true, createdAt: '2026-09-05T09:00:00Z' },
-      { id: 'usr-04', fullName: 'محمد صبحي', fullNameAr: 'محمد صبحي', email: 'driver.sobhi@gu.edu.eg', phone: '01021561196', role: 'supervisor', academicId: 'DRV-101', faculty: 'Fleet Operations (Driver)', isSheerIdVerified: true, createdAt: '2026-06-01T08:00:00Z' },
-      { id: 'usr-05', fullName: 'ممدوح بدران', fullNameAr: 'ممدوح بدران', email: 'super.badran@gu.edu.eg', phone: '01275467090', role: 'supervisor', academicId: 'SUP-202', faculty: 'Line Operations (Supervisor)', isSheerIdVerified: true, createdAt: '2026-06-01T08:00:00Z' },
-      { id: 'usr-06', fullName: 'Galala Admin Operations', fullNameAr: 'مسؤول العمليات', email: 'admin@gu.edu.eg', phone: '01000000001', role: 'admin', academicId: 'ADM-001', faculty: 'Transport Management', isSheerIdVerified: true, createdAt: '2026-05-01T00:00:00Z' },
-    ];
+    const mockUsersList = SIMULATED_DATABASE_USERS;
     setUsers(mockUsersList);
     setUserCounts({
       total: mockUsersList.length,
@@ -90,47 +84,7 @@ export default function DatabaseViewer() {
     }
 
     // Offline mock bookings
-    const mockBookingsList = [
-      {
-        id: 'bk-9901',
-        seatNumber: 14,
-        status: 'confirmed',
-        bookingType: 'one_way',
-        legType: 'to_campus',
-        boardingCode: 'GU-8A2F',
-        paymentStatus: 'paid',
-        receiptRef: 'INSTA-88291',
-        createdAt: '2026-09-07T08:30:00Z',
-        user: { fullName: 'عبدالرحمن إيهاب حسين', email: 'aes400196@gu.edu.eg', phone: '01021561196', academicId: 'aes400196', faculty: 'Computer Science & AI' },
-        trip: { id: 2901, tripDate: '2026-09-07', departureTime: '07:00 AM', direction: 'to_campus', routeName: 'بورتوفيق - السويس', busName: 'باص 101' },
-      },
-      {
-        id: 'bk-9902',
-        seatNumber: 5,
-        status: 'confirmed',
-        bookingType: 'one_way',
-        legType: 'to_campus',
-        boardingCode: 'GU-1F4C',
-        paymentStatus: 'paid',
-        receiptRef: 'VISA-44910',
-        createdAt: '2026-09-07T08:45:00Z',
-        user: { fullName: 'أحمد مصطفى محمود', email: 'eng202100@gu.edu.eg', phone: '01123456789', academicId: 'eng202100', faculty: 'Engineering' },
-        trip: { id: 2901, tripDate: '2026-09-07', departureTime: '07:00 AM', direction: 'to_campus', routeName: 'بورتوفيق - السويس', busName: 'باص 101' },
-      },
-      {
-        id: 'bk-9903',
-        seatNumber: 22,
-        status: 'swapped',
-        bookingType: 'one_way',
-        legType: 'to_campus',
-        boardingCode: 'GU-3C9A',
-        paymentStatus: 'paid',
-        receiptRef: 'TELDA-12903',
-        createdAt: '2026-09-07T09:10:00Z',
-        user: { fullName: 'سارة علي حسن', email: 'med300214@gu.edu.eg', phone: '01234567890', academicId: 'med300214', faculty: 'Medicine' },
-        trip: { id: 2902, tripDate: '2026-09-07', departureTime: '09:30 AM', direction: 'to_campus', routeName: 'بورتوفيق - السويس', busName: 'باص 102' },
-      },
-    ];
+    const mockBookingsList = SIMULATED_DATABASE_BOOKINGS;
     setBookings(mockBookingsList);
     setLoading(false);
   }, [isOffline, token, API_URL]);

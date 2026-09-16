@@ -162,59 +162,59 @@ export default function RegisterForm({ onSwitchTab }: Props = {}) {
 
       {step === 'details' ? (
         <form onSubmit={handleSendVerification} autoComplete="off" className="flex flex-col gap-4">
-          <div className="flex flex-col gap-1.5">
+          <div className="flex flex-col gap-1.5 text-start">
             <label className="text-xs font-semibold text-text-primary" htmlFor="reg-name">Student Full Name (الاسم بالكامل)</label>
             <div className="relative">
-              <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary text-base">badge</span>
+              <span className="material-symbols-outlined absolute start-3 top-1/2 -translate-y-1/2 text-text-secondary text-base pointer-events-none">badge</span>
               <input
                 id="reg-name" type="text" required placeholder="Ahmed Mohamed Ali"
                 autoComplete="off"
                 value={name} onChange={e => setName(e.target.value)}
-                className="w-full h-10 pl-9 pr-3 bg-surface-bright border border-border-whisper rounded-lg text-sm text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:border-primary-container"
+                className="w-full h-10 ps-9 pe-3 bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg text-sm text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:border-primary-container"
               />
             </div>
           </div>
 
-          <div className="flex flex-col gap-1.5">
+          <div className="flex flex-col gap-1.5 text-start">
             <label className="text-xs font-semibold text-text-primary" htmlFor="reg-email">Galala Email (@gu.edu.eg)</label>
             <div className="relative">
-              <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary text-base">school</span>
+              <span className="material-symbols-outlined absolute start-3 top-1/2 -translate-y-1/2 text-text-secondary text-base pointer-events-none">school</span>
               <input
                 id="reg-email" type="email" required placeholder="student@gu.edu.eg"
                 autoComplete="off"
                 value={email} onChange={e => setEmail(e.target.value)}
-                className="w-full h-10 pl-9 pr-3 bg-surface-bright border border-border-whisper rounded-lg text-sm text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:border-primary-container"
+                className="w-full h-10 ps-9 pe-3 bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg text-sm text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:border-primary-container"
               />
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <div className="flex flex-col gap-1.5">
+            <div className="flex flex-col gap-1.5 text-start">
               <label className="text-xs font-semibold text-text-primary" htmlFor="reg-academic-id">Academic ID (رقم القيد)</label>
               <input
                 id="reg-academic-id" type="text" required placeholder="21010012"
                 autoComplete="off"
                 value={academicId} onChange={e => setAcademicId(e.target.value)}
-                className="w-full h-10 px-3 bg-surface-bright border border-border-whisper rounded-lg text-sm text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:border-primary-container"
+                className="w-full h-10 px-3 bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg text-sm text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:border-primary-container"
               />
             </div>
 
-            <div className="flex flex-col gap-1.5">
+            <div className="flex flex-col gap-1.5 text-start">
               <label className="text-xs font-semibold text-text-primary" htmlFor="reg-phone">Phone No. (الموبايل)</label>
               <input
                 id="reg-phone" type="tel" required placeholder="010XXXXXXXX"
                 autoComplete="off"
                 value={phone} onChange={e => setPhone(e.target.value)}
-                className="w-full h-10 px-3 bg-surface-bright border border-border-whisper rounded-lg text-sm text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:border-primary-container"
+                className="w-full h-10 px-3 bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg text-sm text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:border-primary-container"
               />
             </div>
           </div>
 
-          <div className="flex flex-col gap-1.5">
+          <div className="flex flex-col gap-1.5 text-start">
             <label className="text-xs font-semibold text-text-primary" htmlFor="reg-faculty">Faculty / Field (الكلية)</label>
             <select
               id="reg-faculty" value={faculty} onChange={e => setFaculty(e.target.value)}
-              className="w-full h-10 px-3 bg-surface-bright border border-border-whisper rounded-lg text-sm text-text-primary focus:outline-none focus:border-primary-container"
+              className="w-full h-10 px-3 bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg text-sm text-text-primary focus:outline-none focus:border-primary-container"
             >
               {FACULTIES.map(f => (
                 <option key={f} value={f}>{f}</option>
@@ -222,15 +222,15 @@ export default function RegisterForm({ onSwitchTab }: Props = {}) {
             </select>
           </div>
 
-          <div className="flex flex-col gap-1.5">
+          <div className="flex flex-col gap-1.5 text-start">
             <label className="text-xs font-semibold text-text-primary" htmlFor="reg-password">Password (كلمة المرور)</label>
             <div className="relative">
-              <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary text-base">lock</span>
+              <span className="material-symbols-outlined absolute start-3 top-1/2 -translate-y-1/2 text-text-secondary text-base pointer-events-none">lock</span>
               <input
                 id="reg-password" type="password" required placeholder="••••••••" minLength={6}
                 autoComplete="new-password"
                 value={password} onChange={e => setPassword(e.target.value)}
-                className="w-full h-10 pl-9 pr-3 bg-surface-bright border border-border-whisper rounded-lg text-sm text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:border-primary-container"
+                className="w-full h-10 ps-9 pe-3 bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg text-sm text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:border-primary-container"
               />
             </div>
           </div>
@@ -269,20 +269,20 @@ export default function RegisterForm({ onSwitchTab }: Props = {}) {
             </a>
           </div>
 
-          <div className="flex flex-col gap-1.5">
+          <div className="flex flex-col gap-1.5 text-start">
             <label className="text-xs font-semibold text-text-primary" htmlFor="reg-code">6-Digit Verification Code (كود التحقق من الإيميل)</label>
             <input
               id="reg-code" type="text" maxLength={6} required placeholder="••••••"
               value={verificationCode} onChange={e => setVerificationCode(e.target.value.replace(/\D/g, ''))}
               autoFocus
-              className="w-full h-12 text-center text-2xl tracking-widest font-mono font-bold bg-surface-bright border border-border-whisper rounded-lg text-text-primary focus:outline-none focus:border-primary-container"
+              className="w-full h-12 text-center text-2xl tracking-widest font-mono font-bold bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg text-text-primary focus:outline-none focus:border-primary-container"
             />
           </div>
 
           <div className="flex gap-2 mt-2">
             <button
               type="button" onClick={() => setStep('details')}
-              className="flex-1 h-11 bg-surface-bright border border-border-whisper text-text-secondary hover:text-text-primary rounded-lg text-sm font-medium"
+              className="flex-1 h-11 bg-[var(--card-bg)] border border-[var(--card-border)] text-text-secondary hover:text-text-primary rounded-lg text-sm font-medium transition-colors cursor-pointer"
             >
               Back
             </button>

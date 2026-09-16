@@ -54,12 +54,12 @@ export default function ForgotPasswordForm({ onBack }: Props) {
         </div>
       )}
 
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-2 text-start">
         <label className="font-body-sm text-body-sm text-text-primary font-medium" htmlFor="forgot-email">University Email</label>
         <div className="relative">
-          <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary text-lg">mail</span>
-          <input id="forgot-email" type="email" required placeholder="student@galala.edu.eg" value={email} onChange={e => setEmail(e.target.value)}
-            className="w-full h-[44px] pl-10 pr-4 bg-surface-bright border border-border-whisper rounded-[6px] font-body-md text-body-md text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:border-primary-container focus:ring-1 focus:ring-primary-container transition-all" />
+          <span className="material-symbols-outlined absolute start-3 top-1/2 -translate-y-1/2 text-text-secondary text-lg pointer-events-none">mail</span>
+          <input id="forgot-email" type="email" required placeholder="student@gu.edu.eg" value={email} onChange={e => setEmail(e.target.value)}
+            className="w-full h-[44px] ps-10 pe-4 bg-[var(--input-bg)] border border-[var(--input-border)] rounded-[6px] font-body-md text-body-md text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:border-primary-container focus:ring-1 focus:ring-primary-container transition-all" />
         </div>
       </div>
 

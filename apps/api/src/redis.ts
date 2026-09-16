@@ -115,6 +115,21 @@ class MemoryRedis {
     return val !== null ? 1 : 0;
   }
 
+  async incr(key: string): Promise<number> {
+    const current = await this.get(key);
+    const num = current ? parseInt(current, 10) + 1 : 1;
+    const item = this.store.get(key);
+    this.store.set(key, { value: String(num), expiresAt: item?.expiresAt });
+    return num;
+  }
+
+  async expire(key: string, seconds: number): Promise<number> {
+    const item = this.store.get(key);
+    if (!item) return 0;
+    item.expiresAt = Date.now() + seconds * 1000;
+    return 1;
+  }
+
   async flushall(): Promise<string> {
     this.store.clear();
     return 'OK';
@@ -163,3 +178,6 @@ export const redis: any = new Proxy(memoryRedis, {
     return () => null;
   }
 });
+
+export const redisClient = redis;
+

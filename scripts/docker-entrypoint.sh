@@ -41,21 +41,24 @@ node apps/api/dist/db/seed.js || {
 
 echo "========================================================"
 echo "  ⚡ Starting Services:"
-echo "     • Fastify API Backend : http://0.0.0.0:3000"
-echo "     • Next.js Web Portal  : http://0.0.0.0:3001"
+echo "     • Fastify API Backend : http://127.0.0.1:3000"
+echo "     • Next.js Web Portal  : http://127.0.0.1:3002"
+echo "     • Gateway Reverse Proxy: http://0.0.0.0:3001 (WS & HTTP)"
 echo "========================================================"
 
-# 4. Start Fastify API
+# 4. Start Fastify API (Internal Port 3000)
 node apps/api/dist/index.js &
 API_PID=$!
 
-# 5. Start Next.js Web App
-if [ -f "node_modules/next/dist/bin/next" ]; then
-  node node_modules/next/dist/bin/next start apps/web -p 3001 -H 0.0.0.0 &
-else
-  npm run start --workspace=apps/web &
-fi
+# 5. Start Next.js Web App (Internal Port 3002)
+PORT=3002 node node_modules/next/dist/bin/next start apps/web -p 3002 -H 0.0.0.0 &
 WEB_PID=$!
 
-# Wait for services
-wait -n $API_PID $WEB_PID
+# 6. Start WebSocket & HTTP Reverse Proxy Gateway (Public Port 3001)
+node scripts/gateway.js &
+GATEWAY_PID=$!
+
+# Wait for background processes (POSIX / Alpine BusyBox compliant)
+trap "kill -TERM $API_PID $WEB_PID $GATEWAY_PID 2>/dev/null; exit 0" TERM INT
+wait $API_PID $WEB_PID $GATEWAY_PID
+
