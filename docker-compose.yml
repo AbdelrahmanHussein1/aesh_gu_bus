@@ -7,7 +7,8 @@ services:
       - "3000:3000"
       - "3001:3001"
     env_file:
-      - apps/api/.env
+      - path: apps/api/.env
+        required: false
     environment:
       - NODE_ENV=production
       - PORT=3000
@@ -16,11 +17,29 @@ services:
       - REDIS_URL=redis://redis:6379
       - JWT_SECRET=${JWT_SECRET:-changeme-in-production}
       - NEXT_PUBLIC_API_URL=http://localhost:3000
+      - N8N_BOOKING_WEBHOOK_URL=${N8N_BOOKING_WEBHOOK_URL:-http://n8n:5678/webhook/galala-bus-confirm}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_started
+    restart: unless-stopped
+
+  n8n:
+    image: n8nio/n8n:latest
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_HOST=0.0.0.0
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - N8N_SECURE_COOKIE=false
+      - N8N_EDITOR_BASE_URL=http://localhost:5678
+      - WEBHOOK_URL=http://localhost:5678/
+      - N8N_RUNNERS_ENABLED=true
+      - TZ=${TZ:-Africa/Cairo}
+    volumes:
+      - n8n_data:/home/node/.n8n
     restart: unless-stopped
 
   cloudflared:
@@ -61,3 +80,4 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  n8n_data:

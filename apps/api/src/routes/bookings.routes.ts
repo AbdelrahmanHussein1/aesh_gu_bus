@@ -16,9 +16,55 @@ function getQrExpiresAt(): Date {
   return new Date(Date.now() + QR_EXPIRY_HOURS * 60 * 60 * 1000);
 }
 
+import { randomBytes } from 'node:crypto';
+
 function generatePaymentId(): string {
   return `TXN-${Math.random().toString(36).substring(2, 9).toUpperCase()}`;
 }
+
+function generateBookingRef(): string {
+  return `GU-${randomBytes(5).toString('hex').toUpperCase()}`;
+}
+
+type BookingConfirmation = {
+  studentName: string;
+  studentId: string;
+  studentEmail: string;
+  route: string;
+  pickup: string;
+  dropoff: string;
+  date: string;
+  departureTime: string;
+  returnTime: string;
+  seatNumber: number;
+  returnSeatNumber?: number;
+  price: string;
+  bookingRef: string;
+  paymentRef: string;
+};
+
+async function sendBookingConfirmation(booking: BookingConfirmation): Promise<void> {
+  const webhookUrl = process.env.N8N_BOOKING_WEBHOOK_URL;
+  if (!webhookUrl) {
+    console.warn('N8N_BOOKING_WEBHOOK_URL is not configured; ticket email was not requested.');
+    return;
+  }
+
+  try {
+    const response = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(booking),
+    });
+
+    if (!response.ok) {
+      console.error(`Booking confirmation webhook failed (${response.status}) for ${booking.bookingRef}.`);
+    }
+  } catch (error) {
+    console.error(`Booking confirmation webhook failed for ${booking.bookingRef}:`, error);
+  }
+}
+
 
 export async function bookingsRoutes(fastify: FastifyInstance) {
   // 1. Create one-way booking (Pessimistic Lock & Unique Index Concurrency Proof)
@@ -79,6 +125,7 @@ export async function bookingsRoutes(fastify: FastifyInstance) {
         const paymentStatus = paymentMethod === 'visa_mock' ? 'paid' : 'receipt_uploaded';
         const qrExpiresAt = getQrExpiresAt();
         const paymentId = generatePaymentId();
+        const bookingRef = generateBookingRef();
 
         const boardingCode = generateBoardingCode();
 
@@ -90,6 +137,7 @@ export async function bookingsRoutes(fastify: FastifyInstance) {
           bookingType,
           legType,
           boardingCode,
+          bookingRef,
           paymentId,
           paymentStatus,
           receiptImage,
@@ -149,9 +197,29 @@ export async function bookingsRoutes(fastify: FastifyInstance) {
       console.error('Failed to send confirmation email:', err);
     });
 
+    // Payment confirmation must never wait on, or fail because of, ticket delivery.
+    if (booking.paymentStatus === 'paid') {
+      void sendBookingConfirmation({
+        studentName: userName,
+        studentId: request.user.academicId || userId,
+        studentEmail: userEmail,
+        route: trip.route.nameEn,
+        pickup: legType === 'from_campus' ? 'Galala University' : trip.route.nameEn,
+        dropoff: legType === 'from_campus' ? trip.route.nameEn : 'Galala University',
+        date: trip.tripDate,
+        departureTime: trip.departureTime.toISOString(),
+        returnTime: trip.departureTime.toISOString(), // one way
+        seatNumber,
+        price: `${trip.priceEgp || '160'} EGP`,
+        bookingRef: booking.bookingRef!,
+        paymentRef: booking.paymentId!,
+      });
+    }
+
     return {
       success: true,
       bookingId: booking.id,
+      bookingRef: booking.bookingRef,
       qrToken,
       seatNumber,
       legType,
@@ -229,6 +297,7 @@ export async function bookingsRoutes(fastify: FastifyInstance) {
 
         const paymentStatus = paymentMethod === 'visa_mock' ? 'paid' : 'receipt_uploaded';
         const paymentId = generatePaymentId();
+        const bookingRef = generateBookingRef();
         const qrExpiresAt = getQrExpiresAt();
 
         const arrivalBoardingCode = generateBoardingCode();
@@ -242,6 +311,7 @@ export async function bookingsRoutes(fastify: FastifyInstance) {
           bookingType: 'round_trip',
           legType: 'to_campus',
           boardingCode: arrivalBoardingCode,
+          bookingRef,
           paymentId,
           paymentStatus,
           receiptImage,
@@ -257,6 +327,7 @@ export async function bookingsRoutes(fastify: FastifyInstance) {
           bookingType: 'round_trip',
           legType: 'from_campus',
           boardingCode: returnBoardingCode,
+          bookingRef,
           pairedBookingId: arrivalBooking.id,
           paymentId,
           paymentStatus,
@@ -343,6 +414,25 @@ export async function bookingsRoutes(fastify: FastifyInstance) {
       console.error('Failed to send round-trip email:', err);
     });
 
+    if (arrivalBooking.paymentStatus === 'paid') {
+      void sendBookingConfirmation({
+        studentName: userName,
+        studentId: request.user.academicId || userId,
+        studentEmail: userEmail,
+        route: toCampusTrip.route.nameEn,
+        pickup: 'Galala University', // to_campus
+        dropoff: toCampusTrip.route.nameEn,
+        date: toCampusTrip.tripDate,
+        departureTime: toCampusTrip.departureTime.toISOString(),
+        returnTime: fromCampusTrip.departureTime.toISOString(),
+        seatNumber: toCampusSeatNumber,
+        returnSeatNumber: fromCampusSeatNumber,
+        price: `${(toCampusTrip.priceEgp || 160) + (fromCampusTrip.priceEgp || 160)} EGP`,
+        bookingRef: arrivalBooking.bookingRef!,
+        paymentRef: arrivalBooking.paymentId!,
+      });
+    }
+
     return {
       success: true,
       arrivalBookingId: arrivalBooking.id,
@@ -379,6 +469,7 @@ export async function bookingsRoutes(fastify: FastifyInstance) {
 
     return bookingsList.map(b => ({
       id: b.id,
+      bookingRef: b.bookingRef,
       tripId: b.tripId,
       seatNumber: b.seatNumber,
       status: b.status,

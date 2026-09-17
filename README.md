@@ -607,6 +607,24 @@ The application is configured through environment variables defined in `.env`:
 
 ---
 
+### Automatic ticket email with n8n
+
+The Compose stack includes n8n at `http://localhost:5678`. Import and activate one workflow from [`n8n/`](./n8n), then configure its Gmail OAuth or SMTP credential. The production webhook URL is:
+
+```text
+http://localhost:5678/webhook/galala-bus-confirm
+```
+
+The API container calls the internal URL automatically:
+
+```text
+http://n8n:5678/webhook/galala-bus-confirm
+```
+
+After activation, make a paid booking using `visa_mock`. The API saves the booking, sends the payload to n8n, and n8n sends the ticket email with QR codes. Use `docker compose logs -f app n8n` to troubleshoot.
+
+The `n8n_data` Docker volume preserves workflows and credentials. Do not commit Gmail OAuth tokens or SMTP passwords.
+
 ## 9. Default Test Credentials
 
 For rapid evaluation and demonstration, the database includes pre-configured accounts:
