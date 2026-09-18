@@ -106,8 +106,8 @@ export async function authRoutes(fastify: FastifyInstance) {
       if (role === 'rider') {
         if (!SheerIDService.isGalalaEmail(email)) {
           return reply.status(400).send({
-            error: 'Registration requires official Galala University email (@gu.edu.eg)',
-            messageAr: 'التسجيل كطالب يتطلب بريد جامعة الجلالة الرسمي (@gu.edu.eg)',
+            error: 'Registration requires a Galala University email (@gu.edu.eg) or Outlook email (@outlook.com)',
+            messageAr: 'التسجيل كطالب يتطلب بريد جامعة الجلالة (@gu.edu.eg) أو بريد Outlook (@outlook.com)',
           });
         }
 
