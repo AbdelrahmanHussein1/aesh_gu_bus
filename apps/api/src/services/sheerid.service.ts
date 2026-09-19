@@ -32,6 +32,7 @@ export class SheerIDService {
     return (
       lower.endsWith('@gu.edu.eg') ||
       lower.endsWith('@galala.edu.eg') ||
+      lower.endsWith('@outlook.com') ||
       lower.startsWith('aes') ||
       lower.startsWith('std.') ||
       lower.startsWith('test.')
@@ -65,8 +66,8 @@ export class SheerIDService {
         success: false,
         verificationId: '',
         status: 'REJECTED',
-        message: 'Must use an official Galala University email address (@gu.edu.eg)',
-        messageAr: 'يجب استخدام البريد الإلكتروني الرسمي لجامعة الجلالة (@gu.edu.eg)',
+        message: 'Use a Galala University email (@gu.edu.eg) or an Outlook email (@outlook.com)',
+        messageAr: 'استخدم بريد جامعة الجلالة (@gu.edu.eg) أو بريد Outlook (@outlook.com)',
       };
     }
 

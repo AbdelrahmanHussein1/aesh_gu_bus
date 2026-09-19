@@ -46,10 +46,11 @@ export default function RegisterForm({ onSwitchTab }: Props = {}) {
     if (
       !cleanEmail.endsWith('@gu.edu.eg') &&
       !cleanEmail.endsWith('@galala.edu.eg') &&
+      !cleanEmail.endsWith('@outlook.com') &&
       !cleanEmail.startsWith('aes') &&
       !cleanEmail.startsWith('test.')
     ) {
-      setError('Registration is restricted to Galala University students (@gu.edu.eg)');
+      setError('Use a Galala University email (@gu.edu.eg) or an Outlook email (@outlook.com)');
       setLoading(false);
       return;
     }
@@ -176,7 +177,7 @@ export default function RegisterForm({ onSwitchTab }: Props = {}) {
           </div>
 
           <div className="flex flex-col gap-1.5 text-start">
-            <label className="text-xs font-semibold text-text-primary" htmlFor="reg-email">Galala Email (@gu.edu.eg)</label>
+            <label className="text-xs font-semibold text-text-primary" htmlFor="reg-email">Student Email (@gu.edu.eg or @outlook.com)</label>
             <div className="relative">
               <span className="material-symbols-outlined absolute start-3 top-1/2 -translate-y-1/2 text-text-secondary text-base pointer-events-none">school</span>
               <input

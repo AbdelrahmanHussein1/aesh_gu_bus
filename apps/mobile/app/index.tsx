@@ -400,8 +400,8 @@ export default function AppHome() {
     }
 
     const cleanEmail = regEmail.toLowerCase().trim();
-    if (!cleanEmail.endsWith('@gu.edu.eg') && !cleanEmail.endsWith('@galala.edu.eg') && !cleanEmail.startsWith('test.')) {
-      Alert.alert('Domain Error', 'Registration is restricted to official Galala University student emails (@gu.edu.eg).');
+    if (!cleanEmail.endsWith('@gu.edu.eg') && !cleanEmail.endsWith('@galala.edu.eg') && !cleanEmail.endsWith('@outlook.com') && !cleanEmail.startsWith('test.')) {
+      Alert.alert('Domain Error', 'Use a Galala University email (@gu.edu.eg) or an Outlook email (@outlook.com).');
       return;
     }
 

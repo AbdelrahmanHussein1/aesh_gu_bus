@@ -1,0 +1,192 @@
+{
+  "name": "Galala Bus - Ticket Confirmation (Gmail)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "galala-bus-confirm",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "id": "b4e1d8d4-5a0a-44c6-91c3-4d1f8d487d81",
+      "name": "Webhook - Booking Confirmation",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-960, 80],
+      "webhookId": "b4e1d8d4-5a0a-44c6-91c3-4d1f8d487d81"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst body = input.body ?? input;\n\nconst required = ['studentName', 'studentId', 'studentEmail', 'route', 'pickup', 'dropoff', 'date', 'departureTime', 'returnTime', 'seatNumber', 'price', 'bookingRef', 'paymentRef'];\nconst missing = required.filter((key) => body[key] === undefined || body[key] === null || body[key] === '');\nif (missing.length) {\n  throw new Error(`Missing ticket fields: ${missing.join(', ')}`);\n}\n\nfunction makeManualCode() {\n  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';\n  let code = '';\n  for (let index = 0; index < 6; index += 1) {\n    code += alphabet[Math.floor(Math.random() * alphabet.length)];\n  }\n  return code;\n}\n\nfunction buildLeg(leg) {\n  const manualCode = makeManualCode();\n  return {\n    manualCode,\n    qrPayload: JSON.stringify({\n      ref: body.bookingRef,\n      sid: body.studentId,\n      leg,\n      manualCode,\n      t: 'galala-bus-v1',\n    }),\n  };\n}\n\nconst departure = buildLeg('departure');\nconst returned = buildLeg('return');\n\nreturn [{\n  json: {\n    studentName: body.studentName,\n    studentId: String(body.studentId),\n    studentEmail: body.studentEmail,\n    route: body.route,\n    pickup: body.pickup,\n    dropoff: body.dropoff,\n    date: body.date,\n    departureTime: body.departureTime,\n    returnTime: body.returnTime,\n    seatNumber: body.seatNumber,\n    returnSeatNumber: body.returnSeatNumber ?? body.seatNumber,\n    price: body.price,\n    bookingRef: body.bookingRef,\n    paymentRef: body.paymentRef,\n    departure,\n    return: returned,\n\n    // Existing check-in sheet column names are kept unchanged.\n    ref: body.bookingRef,\n    name: body.studentName,\n    phone: body.phone ?? '',\n    email: body.studentEmail,\n    time: body.departureTime,\n    status: 'booked',\n    boarded: false,\n    createdAt: new Date().toISOString(),\n  },\n}];"
+      },
+      "id": "9c1b7a9e-04a2-4dc6-86e7-070ce2bc1210",
+      "name": "Build Ticket Codes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-720, 80]
+    },
+    {
+      "parameters": {
+        "url": "={{ 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&format=png&data=' + encodeURIComponent($json.departure.qrPayload) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "qr_departure"
+            }
+          }
+        }
+      },
+      "id": "827ca736-3d81-4cce-8e95-40ceae5f7d63",
+      "name": "Generate Departure QR",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-460, 80]
+    },
+    {
+      "parameters": {
+        "url": "={{ 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&format=png&data=' + encodeURIComponent($json.return.qrPayload) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "qr_return"
+            }
+          }
+        }
+      },
+      "id": "afb4d700-9a43-450e-8f0a-4b6fc6853ba5",
+      "name": "Generate Return QR",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-220, 80]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first();\nconst inlineImages = [\n  ['qr_departure', 'ticketqr_departure'],\n  ['qr_return', 'ticketqr_return'],\n];\n\nfor (const [property, contentId] of inlineImages) {\n  const image = item.binary?.[property];\n  if (!image) throw new Error(`Missing binary QR image: ${property}`);\n\n  image.fileName = `${contentId}.png`;\n  image.mimeType = 'image/png';\n  // Retain the desired CID metadata with the binary item for the email node.\n  image.contentId = contentId;\n  image.contentDisposition = 'inline';\n}\n\nreturn [item];"
+      },
+      "id": "2c4814bd-00fa-4f59-af23-396befbb5d7e",
+      "name": "Prepare Inline QR Attachments",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [20, 80]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "11ZIvNb8e8iIH7RRLcMIwQNbN8fZxtC8DERKENhyR29E",
+          "mode": "list",
+          "cachedResultName": "Bookings",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/11ZIvNb8e8iIH7RRLcMIwQNbN8fZxtC8DERKENhyR29E/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/11ZIvNb8e8iIH7RRLcMIwQNbN8fZxtC8DERKENhyR29E/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "ref": "={{ $json.bookingRef }}",
+            "name": "={{ $json.studentName }}",
+            "studentId": "={{ $json.studentId }}",
+            "phone": "={{ $json.phone }}",
+            "email": "={{ $json.studentEmail }}",
+            "route": "={{ $json.route }}",
+            "pickup": "={{ $json.pickup }}",
+            "dropoff": "={{ $json.dropoff }}",
+            "date": "={{ $json.date }}",
+            "time": "={{ $json.departureTime }}",
+            "price": "={{ $json.price }}",
+            "status": "={{ $json.status }}",
+            "createdAt": "={{ $json.createdAt }}"
+          },
+          "matchingColumns": []
+        },
+        "options": {}
+      },
+      "id": "455b9c05-ca5e-4562-ae0e-51d1d26533e2",
+      "name": "Append to Google Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [300, -80],
+      "continueOnFail": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "AnXTjZ8tjMGraraK",
+          "name": "Google Sheets account 6"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{ $json.studentEmail }}",
+        "subject": "=Bus ticket confirmed — {{ $json.bookingRef }}",
+        "emailType": "html",
+        "message": "=<div style=\"font-family:Arial,sans-serif;max-width:620px;margin:0 auto;background:#10141d;color:#f8fafc;border-radius:18px;overflow:hidden;\">\n  <div style=\"padding:28px 30px;background:linear-gradient(135deg,#111827,#26354a);border-bottom:1px solid #3b4758;\">\n    <div style=\"color:#60a5fa;font-size:14px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;\">Galala University Transport</div>\n    <h1 style=\"margin:8px 0 0;font-size:26px;line-height:1.2;color:#ffffff;\">Your bus ticket is confirmed</h1>\n  </div>\n  <div style=\"padding:28px 30px;\">\n    <div style=\"display:inline-block;padding:7px 11px;border:1px solid #475569;border-radius:999px;color:#cbd5e1;font-family:monospace;font-size:13px;\">REF {{ $json.bookingRef }}</div>\n    <table style=\"width:100%;border-collapse:collapse;margin:22px 0 18px;font-size:14px;\">\n      <tr><td style=\"padding:8px 0;color:#94a3b8;width:38%;\">Student</td><td style=\"padding:8px 0;color:#ffffff;font-weight:700;\">{{ $json.studentName }}</td></tr>\n      <tr><td style=\"padding:8px 0;color:#94a3b8;\">Student ID</td><td style=\"padding:8px 0;color:#ffffff;\">{{ $json.studentId }}</td></tr>\n      <tr><td style=\"padding:8px 0;color:#94a3b8;\">Route / date</td><td style=\"padding:8px 0;color:#ffffff;\">{{ $json.route }} · {{ $json.date }}</td></tr>\n      <tr><td style=\"padding:8px 0;color:#94a3b8;\">Pickup / drop-off</td><td style=\"padding:8px 0;color:#ffffff;\">{{ $json.pickup }} → {{ $json.dropoff }}</td></tr>\n      <tr><td style=\"padding:8px 0;color:#94a3b8;\">Seat / price</td><td style=\"padding:8px 0;color:#ffffff;font-weight:700;\">{{ $json.seatNumber }} · {{ $json.price }}</td></tr>\n    </table>\n\n    <div style=\"margin-top:20px;padding:22px;background:#182231;border-left:4px solid #38bdf8;border-radius:10px;text-align:center;\">\n      <h2 style=\"margin:0 0 8px;color:#7dd3fc;font-size:18px;\">Departure</h2>\n      <div style=\"color:#cbd5e1;font-size:13px;margin-bottom:14px;\">{{ $json.departureTime }} · Seat {{ $json.seatNumber }}</div>\n      <img src=\"cid:ticketqr_departure\" width=\"220\" height=\"220\" alt=\"Departure QR code\" style=\"display:block;margin:0 auto;background:#ffffff;border-radius:10px;padding:8px;\" />\n      <div style=\"margin-top:14px;color:#94a3b8;font-size:12px;\">Backup boarding code</div>\n      <div style=\"font-family:monospace;font-size:23px;font-weight:700;letter-spacing:4px;color:#ffffff;margin-top:4px;\">{{ $json.departure.manualCode }}</div>\n    </div>\n\n    <div style=\"margin-top:16px;padding:22px;background:#182231;border-left:4px solid #a78bfa;border-radius:10px;text-align:center;\">\n      <h2 style=\"margin:0 0 8px;color:#c4b5fd;font-size:18px;\">Return</h2>\n      <div style=\"color:#cbd5e1;font-size:13px;margin-bottom:14px;\">{{ $json.returnTime }} · Seat {{ $json.returnSeatNumber }}</div>\n      <img src=\"cid:ticketqr_return\" width=\"220\" height=\"220\" alt=\"Return QR code\" style=\"display:block;margin:0 auto;background:#ffffff;border-radius:10px;padding:8px;\" />\n      <div style=\"margin-top:14px;color:#94a3b8;font-size:12px;\">Backup boarding code</div>\n      <div style=\"font-family:monospace;font-size:23px;font-weight:700;letter-spacing:4px;color:#ffffff;margin-top:4px;\">{{ $json.return.manualCode }}</div>\n    </div>\n  </div>\n  <div style=\"padding:17px 30px;background:#0b0f16;color:#94a3b8;font-size:11px;text-align:center;\">Present the relevant QR code or backup code when boarding.</div>\n</div>",
+        "options": {
+          "appendAttribution": false,
+          "attachmentsUi": {
+            "attachmentsBinary": [
+              {
+                "property": "qr_departure",
+                "contentId": "ticketqr_departure",
+                "contentDisposition": "inline"
+              },
+              {
+                "property": "qr_return",
+                "contentId": "ticketqr_return",
+                "contentDisposition": "inline"
+              }
+            ]
+          }
+        }
+      },
+      "id": "d2f6965a-a080-4d18-b052-a72e3062a1ee",
+      "name": "Send Ticket Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [300, 160]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, ref: $('Prepare Inline QR Attachments').item.json.bookingRef, message: 'Ticket emailed' } }}",
+        "options": {}
+      },
+      "id": "8e12bc79-5f47-41d1-ab78-e96fdd1dddb6",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [580, 160]
+    }
+  ],
+  "connections": {
+    "Webhook - Booking Confirmation": { "main": [[{ "node": "Build Ticket Codes", "type": "main", "index": 0 }]] },
+    "Build Ticket Codes": { "main": [[{ "node": "Generate Departure QR", "type": "main", "index": 0 }]] },
+    "Generate Departure QR": { "main": [[{ "node": "Generate Return QR", "type": "main", "index": 0 }]] },
+    "Generate Return QR": { "main": [[{ "node": "Prepare Inline QR Attachments", "type": "main", "index": 0 }]] },
+    "Prepare Inline QR Attachments": { "main": [[{ "node": "Append to Google Sheet", "type": "main", "index": 0 }, { "node": "Send Ticket Email", "type": "main", "index": 0 }]] },
+    "Send Ticket Email": { "main": [[{ "node": "Respond to Webhook", "type": "main", "index": 0 }]] }
+  },
+  "pinData": {},
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "66a37582-5879-4d38-bc1e-53c4d9ad50f8",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}

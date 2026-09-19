@@ -125,6 +125,7 @@ export const bookings = pgTable('bookings', {
   qrUsedAt: timestamp('qr_used_at', { withTimezone: true }),
     // Set when QR is scanned — prevents re-use
   paymentId: varchar('payment_id', { length: 255 }), // Order/Receipt reference
+  bookingRef: varchar('booking_ref', { length: 30 }).unique(),
   paymentStatus: varchar('payment_status', { length: 20 }),
     // 'pending', 'paid', 'receipt_uploaded', 'failed', 'refunded'
   receiptImage: text('receipt_image'), // URL or Base64 for manual receipts
