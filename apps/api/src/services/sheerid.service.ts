@@ -5,6 +5,7 @@ import * as schema from '../db/schema.js';
 import { eq, and, gt, desc } from 'drizzle-orm';
 import { Resend } from 'resend';
 import { MailService } from './mail.service.js';
+import { N8nService } from './n8n.service.js';
 
 const resendApiKey = process.env.RESEND_API_KEY || 're_mock_key';
 const emailFrom = process.env.EMAIL_FROM || 'Bus Aesh <onboarding@resend.dev>';
@@ -139,16 +140,24 @@ export class SheerIDService {
     // Log verification code to server console for testing/audit
     console.log(`[SheerID Verification] 🔐 Verification OTP for ${email} (Academic ID: ${academicId}) is: ${verificationCode}`);
 
-    // Send verification OTP via MailService (Microsoft 365 / Outlook SMTP, Resend, or Console)
+    // Prefer n8n Outlook automation; keep MailService as a local fallback only.
     try {
-      await MailService.sendStudentOtpEmail({
+      const n8nSent = await N8nService.notifyStudentOtp({
         email: email.toLowerCase().trim(),
         fullName,
         academicId,
         otp: verificationCode,
       });
+      if (!n8nSent) {
+        await MailService.sendStudentOtpEmail({
+          email: email.toLowerCase().trim(),
+          fullName,
+          academicId,
+          otp: verificationCode,
+        });
+      }
     } catch (err: any) {
-      console.warn('[SheerIDService] MailService delivery encountered error:', err?.message);
+      console.warn('[SheerIDService] OTP delivery encountered error:', err?.message);
     }
 
     return {

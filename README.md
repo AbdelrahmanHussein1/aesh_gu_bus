@@ -607,23 +607,14 @@ The application is configured through environment variables defined in `.env`:
 
 ---
 
-### Automatic ticket email with n8n
+### Automatic Outlook emails with n8n
 
-The Compose stack includes n8n at `http://localhost:5678`. Import and activate one workflow from [`n8n/`](./n8n), then configure its Gmail OAuth or SMTP credential. The production webhook URL is:
+n8n is included in Docker at `http://localhost:5678`. It does not replace the API. After Postgres, Redis, and the API are up, import and **activate** the two Outlook workflows in [`n8n/`](./n8n):
 
-```text
-http://localhost:5678/webhook/galala-bus-confirm
-```
+- Student OTP: `http://n8n:5678/webhook/galala-bus-otp`
+- Ticket confirmation: `http://n8n:5678/webhook/galala-bus-confirm`
 
-The API container calls the internal URL automatically:
-
-```text
-http://n8n:5678/webhook/galala-bus-confirm
-```
-
-After activation, make a paid booking using `visa_mock`. The API saves the booking, sends the payload to n8n, and n8n sends the ticket email with QR codes. Use `docker compose logs -f app n8n` to troubleshoot.
-
-The `n8n_data` Docker volume preserves workflows and credentials. Do not commit Gmail OAuth tokens or SMTP passwords.
+Connect one Microsoft Outlook OAuth credential (Mail.Send). Full steps: [`n8n/README.md`](./n8n/README.md). Do not commit OAuth tokens.
 
 ## 9. Default Test Credentials
 

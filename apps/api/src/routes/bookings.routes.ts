@@ -6,6 +6,7 @@ import { redis } from '../redis.js';
 import { eq, and, desc, inArray, sql } from 'drizzle-orm';
 import { WebSocketHub } from '../websocket/hub.js';
 import { EmailService } from '../services/email.service.js';
+import { N8nService, type BookingLegPayload } from '../services/n8n.service.js';
 import { getHoursUntilDeparture } from '../utils/trip-time.js';
 import { CacheService } from '../services/cache.service.js';
 
@@ -26,43 +27,38 @@ function generateBookingRef(): string {
   return `GU-${randomBytes(5).toString('hex').toUpperCase()}`;
 }
 
-type BookingConfirmation = {
-  studentName: string;
-  studentId: string;
-  studentEmail: string;
-  route: string;
-  pickup: string;
-  dropoff: string;
-  date: string;
-  departureTime: string;
-  returnTime: string;
+function formatTripClock(value: Date): string {
+  return value.toLocaleTimeString('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: 'Africa/Cairo',
+  });
+}
+
+function buildBookingLeg(params: {
+  kind: 'go' | 'return';
+  trip: any;
   seatNumber: number;
-  returnSeatNumber?: number;
-  price: string;
-  bookingRef: string;
-  paymentRef: string;
-};
-
-async function sendBookingConfirmation(booking: BookingConfirmation): Promise<void> {
-  const webhookUrl = process.env.N8N_BOOKING_WEBHOOK_URL;
-  if (!webhookUrl) {
-    console.warn('N8N_BOOKING_WEBHOOK_URL is not configured; ticket email was not requested.');
-    return;
-  }
-
-  try {
-    const response = await fetch(webhookUrl, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(booking),
-    });
-
-    if (!response.ok) {
-      console.error(`Booking confirmation webhook failed (${response.status}) for ${booking.bookingRef}.`);
-    }
-  } catch (error) {
-    console.error(`Booking confirmation webhook failed for ${booking.bookingRef}:`, error);
-  }
+  qrToken: string;
+  boardingCode: string;
+}): BookingLegPayload {
+  const isReturn = params.kind === 'return';
+  const routeName = params.trip.route?.nameEn || 'Galala Route';
+  return {
+    kind: params.kind,
+    label: isReturn ? 'Return home' : 'Go to campus',
+    labelAr: isReturn ? 'عودة للمنزل' : 'ذهاب للجامعة',
+    route: routeName,
+    pickup: isReturn ? 'Galala University' : routeName,
+    dropoff: isReturn ? routeName : 'Galala University',
+    date: params.trip.tripDate,
+    time: formatTripClock(new Date(params.trip.departureTime)),
+    seatNumber: params.seatNumber,
+    qrToken: params.qrToken,
+    boardingCode: params.boardingCode,
+    qrImageUrl: N8nService.qrImageUrl(params.qrToken),
+  };
 }
 
 
@@ -199,20 +195,26 @@ export async function bookingsRoutes(fastify: FastifyInstance) {
 
     // Payment confirmation must never wait on, or fail because of, ticket delivery.
     if (booking.paymentStatus === 'paid') {
-      void sendBookingConfirmation({
+      const kind = legType === 'from_campus' ? 'return' : 'go';
+      void N8nService.notifyBookingConfirmation({
         studentName: userName,
         studentId: request.user.academicId || userId,
         studentEmail: userEmail,
         route: trip.route.nameEn,
-        pickup: legType === 'from_campus' ? 'Galala University' : trip.route.nameEn,
-        dropoff: legType === 'from_campus' ? trip.route.nameEn : 'Galala University',
         date: trip.tripDate,
-        departureTime: trip.departureTime.toISOString(),
-        returnTime: trip.departureTime.toISOString(), // one way
-        seatNumber,
         price: `${trip.priceEgp || '160'} EGP`,
         bookingRef: booking.bookingRef!,
         paymentRef: booking.paymentId!,
+        bookingType: 'one_way',
+        legs: [
+          buildBookingLeg({
+            kind,
+            trip,
+            seatNumber,
+            qrToken,
+            boardingCode: booking.boardingCode!,
+          }),
+        ],
       });
     }
 
@@ -415,21 +417,32 @@ export async function bookingsRoutes(fastify: FastifyInstance) {
     });
 
     if (arrivalBooking.paymentStatus === 'paid') {
-      void sendBookingConfirmation({
+      void N8nService.notifyBookingConfirmation({
         studentName: userName,
         studentId: request.user.academicId || userId,
         studentEmail: userEmail,
         route: toCampusTrip.route.nameEn,
-        pickup: 'Galala University', // to_campus
-        dropoff: toCampusTrip.route.nameEn,
         date: toCampusTrip.tripDate,
-        departureTime: toCampusTrip.departureTime.toISOString(),
-        returnTime: fromCampusTrip.departureTime.toISOString(),
-        seatNumber: toCampusSeatNumber,
-        returnSeatNumber: fromCampusSeatNumber,
         price: `${(toCampusTrip.priceEgp || 160) + (fromCampusTrip.priceEgp || 160)} EGP`,
         bookingRef: arrivalBooking.bookingRef!,
         paymentRef: arrivalBooking.paymentId!,
+        bookingType: 'round_trip',
+        legs: [
+          buildBookingLeg({
+            kind: 'go',
+            trip: toCampusTrip,
+            seatNumber: toCampusSeatNumber,
+            qrToken: arrivalQR,
+            boardingCode: arrivalBooking.boardingCode!,
+          }),
+          buildBookingLeg({
+            kind: 'return',
+            trip: fromCampusTrip,
+            seatNumber: fromCampusSeatNumber,
+            qrToken: returnQR,
+            boardingCode: returnBooking.boardingCode!,
+          }),
+        ],
       });
     }
 

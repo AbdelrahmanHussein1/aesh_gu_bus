@@ -17,16 +17,21 @@ services:
       - REDIS_URL=redis://redis:6379
       - JWT_SECRET=${JWT_SECRET:-changeme-in-production}
       - NEXT_PUBLIC_API_URL=http://localhost:3000
-      - N8N_BOOKING_WEBHOOK_URL=${N8N_BOOKING_WEBHOOK_URL:-http://n8n:5678/webhook/galala-bus-confirm}
+      - N8N_OTP_WEBHOOK_URL=${N8N_OTP_WEBHOOK_URL:-http://host.docker.internal:5678/webhook/galala-bus-otp}
+      - N8N_BOOKING_WEBHOOK_URL=${N8N_BOOKING_WEBHOOK_URL:-http://host.docker.internal:5678/webhook/galala-bus-confirm}
+      - N8N_WEBHOOK_SECRET=${N8N_WEBHOOK_SECRET:-}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_started
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped
 
   n8n:
     image: n8nio/n8n:latest
+    profiles: ["bundled-n8n"]
     ports:
       - "5678:5678"
     environment:

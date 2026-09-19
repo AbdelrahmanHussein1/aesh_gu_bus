@@ -1,0 +1,71 @@
+{
+  "name": "Galala Bus - Ticket Confirmation (Outlook)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "galala-bus-confirm",
+        "responseMode": "onReceived",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "id": "d44f3061-9e54-40bc-ac31-book-webhook-001",
+      "name": "Webhook - Booking Confirmation",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-720, 80],
+      "webhookId": "galala-bus-confirm"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst body = input.body ?? input;\n\nconst required = ['studentName', 'studentId', 'studentEmail', 'route', 'date', 'price', 'bookingRef', 'paymentRef', 'legs'];\nconst missing = required.filter((key) => body[key] === undefined || body[key] === null || body[key] === '');\nif (missing.length) {\n  throw new Error('Missing booking fields: ' + missing.join(', '));\n}\n\nconst legs = Array.isArray(body.legs) ? body.legs : [];\nif (!legs.length) {\n  throw new Error('Booking must include at least one trip leg');\n}\n\nconst bookingTypeLabel = legs.length > 1 ? 'Go and return' : (legs[0].kind === 'return' ? 'Return only' : 'Go only');\n\nconst legHtml = legs.map((leg) => {\n  const color = leg.kind === 'return' ? '#a78bfa' : '#38bdf8';\n  const qrUrl = leg.qrImageUrl || ('https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=' + encodeURIComponent(leg.qrToken));\n  return `<div style=\"margin-top:16px;padding:20px;background:#182231;border-left:4px solid ${color};border-radius:10px;text-align:center;\">\n    <h2 style=\"margin:0 0 8px;color:${color};font-size:18px;\">${leg.label} — ${leg.labelAr || ''}</h2>\n    <div style=\"color:#cbd5e1;font-size:13px;margin-bottom:12px;\">${leg.date} · ${leg.time} · Seat ${leg.seatNumber}</div>\n    <div style=\"color:#94a3b8;font-size:13px;margin-bottom:14px;\">${leg.pickup} → ${leg.dropoff}</div>\n    <img src=\"${qrUrl}\" width=\"220\" height=\"220\" alt=\"${leg.label} QR code\" style=\"display:block;margin:0 auto;background:#ffffff;border-radius:10px;padding:8px;\" />\n    <div style=\"margin-top:14px;color:#94a3b8;font-size:12px;\">Manual boarding code</div>\n    <div style=\"font-family:monospace;font-size:22px;font-weight:700;letter-spacing:3px;color:#ffffff;margin-top:4px;\">${leg.boardingCode}</div>\n  </div>`;\n}).join('');\n\nconst html = `<div style=\"font-family:Segoe UI,Arial,sans-serif;max-width:620px;margin:0 auto;background:#10141d;color:#f8fafc;border-radius:18px;overflow:hidden;\">\n  <div style=\"padding:28px 30px;background:linear-gradient(135deg,#111827,#26354a);\">\n    <div style=\"color:#60a5fa;font-size:13px;letter-spacing:1px;text-transform:uppercase;\">Galala University Transport</div>\n    <h1 style=\"margin:8px 0 0;font-size:24px;color:#ffffff;\">Your bus ticket is confirmed</h1>\n  </div>\n  <div style=\"padding:28px 30px;\">\n    <div style=\"display:inline-block;padding:7px 11px;border:1px solid #475569;border-radius:999px;color:#cbd5e1;font-family:monospace;font-size:13px;\">REF ${body.bookingRef}</div>\n    <table style=\"width:100%;border-collapse:collapse;margin:22px 0 8px;font-size:14px;\">\n      <tr><td style=\"padding:8px 0;color:#94a3b8;width:38%;\">Student</td><td style=\"padding:8px 0;color:#ffffff;font-weight:700;\">${body.studentName}</td></tr>\n      <tr><td style=\"padding:8px 0;color:#94a3b8;\">Student ID</td><td style=\"padding:8px 0;color:#ffffff;\">${body.studentId}</td></tr>\n      <tr><td style=\"padding:8px 0;color:#94a3b8;\">Email</td><td style=\"padding:8px 0;color:#ffffff;\">${body.studentEmail}</td></tr>\n      <tr><td style=\"padding:8px 0;color:#94a3b8;\">Trip</td><td style=\"padding:8px 0;color:#ffffff;\">${body.route} · ${body.date}</td></tr>\n      <tr><td style=\"padding:8px 0;color:#94a3b8;\">Type</td><td style=\"padding:8px 0;color:#ffffff;\">${bookingTypeLabel}</td></tr>\n      <tr><td style=\"padding:8px 0;color:#94a3b8;\">Price</td><td style=\"padding:8px 0;color:#ffffff;font-weight:700;\">${body.price}</td></tr>\n      <tr><td style=\"padding:8px 0;color:#94a3b8;\">Payment</td><td style=\"padding:8px 0;color:#ffffff;font-family:monospace;\">${body.paymentRef}</td></tr>\n    </table>\n    ${legHtml}\n    <p style=\"margin:20px 0 0;color:#94a3b8;font-size:12px;\">Show the matching QR or manual code when you board: one for going, and one for returning if you booked both.</p>\n  </div>\n</div>`;\n\nreturn [{\n  json: {\n    studentEmail: body.studentEmail,\n    bookingRef: body.bookingRef,\n    subject: `Bus ticket confirmed — ${body.bookingRef}`,\n    html,\n  },\n}];"
+      },
+      "id": "e55a4172-af65-41cd-bd42-book-prepare-002",
+      "name": "Prepare Ticket Email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-420, 80]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "toRecipients": "={{ $json.studentEmail }}",
+        "subject": "={{ $json.subject }}",
+        "bodyContent": "={{ $json.html }}",
+        "additionalFields": {
+          "bodyContentType": "html"
+        }
+      },
+      "id": "f66b5283-b076-42de-ce53-book-outlook-003",
+      "name": "Send Ticket with Outlook",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [-120, 80],
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "outlook-account",
+          "name": "Microsoft Outlook account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook - Booking Confirmation": {
+      "main": [[{ "node": "Prepare Ticket Email", "type": "main", "index": 0 }]]
+    },
+    "Prepare Ticket Email": {
+      "main": [[{ "node": "Send Ticket with Outlook", "type": "main", "index": 0 }]]
+    }
+  },
+  "pinData": {},
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}

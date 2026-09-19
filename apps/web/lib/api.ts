@@ -3,16 +3,8 @@ export const getApiBaseUrl = () => {
     return process.env.INTERNAL_API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
   }
 
-  const { protocol, hostname, port, origin } = window.location;
-
-  // If accessed via Cloudflare Tunnel or public domain without custom port, use same origin with Next.js rewrites
-  if (hostname.includes('trycloudflare.com') || (!port && (protocol === 'http:' || protocol === 'https:'))) {
-    return origin;
-  }
-
-  // Local VM or LAN access (e.g. 192.168.1.11 or localhost)
-  const host = (hostname === 'localhost' || hostname === '127.0.0.1') ? 'localhost' : hostname;
-  return `${protocol}//${host}:3000`;
+  // Always use the page origin. Port 3001 (gateway) already proxies /api to Fastify.
+  return window.location.origin;
 };
 
 export const getApiUrls = () => {
