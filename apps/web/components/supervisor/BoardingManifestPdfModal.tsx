@@ -26,6 +26,15 @@ function cleanTimeStr(val?: string | null): string {
   return val;
 }
 
+function escapeHtml(value: unknown): string {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function getManifestStyleSheet(): string {
   return `
     @page {
@@ -456,11 +465,11 @@ function buildManifestDocumentMarkup(params: {
         return `<tr>
           <td class="col-idx">${idx + 1}</td>
           <td class="col-seat">${passenger.seatNumber}</td>
-          <td class="col-name">${passenger.riderName || 'طالب جامعي'}</td>
-          <td class="col-id">${passenger.academicId || '—'}</td>
-          <td class="col-email">${passenger.riderEmail || '—'}</td>
-          <td class="col-code">${passenger.boardingCode || 'GU-SCAN'}</td>
-          <td class="col-time">${boardTimeStr}</td>
+          <td class="col-name">${escapeHtml(passenger.riderName || 'طالب جامعي')}</td>
+          <td class="col-id">${escapeHtml(passenger.academicId || '—')}</td>
+          <td class="col-email">${escapeHtml(passenger.riderEmail || '—')}</td>
+          <td class="col-code">${escapeHtml(passenger.boardingCode || 'GU-SCAN')}</td>
+          <td class="col-time">${escapeHtml(boardTimeStr)}</td>
           <td class="col-status">${statusHtml}</td>
         </tr>`;
       }).join('');
@@ -479,9 +488,9 @@ function buildManifestDocumentMarkup(params: {
             <img src="/gu-logo-colored.png" alt="Galala University" class="header-logo" onerror="this.style.display='none'" />
           </td>
           <td class="header-left">
-            <div><span class="badge-trip">SHIFT #${tripIdStr}</span></div>
+            <div><span class="badge-trip">SHIFT #${escapeHtml(tripIdStr)}</span></div>
             <div><span class="badge-stamp">معتمد رسمياً • OFFICIAL DISPATCH</span></div>
-            <div class="meta-ref">DATE: ${formattedDate} | TIME: ${departureTime}</div>
+            <div class="meta-ref">DATE: ${escapeHtml(formattedDate)} | TIME: ${escapeHtml(departureTime)}</div>
           </td>
         </tr>
       </table>
@@ -497,15 +506,15 @@ function buildManifestDocumentMarkup(params: {
         <tr>
           <td>
             <span class="info-label">تاريخ ووقت الرحلة (Date & Shift)</span>
-            <span class="info-value info-value-mono">${formattedDate} • ${departureTime}</span>
+            <span class="info-value info-value-mono">${escapeHtml(formattedDate)} • ${escapeHtml(departureTime)}</span>
           </td>
           <td>
             <span class="info-label">خط السير (Transit Route)</span>
-            <span class="info-value info-highlight">${routeName}</span>
+            <span class="info-value info-highlight">${escapeHtml(routeName)}</span>
           </td>
           <td>
             <span class="info-label">الحافلة ورقم اللوحة (Bus & Plate)</span>
-            <span class="info-value">${busName} <span class="info-value-mono">(${busPlate})</span></span>
+            <span class="info-value">${escapeHtml(busName)} <span class="info-value-mono">(${escapeHtml(busPlate)})</span></span>
           </td>
           <td>
             <span class="info-label">إجمالي الصعود (Boarded / Capacity)</span>
@@ -515,19 +524,19 @@ function buildManifestDocumentMarkup(params: {
         <tr>
           <td>
             <span class="info-label">مشرف الرحلة (Supervisor)</span>
-            <span class="info-value">${supervisorDisplay}</span>
+            <span class="info-value">${escapeHtml(supervisorDisplay)}</span>
           </td>
           <td>
             <span class="info-label">سائق الحافلة (Assigned Driver)</span>
-            <span class="info-value">${driverDisplay}</span>
+            <span class="info-value">${escapeHtml(driverDisplay)}</span>
           </td>
           <td>
             <span class="info-label">اتجاه الرحلة (Direction)</span>
-            <span class="info-value">${directionDisplay}</span>
+            <span class="info-value">${escapeHtml(directionDisplay)}</span>
           </td>
           <td>
             <span class="info-label">وقت استخراج التقرير (Issued At)</span>
-            <span class="info-value info-value-mono" style="font-size: 10px;">${generatedTimestamp}</span>
+            <span class="info-value info-value-mono" style="font-size: 10px;">${escapeHtml(generatedTimestamp)}</span>
           </td>
         </tr>
       </table>
@@ -563,10 +572,10 @@ function buildManifestDocumentMarkup(params: {
               <table style="width: 100%; border: none; border-collapse: collapse;">
                 <tr>
                   <td style="border: none; padding: 3px 0; font-size: 10px; width: 65%;">
-                    <span style="color: #64748b;">اسم المشرف:</span> <strong>${supervisorDisplay}</strong>
+                    <span style="color: #64748b;">اسم المشرف:</span> <strong>${escapeHtml(supervisorDisplay)}</strong>
                   </td>
                   <td style="border: none; padding: 3px 0; font-size: 10px; text-align: left; direction: ltr; font-family: monospace;">
-                    Date: ${formattedDate}
+                    Date: ${escapeHtml(formattedDate)}
                   </td>
                 </tr>
                 <tr>

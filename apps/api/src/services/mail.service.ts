@@ -23,9 +23,6 @@ function getTransporter() {
         user: smtpUser,
         pass: smtpPass,
       },
-      tls: {
-        rejectUnauthorized: false,
-      },
     });
   }
   return null;
@@ -112,7 +109,7 @@ export class MailService {
         await transporter.sendMail({
           from: emailFrom,
           to: email,
-          subject: `رمز التحقق الخاص بحسابك في باصات جامعة الجلالة: ${otp}`,
+          subject: 'رمز التحقق الخاص بحسابك في باصات جامعة الجلالة',
           html: htmlContent,
         });
         console.log(`[MailService] ✅ OTP email delivered via SMTP to ${email}`);
@@ -129,7 +126,7 @@ export class MailService {
         await resend.emails.send({
           from: emailFrom,
           to: email,
-          subject: `رمز التحقق الخاص بجامعة الجلالة: ${otp}`,
+          subject: 'رمز التحقق الخاص بجامعة الجلالة',
           html: htmlContent,
         });
         console.log(`[MailService] ✅ OTP email sent via Resend to ${email}`);
@@ -139,17 +136,6 @@ export class MailService {
       }
     }
 
-    // 3. Fallback / Dev Mode Logging
-    console.log(`\n================================================================`);
-    console.log(`  📧 [GALALA OUTLOOK EMAIL OTP]`);
-    console.log(`  Student: ${fullName} (${email})`);
-    console.log(`  Academic ID: ${academicId}`);
-    console.log(`  🔑 OTP Verification Code: ${otp}`);
-    console.log(`  👉 To configure real Outlook sending, set in .env:`);
-    console.log(`     SMTP_USER=your_email@gu.edu.eg`);
-    console.log(`     SMTP_PASS=your_outlook_app_password`);
-    console.log(`================================================================\n`);
-
-    return { success: true, method: 'logged' };
+    throw new Error('No email provider is configured');
   }
 }

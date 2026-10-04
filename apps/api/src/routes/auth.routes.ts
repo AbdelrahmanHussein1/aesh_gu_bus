@@ -2,7 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { RegisterSchema, LoginSchema, GALALA_FACULTIES } from '@bus-aesh/shared';
 import { db } from '../db/index.js';
 import * as schema from '../db/schema.js';
-import { eq } from 'drizzle-orm';
+import { eq, and, gt } from 'drizzle-orm';
 import { SessionService } from '../services/session.service.js';
 import { SheerIDService } from '../services/sheerid.service.js';
 import { EmailService } from '../services/email.service.js';
@@ -124,6 +124,29 @@ export async function authRoutes(fastify: FastifyInstance) {
             messageAr: 'الكلية المختارة غير صالحة',
           });
         }
+
+        if (!sheerIdVerificationId) {
+          return reply.status(400).send({
+            error: 'Student email verification is required before registration',
+            messageAr: 'يجب تأكيد البريد الإلكتروني الطلابي قبل التسجيل',
+          });
+        }
+
+        const verification = await db.query.verificationTokens.findFirst({
+          where: and(
+            eq(schema.verificationTokens.token, sheerIdVerificationId),
+            eq(schema.verificationTokens.email, email.toLowerCase().trim()),
+            eq(schema.verificationTokens.isVerified, true),
+            gt(schema.verificationTokens.expiresAt, new Date()),
+          ),
+        });
+
+        if (!verification || verification.academicId !== academicId) {
+          return reply.status(400).send({
+            error: 'Student verification is invalid or expired',
+            messageAr: 'بيانات التحقق الطلابي غير صالحة أو منتهية',
+          });
+        }
       }
 
       const getDeterministicId = (str: string, seed: number) => {
@@ -147,7 +170,7 @@ export async function authRoutes(fastify: FastifyInstance) {
         academicId: academicId || null,
         faculty: faculty || null,
         phone: phone || null,
-        isSheerIdVerified: Boolean(sheerIdVerificationId || SheerIDService.isGalalaEmail(email)),
+        isSheerIdVerified: role === 'rider' ? true : Boolean(sheerIdVerificationId),
         sheerIdVerificationId: sheerIdVerificationId || null,
         erpUid,
         erpPartnerId,
@@ -184,23 +207,24 @@ export async function authRoutes(fastify: FastifyInstance) {
     }
 
     try {
+      const normalizedEmail = email.toLowerCase().trim();
       const user = await db.query.users.findFirst({
-        where: eq(schema.users.email, email.toLowerCase().trim()),
+        where: eq(schema.users.email, normalizedEmail),
       });
 
       if (!user) {
-        return reply.status(404).send({ error: 'No user registered with this email address' });
+        return { success: true, message: 'If an account exists, reset instructions will be sent shortly.' };
       }
 
-      const tempPassword = Math.random().toString(36).substring(2, 8).toUpperCase();
+      const tempPassword = crypto.randomBytes(6).toString('base64url').slice(0, 10);
 
       await db.update(schema.users)
-        .set({ password: tempPassword })
+        .set({ password: hashPassword(tempPassword) })
         .where(eq(schema.users.id, user.id));
 
       await EmailService.sendForgotPasswordEmail(user.email, user.fullName, tempPassword);
 
-      return { success: true, message: 'Temporary password sent to email.' };
+      return { success: true, message: 'If an account exists, reset instructions will be sent shortly.' };
     } catch (error: any) {
       fastify.log.error(error);
       return reply.status(500).send({ error: error.message || 'Database error during password reset' });
@@ -261,13 +285,14 @@ export async function authRoutes(fastify: FastifyInstance) {
       });
 
       if (user) {
-        // If user has no password set in database (legacy/seeded user), securely initialize with the entered password
+        // Passwordless accounts must use an explicit recovery/provisioning flow.
         if (!user.password) {
-          const newHashed = hashPassword(password);
-          await db.update(schema.users)
-            .set({ password: newHashed })
-            .where(eq(schema.users.id, user.id));
-          user.password = newHashed;
+          const failResult = await recordFailedAttempt();
+          return reply.status(401).send({
+            error: 'This account requires password recovery before login.',
+            messageAr: 'يجب استعادة كلمة المرور لهذا الحساب قبل تسجيل الدخول.',
+            remainingAttempts: failResult.remaining,
+          });
         }
 
         if (!verifyPassword(password, user.password)) {
@@ -287,7 +312,11 @@ export async function authRoutes(fastify: FastifyInstance) {
         }
       } else {
         // Only allow fallback to Odoo ERP for pre-authorized admin/supervisor/driver personnel
-        if (normalizedEmail === 'admin@gu.edu.eg' || normalizedEmail.startsWith('supervisor') || normalizedEmail.startsWith('driver')) {
+        if (
+          normalizedEmail === 'admin@gu.edu.eg' ||
+          normalizedEmail === 'supervisor@gu.edu.eg' ||
+          normalizedEmail === 'driver@gu.edu.eg'
+        ) {
           try {
             const erpUser = await authenticateOdoo(normalizedEmail, password);
             let role = 'supervisor';
@@ -352,7 +381,7 @@ export async function authRoutes(fastify: FastifyInstance) {
         role: user.role,
         fullName: user.fullName,
         sessionId,
-      }, { expiresIn: '30d' });
+      }, { expiresIn: '12h' });
 
       await logSecurityEvent({
         userId: user.id,

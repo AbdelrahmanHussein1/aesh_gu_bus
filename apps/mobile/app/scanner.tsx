@@ -69,11 +69,15 @@ export default function QRScanner() {
         headers['Authorization'] = `Bearer ${supervisorToken}`;
       }
 
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
       const response = await fetch(`${API_URL}/api/scan/verify`, {
         method: 'POST',
         headers,
         body: JSON.stringify({ token: data, expectedLegType: legType }),
+        signal: controller.signal,
       });
+      clearTimeout(timeout);
 
       if (response.ok) {
         const backendResult = await response.json();
@@ -88,64 +92,18 @@ export default function QRScanner() {
         return;
       }
     } catch (e) {
-      console.log('[Scanner] Live API failed/offline. Falling back to offline client validation...');
+      console.warn('[Scanner] Live API verification failed:', e);
     }
 
-    // 2. Offline Fallback Validation
+    // Boarding tickets must be verified by the server. Offline parsing is not
+    // sufficient to prove that a ticket is authentic or unused.
     setTimeout(() => {
       setIsVerifying(false);
-
-      if (data.startsWith('GU-') || data.length === 4) {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        setResult({
-          success: true,
-          result: 'valid',
-          riderName: 'Student Passenger (Manual Code)',
-          seatNumber: Math.floor(Math.random() * 40) + 1,
-          route: 'Verified via Boarding Code',
-          bus: `Code: ${data}`
-        });
-        return;
-      }
-
-      const parts = data.split('.');
-      
-      if (parts.length < 5) {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        setResult({
-          success: false,
-          result: 'invalid',
-          message: 'INVALID SIGNATURE: QR Code is not authentic or has been tampered with.'
-        });
-        return;
-      }
-
-      const [bookingHex, tripHex, seatHex, dateHex, versionHex, legCode] = parts;
-      const seatNumber = parseInt(seatHex, 16);
-
-      // Check leg code if present
-      if (legType && legCode) {
-        const expectedLegCode = legType === 'to_campus' ? '0' : '1';
-        if (legCode !== expectedLegCode) {
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-          setResult({
-            success: false,
-            result: 'wrong_leg',
-            message: `WRONG LEG: This is a ${legCode === '0' ? 'University' : 'Return'} ticket, but you are scanning for ${legType === 'to_campus' ? 'University' : 'Return'} leg.`
-          });
-          return;
-        }
-      }
-      
-      // Decoded successfully
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       setResult({
-        success: true,
-        result: 'valid',
-        riderName: 'Student Passenger',
-        seatNumber: seatNumber,
-        route: 'El Obour Line',
-        bus: 'Bus 116'
+        success: false,
+        result: 'unverified',
+        message: 'Unable to verify this ticket with the server. Please reconnect and scan again.'
       });
     }, 300); // 300ms verification delay for offline feel
   };

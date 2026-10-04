@@ -114,6 +114,8 @@ const MOCK_USERS: Record<string, User> = {
   'admin@gu.edu.eg': { id: 'admin-id', email: 'admin@gu.edu.eg', fullName: 'System Administrator', role: 'admin' },
 };
 
+const OFFLINE_MODE_ENABLED = process.env.NEXT_PUBLIC_ENABLE_OFFLINE_MODE === 'true';
+
 function playSuccessChime() {
   if (typeof window === 'undefined') return;
   try {
@@ -147,7 +149,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState('');
   const [user, setUser] = useState<User | null>(null);
   const [role, setRole] = useState<Role>('rider');
-  const [isOffline, setIsOffline] = useState(true);
+  const [isOffline, setIsOffline] = useState(false);
   const [routes, setRoutes] = useState<Route[]>([]);
   const [selectedRouteId, setSelectedRouteId] = useState(29);
   const [selectedDirection, setSelectedDirection] = useState<Direction>('to_campus');
@@ -207,8 +209,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setToken(data.token);
         setUser(data.user);
         setRole(data.user.role);
-        localStorage.setItem('aesh_web_token', data.token);
-        localStorage.setItem('aesh_web_user', JSON.stringify(data.user));
+        sessionStorage.setItem('aesh_web_token', data.token);
+        sessionStorage.setItem('aesh_web_user', JSON.stringify(data.user));
         return data;
       } else {
         const errData = await res.json().catch(() => ({}));
@@ -226,14 +228,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     try {
-      const savedToken = localStorage.getItem('aesh_web_token');
-      const savedUser = localStorage.getItem('aesh_web_user');
+      const savedToken = sessionStorage.getItem('aesh_web_token');
+      const savedUser = sessionStorage.getItem('aesh_web_user');
       if (savedToken && savedUser) {
         try {
           const parsed = JSON.parse(savedUser);
           if (parsed.id === 'user-default-id') {
-            localStorage.removeItem('aesh_web_token');
-            localStorage.removeItem('aesh_web_user');
+            sessionStorage.removeItem('aesh_web_token');
+            sessionStorage.removeItem('aesh_web_user');
             setToken('');
             setUser(null);
             setRole('rider');
@@ -262,7 +264,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const res = await fetch(`${apiUrl}/health`, { signal: AbortSignal.timeout(3000) });
         if (res.ok) {
           setIsOffline(false);
-          const savedUser = localStorage.getItem('aesh_web_user');
+          const savedUser = sessionStorage.getItem('aesh_web_user');
           if (savedUser) {
             const routesRes = await fetch(`${apiUrl}/api/routes`);
             if (routesRes.ok) {
@@ -278,8 +280,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       } catch (err) {
         console.warn('Backend unavailable, using offline mode:', err);
       }
-      setIsOffline(true);
-      if (localStorage.getItem('aesh_web_user')) {
+      if (OFFLINE_MODE_ENABLED) {
+        setIsOffline(true);
+      } else {
+        setIsOffline(false);
+      }
+      if (OFFLINE_MODE_ENABLED && sessionStorage.getItem('aesh_web_user')) {
         loadOfflineData();
       }
     };
@@ -567,7 +573,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const { wsUrl } = getApiUrls();
     let socket: WebSocket | null = null;
     try {
-      socket = new WebSocket(`${wsUrl}/ws/trips/${tid}/seats`);
+      if (!token) return;
+      socket = new WebSocket(`${wsUrl}/ws/trips/${tid}/seats`, token);
       socket.onmessage = (event) => {
         try {
           const msg = JSON.parse(event.data);
@@ -591,7 +598,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => {
       if (socket) socket.close();
     };
-  }, [activeTrip, activeArrivalTrip, isOffline, handleRiderBoardedNotification, handleSupervisorCancelledNotification]);
+  }, [activeTrip, activeArrivalTrip, isOffline, token, handleRiderBoardedNotification, handleSupervisorCancelledNotification]);
 
   // Real-Time User Session Displacement & Boarding Listener via WebSocket
   useEffect(() => {
@@ -600,7 +607,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const { wsUrl } = getApiUrls();
     let socket: WebSocket | null = null;
     try {
-      socket = new WebSocket(`${wsUrl}/ws/user/session?token=${encodeURIComponent(token)}`);
+      socket = new WebSocket(`${wsUrl}/ws/user/session`, token);
       socket.onmessage = (event) => {
         try {
           const msg = JSON.parse(event.data);
@@ -649,6 +656,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       } catch (err) {
         console.warn('Live manifest fetch failed:', err);
       }
+    }
+
+    if (!OFFLINE_MODE_ENABLED) {
+      setSupervisorManifest([]);
+      return;
     }
 
     // Fallback: check localStorage bookings
@@ -741,6 +753,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
           }
         }
       } catch {}
+    }
+
+    if (!OFFLINE_MODE_ENABLED) {
+      setMyBookings([]);
+      return;
     }
 
     // Fallback to localStorage
@@ -889,6 +906,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     }
 
+    if (!apiBookingSuccess && (!isOffline || !OFFLINE_MODE_ENABLED)) {
+      setCheckoutError('Booking is unavailable while the backend is offline. Please try again later.');
+      setIsPaying(false);
+      return;
+    }
+
+    if (apiBookingSuccess) {
+      await getUserBookings();
+      await loadSeatMap();
+      if (role === 'supervisor') await loadSupervisorManifest();
+      setIsPaying(false);
+      setShowCheckout(false);
+      setSelectedSeat(null);
+      return;
+    }
+
     const newBookings = generateOfflineBooking(
       bookingType,
       activeTrip, activeArrivalTrip, activeReturnTrip,
@@ -899,14 +932,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const all: Booking[] = JSON.parse(localStorage.getItem('aesh_bookings') || '[]');
     localStorage.setItem('aesh_bookings', JSON.stringify([...all, ...newBookings]));
 
-    if (apiBookingSuccess) {
-      await getUserBookings();
-      await loadSeatMap();
-      if (role === 'supervisor') await loadSupervisorManifest();
-    } else {
-      setMyBookings(prev => [...newBookings, ...prev]);
-      setSeats(prev => prev.map(s => s.seatNumber === selectedSeat ? { ...s, status: 'booked' as const, userId: user.id } : s));
-    }
+    setMyBookings(prev => [...newBookings, ...prev]);
+    setSeats(prev => prev.map(s => s.seatNumber === selectedSeat ? { ...s, status: 'booked' as const, userId: user.id } : s));
 
     addMockAuditLog('SEAT_BOOKED', `Rider booked seat ${selectedSeat} (${paymentMethod})`);
 
@@ -957,15 +984,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const login = useCallback(async (email: string, password: string) => {
     try {
       const data = await authenticateWithBackend(email, password);
-      if (data) return;
-
-      const mockUser = MOCK_USERS[email];
-      if (mockUser) {
-        localStorage.setItem('aesh_web_token', 'mock-offline-token');
-        localStorage.setItem('aesh_web_user', JSON.stringify(mockUser));
-        setToken('mock-offline-token');
-        setUser(mockUser);
-        setRole(mockUser.role);
+      if (!data) {
+        throw new Error('Authentication service is unavailable');
       }
     } finally {
       setIsAuthLoading(false);
@@ -974,8 +994,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(() => {
     if (typeof window !== 'undefined') {
-      localStorage.removeItem('aesh_web_token');
-      localStorage.removeItem('aesh_web_user');
+      sessionStorage.removeItem('aesh_web_token');
+      sessionStorage.removeItem('aesh_web_user');
       window.location.href = '/';
     }
     setToken('');
@@ -993,13 +1013,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setRole(newRole);
       return;
     }
-
-    const mockUser = MOCK_USERS[email] || { id: 'mock-rider', email, fullName: 'Demo Student', role: 'rider' };
-    setRole(newRole);
-    setUser(mockUser);
-    setToken(`mock-${newRole}-token`);
-    localStorage.setItem('aesh_web_token', `mock-${newRole}-token`);
-    localStorage.setItem('aesh_web_user', JSON.stringify(mockUser));
+    throw new Error('Authentication service is unavailable');
   }, [authenticateWithBackend]);
 
   const verifyScanToken = useCallback(async (tokenToVerify: string) => {

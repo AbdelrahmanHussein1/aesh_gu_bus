@@ -48,7 +48,6 @@ const rootFiles = [
   'VBOX_UBUNTU_GUIDE.md',
   'DEPLOY.md',
   'DESIGN.md',
-  '.env',
   'COMMANDS_CHEAT_SHEET.txt',
   '.gitignore',
   '.dockerignore',

@@ -1,7 +1,30 @@
 'use client';
+import { useEffect, useState } from 'react';
+import QRCode from 'qrcode';
 import { useApp } from '@/hooks/useAppStore';
 import type { GroupedBooking } from '@/lib/types';
 import { showToast } from '@/components/ui/Toast';
+
+function LocalQrImage({ token, size, alt }: { token: string; size: number; alt: string }) {
+  const [src, setSrc] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    QRCode.toDataURL(token, { width: size, margin: 1 })
+      .then(value => {
+        if (active) setSrc(value);
+      })
+      .catch(error => {
+        console.error('Unable to generate ticket QR code:', error);
+      });
+    return () => {
+      active = false;
+    };
+  }, [size, token]);
+
+  if (!src) return <div className="w-full h-full bg-slate-100 animate-pulse" aria-label="Generating QR code" />;
+  return <img src={src} alt={alt} className="w-full h-full" />;
+}
 
 interface BoardedStampProps {
   isJustBoarded: boolean;
@@ -115,7 +138,7 @@ function RoundTripCard({ group }: { group: GroupedBooking }) {
               ) : (
                 <div className="space-y-2">
                   <div className="w-20 h-20 bg-white p-1 rounded-lg border border-border-whisper mx-auto">
-                    <img src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(arr.qrToken)}`} alt="Arrival QR" className="w-full h-full" />
+                    <LocalQrImage token={arr.qrToken} size={150} alt="Arrival QR" />
                   </div>
                   <BoardingCodeBadge code={arr.boardingCode} bId={arr.id} />
                   <button onClick={() => { setScanInputToken(arr.boardingCode || arr.qrToken); showToast('Token copied to scanner!', 'info'); }} className="text-[9px] text-primary-container hover:underline">Simulate Boarding</button>
@@ -133,7 +156,7 @@ function RoundTripCard({ group }: { group: GroupedBooking }) {
               ) : (
                 <div className="space-y-2">
                   <div className="w-20 h-20 bg-white p-1 rounded-lg border border-border-whisper mx-auto">
-                    <img src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(ret.qrToken)}`} alt="Return QR" className="w-full h-full" />
+                    <LocalQrImage token={ret.qrToken} size={150} alt="Return QR" />
                   </div>
                   <BoardingCodeBadge code={ret.boardingCode} bId={ret.id} />
                   <button onClick={() => { setScanInputToken(ret.boardingCode || ret.qrToken); showToast('Token copied to scanner!', 'info'); }} className="text-[9px] text-primary-container hover:underline">Simulate Boarding</button>
@@ -217,7 +240,7 @@ function OneWayCard({ group }: { group: GroupedBooking }) {
           ) : (
             <div className="space-y-2">
               <div className="w-24 h-24 bg-white p-1 rounded-lg border border-border-whisper mx-auto">
-                <img src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(b.qrToken)}`} alt="Ticket QR" className="w-full h-full" />
+                <LocalQrImage token={b.qrToken} size={200} alt="Ticket QR" />
               </div>
               <BoardingCodeBadge code={b.boardingCode} bId={b.id} />
               <button onClick={() => { setScanInputToken(b.boardingCode || b.qrToken); showToast('Token copied to scanner!', 'info'); }} className="text-[9px] text-primary-container hover:underline">Simulate Scan</button>

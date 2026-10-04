@@ -2,7 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { db } from '../db/index.js';
 import * as schema from '../db/schema.js';
-import { eq, and, or, desc, inArray, ne } from 'drizzle-orm';
+import { eq, and, or, desc, inArray, ne, count, ilike, sql } from 'drizzle-orm';
 import { WebSocketHub } from '../websocket/hub.js';
 import { redis } from '../redis.js';
 import { logSecurityEvent } from '../services/audit.service.js';
@@ -1243,7 +1243,14 @@ export async function adminRoutes(fastify: FastifyInstance) {
     const body = (request.body || {}) as any;
     const query = (request.query || {}) as any;
     const date = body.date || query.date;
-    const allDates = body.allDates === true || query.allDates === 'true' || (!date && !body.date);
+    const allDatesRequested = body.allDates === true || query.allDates === 'true';
+    if (!date && !allDatesRequested) {
+      return reply.status(400).send({
+        error: 'A date or explicit allDates=true is required',
+        messageAr: 'يجب تحديد تاريخ أو إرسال allDates=true صراحةً',
+      });
+    }
+    const allDates = allDatesRequested;
 
     let purgedShiftsCount = 0;
     let purgedBookingsCount = 0;
@@ -1301,8 +1308,9 @@ export async function adminRoutes(fastify: FastifyInstance) {
       if (keys && keys.length > 0) {
         await redis.del(...keys);
       }
-      // Set flag with 30-day expiration so auto-generator NEVER resurrects ghost shifts
-      await redis.set('admin_purged_trips_flag', '1', 'EX', 2592000);
+      if (allDates) {
+        await redis.set('admin_purged_trips_flag', '1', 'EX', 2592000);
+      }
     } catch {}
 
     await logSecurityEvent({

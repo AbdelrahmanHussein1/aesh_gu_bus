@@ -80,17 +80,22 @@ export default function AuditLogTable() {
       return;
     }
 
+    const csvCell = (value: unknown) => {
+      const text = String(value ?? '');
+      const safe = /^[=+\-@]/.test(text) ? `'${text}` : text;
+      return `"${safe.replace(/"/g, '""')}"`;
+    };
     const headers = ['ID', 'Timestamp', 'Action', 'User Full Name', 'Academic ID', 'Email', 'Role', 'IP Address', 'Details'];
     const rows = filteredLogs.map(l => [
-      l.id,
-      l.time ? new Date(l.time).toISOString() : '',
-      l.action,
-      `"${(l.user?.fullName || 'System').replace(/"/g, '""')}"`,
-      l.user?.academicId || 'N/A',
-      l.user?.email || 'N/A',
-      l.user?.role || 'system',
-      l.ipAddress || '127.0.0.1',
-      `"${JSON.stringify(l.details || {}).replace(/"/g, '""')}"`,
+      csvCell(l.id),
+      csvCell(l.time ? new Date(l.time).toISOString() : ''),
+      csvCell(l.action),
+      csvCell(l.user?.fullName || 'System'),
+      csvCell(l.user?.academicId || 'N/A'),
+      csvCell(l.user?.email || 'N/A'),
+      csvCell(l.user?.role || 'system'),
+      csvCell(l.ipAddress || '127.0.0.1'),
+      csvCell(JSON.stringify(l.details || {})),
     ]);
 
     const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');

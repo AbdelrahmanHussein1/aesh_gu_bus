@@ -9,10 +9,14 @@ interface OdooAuthResult {
 
 /**
  * Tries to authenticate credentials against the Odoo ERP.
- * Falls back to hardcoded student profile if in MOCK mode or if credentials match.
+ * Uses the configured ERP provider, with a development-only mock mode.
  */
 export async function authenticateOdoo(email: string, pass: string): Promise<OdooAuthResult> {
   const isMock = process.env.MOCK_ERP === 'true';
+
+  if (isMock && process.env.NODE_ENV === 'production') {
+    throw new Error('Mock ERP authentication is disabled in production');
+  }
 
   // Helper to generate deterministic unique ID based on email string
   const getDeterministicId = (str: string, seed: number) => {
@@ -24,14 +28,6 @@ export async function authenticateOdoo(email: string, pass: string): Promise<Odo
     return Math.abs(hash % 10000000);
   };
 
-  // Default accounts for system operation and testing
-  if (email === 'admin@gu.edu.eg') {
-    return { uid: 1, partner_id: 1, name: 'System Administrator', email };
-  }
-  if (email === 'supervisor@gu.edu.eg' || email.startsWith('supervisor') || email.startsWith('super.')) {
-    const uid = email === 'supervisor@gu.edu.eg' ? 90001 : getDeterministicId(email, 90001);
-    return { uid, partner_id: uid, name: 'Supervisor Aesh', email };
-  }
   if (isMock) {
     console.log('[Odoo Auth] Using Mock/Direct Authentication for account:', email);
     const uid = getDeterministicId(email, 12226);

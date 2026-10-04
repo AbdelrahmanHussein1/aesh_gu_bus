@@ -88,6 +88,7 @@ export default function AppHome() {
   const [regPhone, setRegPhone] = useState('');
   const [regPassword, setRegPassword] = useState('');
   const [regOtp, setRegOtp] = useState('');
+  const [regVerificationId, setRegVerificationId] = useState('');
   const [regLoading, setRegLoading] = useState(false);
 
   // Selector states
@@ -276,7 +277,7 @@ export default function AppHome() {
     const wsUrl = serverUrl.replace(/^http/, 'ws');
     let socket: WebSocket | null = null;
     try {
-      socket = new WebSocket(`${wsUrl}/ws/user/session?token=${user.token || user.id}`);
+      socket = new WebSocket(`${wsUrl}/ws/user/session`, user.token || '');
       socket.onmessage = (event) => {
         try {
           const msg = JSON.parse(event.data);
@@ -369,24 +370,7 @@ export default function AppHome() {
       setUser(loggedUser);
       fetchMyBookings(data.token);
     } catch (err: any) {
-      // Fallback demo login if server not reached
-      Alert.alert(
-        'Server Notice',
-        `Live login attempt (${err.message}). Connecting in demo session...`,
-        [{
-          text: 'Continue in Demo',
-          onPress: () => {
-            const isSuper = email.startsWith('supervisor') || email.startsWith('driver');
-            setUser({
-              id: isSuper ? 'user-super' : 'user-student',
-              email,
-              fullName: isSuper ? 'Supervisor Aesh' : email.split('@')[0] || 'Galala Student',
-              role: isSuper ? 'supervisor' : 'rider',
-              token: 'demo-token',
-            });
-          }
-        }]
-      );
+      Alert.alert('Login Error', err.message || 'Unable to reach the authentication server.');
     } finally {
       setIsLoggingIn(false);
     }
@@ -400,7 +384,7 @@ export default function AppHome() {
     }
 
     const cleanEmail = regEmail.toLowerCase().trim();
-    if (!cleanEmail.endsWith('@gu.edu.eg') && !cleanEmail.endsWith('@galala.edu.eg') && !cleanEmail.startsWith('test.')) {
+    if (!cleanEmail.endsWith('@gu.edu.eg') && !cleanEmail.endsWith('@galala.edu.eg')) {
       Alert.alert('Domain Error', 'Registration is restricted to official Galala University student emails (@gu.edu.eg).');
       return;
     }
@@ -429,6 +413,7 @@ export default function AppHome() {
         [{ text: 'متابعة' }]
       );
       setRegOtp('');
+      setRegVerificationId(data.verificationId || '');
       setRegStep('verify_code');
     } catch (err: any) {
       Alert.alert('Verification Error', err.message || 'Could not verify student ID.');
@@ -447,11 +432,14 @@ export default function AppHome() {
     setRegLoading(true);
     try {
       // 1. Confirm code
-      await fetch(`${serverUrl}/api/auth/confirm-code`, {
+      const confirmRes = await fetch(`${serverUrl}/api/auth/confirm-code`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: regEmail.toLowerCase().trim(), code: regOtp.trim() }),
       });
+      if (!confirmRes.ok) {
+        throw new Error('Invalid or expired verification code');
+      }
 
       // 2. Register user
       const res = await fetch(`${serverUrl}/api/auth/register`, {
@@ -459,12 +447,13 @@ export default function AppHome() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           email: regEmail.toLowerCase().trim(),
-          password: regPassword || '123456',
+          password: regPassword,
           fullName: regName || 'Galala Student',
           academicId: regAcademicId.trim(),
           faculty: regFaculty,
-          phone: regPhone || '01000000000',
+          phone: regPhone,
           role: 'rider',
+          sheerIdVerificationId: regVerificationId,
         }),
       });
 
@@ -487,15 +476,7 @@ export default function AppHome() {
       setUser(loggedUser);
       fetchMyBookings(data.token);
     } catch (err: any) {
-      Alert.alert('Notice', err.message || 'Registration completed in local mode.');
-      setShowRegisterModal(false);
-      setUser({
-        id: 'usr-new-' + Date.now(),
-        email: regEmail,
-        fullName: regName || 'Galala Student',
-        role: 'rider',
-        token: 'demo-token',
-      });
+      Alert.alert('Registration Error', err.message || 'Registration failed.');
     } finally {
       setRegLoading(false);
     }

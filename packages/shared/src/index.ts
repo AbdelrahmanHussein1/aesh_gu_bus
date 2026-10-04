@@ -239,11 +239,15 @@ export const VerifySheerIdSchema = z.object({
  */
 export function generateBoardingCode(): string {
   const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
-  let code = '';
-  for (let i = 0; i < 4; i++) {
-    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  const values = new Uint32Array(4);
+  if (typeof globalThis.crypto?.getRandomValues === 'function') {
+    globalThis.crypto.getRandomValues(values);
+  } else {
+    for (let i = 0; i < values.length; i++) {
+      values[i] = Math.floor(Math.random() * 0xffffffff);
+    }
   }
-  return `GU-${code}`;
+  return `GU-${Array.from(values, value => chars[value % chars.length]).join('')}`;
 }
 
 // Compact QR Token Codec
@@ -332,4 +336,3 @@ export class QRCodec {
     return constantTimeEqual(signature.toLowerCase(), expectedSignature.toLowerCase());
   }
 }
-

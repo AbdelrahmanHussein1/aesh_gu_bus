@@ -30,6 +30,7 @@ export default function RegisterForm({ onSwitchTab }: Props = {}) {
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [verificationCode, setVerificationCode] = useState('');
+  const [verificationId, setVerificationId] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [successNotice, setSuccessNotice] = useState('');
@@ -45,9 +46,7 @@ export default function RegisterForm({ onSwitchTab }: Props = {}) {
     const cleanEmail = email.toLowerCase().trim();
     if (
       !cleanEmail.endsWith('@gu.edu.eg') &&
-      !cleanEmail.endsWith('@galala.edu.eg') &&
-      !cleanEmail.startsWith('aes') &&
-      !cleanEmail.startsWith('test.')
+      !cleanEmail.endsWith('@galala.edu.eg')
     ) {
       setError('Registration is restricted to Galala University students (@gu.edu.eg)');
       setLoading(false);
@@ -72,6 +71,7 @@ export default function RegisterForm({ onSwitchTab }: Props = {}) {
       }
 
       setSuccessNotice(data.messageAr || 'تم إرسال كود التحقق إلى بريدك الجامعي');
+      setVerificationId(data.verificationId || '');
       setVerificationCode('');
       setStep('verify_code');
     } catch (err: any) {
@@ -116,7 +116,7 @@ export default function RegisterForm({ onSwitchTab }: Props = {}) {
           academicId: academicId.trim(),
           faculty,
           phone,
-          sheerIdVerificationId: `verified_${academicId}`,
+          sheerIdVerificationId: verificationId,
         }),
       });
 

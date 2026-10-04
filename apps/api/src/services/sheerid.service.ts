@@ -5,6 +5,7 @@ import * as schema from '../db/schema.js';
 import { eq, and, gt, desc } from 'drizzle-orm';
 import { Resend } from 'resend';
 import { MailService } from './mail.service.js';
+import { redisClient } from '../redis.js';
 
 const resendApiKey = process.env.RESEND_API_KEY || 're_mock_key';
 const emailFrom = process.env.EMAIL_FROM || 'Bus Aesh <onboarding@resend.dev>';
@@ -30,11 +31,8 @@ export class SheerIDService {
   static isGalalaEmail(email: string): boolean {
     const lower = email.toLowerCase().trim();
     return (
-      lower.endsWith('@gu.edu.eg') ||
-      lower.endsWith('@galala.edu.eg') ||
-      lower.startsWith('aes') ||
-      lower.startsWith('std.') ||
-      lower.startsWith('test.')
+      /^[^@\s]+@gu\.edu\.eg$/.test(lower) ||
+      /^[^@\s]+@galala\.edu\.eg$/.test(lower)
     );
   }
 
@@ -109,9 +107,18 @@ export class SheerIDService {
 
         const status = response.data?.currentStep || response.data?.status;
         if (status === 'SUCCESS' || status === 'APPROVED') {
+          const verificationId = response.data.verificationId || `sheer_${academicId}`;
+          await db.insert(schema.verificationTokens).values({
+            email: email.toLowerCase().trim(),
+            token: verificationId,
+            code: 'approved',
+            academicId: academicId.trim(),
+            isVerified: true,
+            expiresAt: new Date(Date.now() + 15 * 60 * 1000),
+          });
           return {
             success: true,
-            verificationId: response.data.verificationId || `sheer_${academicId}`,
+            verificationId,
             status: 'APPROVED',
             message: 'Student status verified successfully via SheerID',
             messageAr: 'تم التحقق من القيد الطلابي بجامعة الجلالة بنجاح عبر SheerID',
@@ -123,7 +130,16 @@ export class SheerIDService {
     }
 
     // 4. Institutional Verification Code Flow (Fallback & default robust mechanism)
-    const verificationCode = Math.floor(100000 + Math.random() * 900000).toString(); // 6 digits
+    const resendKey = `student_verification_resend:${email.toLowerCase().trim()}`;
+    const resendCount = await redisClient.incr(resendKey);
+    if (resendCount === 1) {
+      await redisClient.expire(resendKey, 900);
+    }
+    if (resendCount > 3) {
+      throw new Error('Too many verification requests. Please try again later.');
+    }
+
+    const verificationCode = crypto.randomInt(100000, 1000000).toString();
     const verificationToken = crypto.randomUUID();
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 mins expiry
 
@@ -135,20 +151,13 @@ export class SheerIDService {
       expiresAt,
     });
 
-    // Log verification code to server console for testing/audit
-    console.log(`[SheerID Verification] 🔐 Verification OTP for ${email} (Academic ID: ${academicId}) is: ${verificationCode}`);
-
     // Send verification OTP via MailService (Microsoft 365 / Outlook SMTP, Resend, or Console)
-    try {
-      await MailService.sendStudentOtpEmail({
-        email: email.toLowerCase().trim(),
-        fullName,
-        academicId,
-        otp: verificationCode,
-      });
-    } catch (err: any) {
-      console.warn('[SheerIDService] MailService delivery encountered error:', err?.message);
-    }
+    await MailService.sendStudentOtpEmail({
+      email: email.toLowerCase().trim(),
+      fullName,
+      academicId,
+      otp: verificationCode,
+    });
 
     return {
       success: true,
@@ -165,11 +174,20 @@ export class SheerIDService {
   static async confirmCode(email: string, code: string): Promise<boolean> {
     const cleanEmail = email.toLowerCase().trim();
     const cleanCode = code.trim();
+    const attemptKey = `student_verification_attempts:${cleanEmail}`;
+    const attempts = await redisClient.incr(attemptKey);
+    if (attempts === 1) {
+      await redisClient.expire(attemptKey, 900);
+    }
+    if (attempts > 5) {
+      return false;
+    }
 
     const record = await db.query.verificationTokens.findFirst({
       where: and(
         eq(schema.verificationTokens.email, cleanEmail),
         eq(schema.verificationTokens.code, cleanCode),
+        eq(schema.verificationTokens.isVerified, false),
         gt(schema.verificationTokens.expiresAt, new Date())
       ),
       orderBy: [desc(schema.verificationTokens.createdAt)],
@@ -184,6 +202,7 @@ export class SheerIDService {
       .set({ isVerified: true })
       .where(eq(schema.verificationTokens.id, record.id));
 
+    await redisClient.del(attemptKey);
     return true;
   }
 }

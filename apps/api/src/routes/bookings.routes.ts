@@ -8,6 +8,7 @@ import { WebSocketHub } from '../websocket/hub.js';
 import { EmailService } from '../services/email.service.js';
 import { getHoursUntilDeparture } from '../utils/trip-time.js';
 import { CacheService } from '../services/cache.service.js';
+import crypto from 'node:crypto';
 
 const jwtSecret = process.env.JWT_SECRET || '';
 const QR_EXPIRY_HOURS = 24;
@@ -17,7 +18,7 @@ function getQrExpiresAt(): Date {
 }
 
 function generatePaymentId(): string {
-  return `TXN-${Math.random().toString(36).substring(2, 9).toUpperCase()}`;
+  return `TXN-${crypto.randomUUID().replace(/-/g, '').slice(0, 12).toUpperCase()}`;
 }
 
 export async function bookingsRoutes(fastify: FastifyInstance) {
@@ -177,6 +178,12 @@ export async function bookingsRoutes(fastify: FastifyInstance) {
     }
 
     const { toCampusTripId, toCampusSeatNumber, fromCampusTripId, fromCampusSeatNumber, paymentMethod, receiptImage, receiptRef } = bodyResult.data;
+    if (toCampusTripId === fromCampusTripId) {
+      return reply.status(400).send({
+        error: 'Round-trip legs must use different trips',
+        messageAr: 'يجب أن يستخدم الحجز ذهاباً وعودة رحلتين مختلفتين',
+      });
+    }
     const userId = request.user.id;
     const userEmail = request.user.email;
     const userName = request.user.fullName;
