@@ -13,7 +13,7 @@ import {
 
 export default function TripSelector() {
   const {
-    selectedDate, setSelectedDate,
+    selectedDate, setSelectedDate, token,
     routes, activeTrip, setActiveTrip,
     supervisorManifest, handleManualBoardPassenger, handleManualBoardAll,
   } = useApp();
@@ -54,11 +54,11 @@ export default function TripSelector() {
     setLoading(true);
     const apiUrl = getApiBaseUrl();
     try {
-      let url = `${apiUrl}/api/trips?date=${selectedDate}`;
+      let url = `${apiUrl}/api/trips?date=${selectedDate}&includePassengers=true`;
       if (filterRouteId !== 'all') url += `&routeId=${filterRouteId}`;
       if (filterDirection !== 'all') url += `&direction=${filterDirection}`;
 
-      const res = await fetch(url);
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
       if (res.ok) {
         const data: Trip[] = await res.json();
         setAvailableTrips(data);
@@ -75,7 +75,7 @@ export default function TripSelector() {
     } finally {
       setLoading(false);
     }
-  }, [selectedDate, filterRouteId, filterDirection, activeTrip, setActiveTrip]);
+  }, [selectedDate, filterRouteId, filterDirection, activeTrip, setActiveTrip, token]);
 
   useEffect(() => {
     fetchTrips();

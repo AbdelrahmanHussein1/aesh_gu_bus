@@ -133,7 +133,9 @@ function RoundTripCard({ group }: { group: GroupedBooking }) {
               <p className="text-[10px] font-bold text-primary-container uppercase">1. Arrival Leg</p>
               <p className="text-[10px] text-text-secondary font-mono">{arr.departureTime}</p>
               <p className="text-xs font-bold text-text-primary">Seat {arr.seatNumber}</p>
-              {arrBoarded ? (
+              {arr.paymentStatus !== 'paid' ? (
+                <p className="text-xs text-amber-700">Payment verification pending. Boarding pass available after approval.</p>
+              ) : arrBoarded ? (
                 <BoardedStamp isJustBoarded={arrJustBoarded} size="compact" />
               ) : (
                 <div className="space-y-2">
@@ -151,7 +153,9 @@ function RoundTripCard({ group }: { group: GroupedBooking }) {
               <p className="text-[10px] font-bold text-destructive-asu uppercase">2. Return Leg</p>
               <p className="text-[10px] text-text-secondary font-mono">{ret.departureTime}</p>
               <p className="text-xs font-bold text-text-primary">Seat {ret.seatNumber}</p>
-              {retBoarded ? (
+              {ret.paymentStatus !== 'paid' ? (
+                <p className="text-xs text-amber-700">Payment verification pending. Boarding pass available after approval.</p>
+              ) : retBoarded ? (
                 <BoardedStamp isJustBoarded={retJustBoarded} size="compact" />
               ) : (
                 <div className="space-y-2">
@@ -235,7 +239,9 @@ function OneWayCard({ group }: { group: GroupedBooking }) {
         <div className="px-4 pb-4 border-t border-border-whisper pt-4 text-center space-y-4">
           <p className="text-[10px] text-text-secondary font-mono">Departure: {b.departureTime}</p>
           <p className="text-xs font-bold text-text-primary">Seat {b.seatNumber}</p>
-          {isBoarded ? (
+          {b.paymentStatus !== 'paid' ? (
+            <p className="text-xs text-amber-700">Payment verification pending. Boarding pass available after approval.</p>
+          ) : isBoarded ? (
             <BoardedStamp isJustBoarded={isJustBoarded} size="normal" />
           ) : (
             <div className="space-y-2">

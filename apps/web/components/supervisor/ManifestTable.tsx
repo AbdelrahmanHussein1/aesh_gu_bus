@@ -186,7 +186,7 @@ export default function ManifestTable() {
                     <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
                       row.paymentStatus === 'paid' ? 'bg-success-galala/10 text-success-galala border border-success-galala/20' : 'bg-amber-500/10 text-amber-600 border border-amber-500/20'
                     }`}>
-                      {row.paymentStatus === 'paid' ? 'Paid (Visa)' : 'Receipt Uploaded'}
+                      {row.paymentStatus === 'paid' ? 'Payment verified' : 'Verification pending'}
                     </span>
                   </td>
                   <td className="py-3.5 px-4">
@@ -203,7 +203,7 @@ export default function ManifestTable() {
                   <td className="py-3.5 px-4 text-right space-x-2">
                     {row.status !== 'cancelled' && (
                       <>
-                        {!row.isBoarded && (
+                        {!row.isBoarded && row.paymentStatus === 'paid' && (
                           <button
                             onClick={() => handleManualBoardPassenger(row.bookingId, activeTrip?.id)}
                             className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg transition font-medium cursor-pointer"

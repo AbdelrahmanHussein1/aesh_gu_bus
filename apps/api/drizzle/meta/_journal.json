@@ -43,6 +43,13 @@
       "when": 1788705000000,
       "tag": "0005_add_boarding_code",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791970000000,
+      "tag": "0006_dedupe_stops",
+      "breakpoints": true
     }
   ]
 }

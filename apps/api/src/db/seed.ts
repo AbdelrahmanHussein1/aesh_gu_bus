@@ -74,7 +74,7 @@ async function seed() {
         fullNameAr: p.nameAr,
         phone: p.phone,
         role: p.role,
-        password: defaultHashedPassword,
+        password: null,
       }).onConflictDoNothing().returning();
 
       if (inserted) {
@@ -175,7 +175,7 @@ async function seed() {
               departTime: '09:10',
               stopOrder: 3,
             }
-          ]);
+          ]).onConflictDoNothing();
         }
       }
 

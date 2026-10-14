@@ -59,7 +59,9 @@ export const stops = pgTable('stops', {
   departTime: varchar('depart_time', { length: 8 }), // HH:MM
   stopOrder: integer('stop_order').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
-});
+}, table => ({
+  routeOrderUnique: dCore.uniqueIndex('unique_stops_route_order').on(table.routeId, table.stopOrder),
+}));
 
 // Buses
 export const buses = pgTable('buses', {

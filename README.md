@@ -607,17 +607,13 @@ The application is configured through environment variables defined in `.env`:
 
 ---
 
-## 9. Default Test Credentials
+## 9. Account Provisioning
 
-For rapid evaluation and demonstration, the database includes pre-configured accounts:
+Seeding requires a private `SEED_BOOTSTRAP_PASSWORD` for the initial administrator. Use a strong, unique value. Supervisor and driver accounts are seeded without local passwords and require individual provisioning. Students register with their university email. The 2026-10-14 live development credentials were rotated and are stored outside this repository.
 
-| Role | Email | Password | Access Capabilities |
-| :--- | :--- | :--- | :--- |
-| **System Administrator** | `admin@gu.edu.eg` | `1111` *(or `123456`)* | Master operations, fleet live status, shift hub, audit logs, dataset explorer |
-| **Line Supervisor** | `supervisor@gu.edu.eg` | `1111` *(or `123456`)* | Live camera QR scanning, manual code boarding, passenger manifest, seat swaps |
-| **Student / Rider** | `student@gu.edu.eg` | `1111` *(or `123456`)* | Route selection, 50-seat cabin selector, seat locking, payments, boarding passes |
+Paid Instapay and Telda bookings require a receipt reference or image and remain unverified until an administrator checks the transfer against the payment account and calls `POST /api/admin/bookings/:bookingId/verify-payment` with an administrator token. For round trips, verify each booking ID. Boarding is blocked until payment is verified. The mock card method is disabled unless `ENABLE_MOCK_PAYMENTS=true` is explicitly set on the API (and `NEXT_PUBLIC_ENABLE_MOCK_PAYMENTS=true` on the web build).
 
-*(Students can also register new accounts directly using their `@gu.edu.eg` university email address).*
+The live development VM has a clearly named `CODEX DEVELOPMENT TEST ROUTE - NO REAL SERVICE` with zero-fare trips for 15–21 October 2026 except Friday. It exists to exercise booking and boarding while the current university timetable is unavailable. No driver or supervisor is assigned, and it must not be presented as a university-operated bus.
 
 ---
 

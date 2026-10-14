@@ -173,7 +173,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [supervisorManifest, setSupervisorManifest] = useState<ManifestEntry[]>([]);
   const [showCheckout, setShowCheckout] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('visa_mock');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('instapay');
   const [checkoutError, setCheckoutError] = useState('');
   const [isPaying, setIsPaying] = useState(false);
   const [cardNumber, setCardNumber] = useState('');

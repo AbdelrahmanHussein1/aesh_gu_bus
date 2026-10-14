@@ -29,6 +29,11 @@ export function verifyPassword(password: string, storedHash: string): boolean {
   return crypto.timingSafeEqual(keyBuffer, derivedKey);
 }
 
+function publicUser(user: typeof schema.users.$inferSelect) {
+  const { password, currentSessionId, sheerIdVerificationId, erpUid, erpPartnerId, ...safeUser } = user;
+  return safeUser;
+}
+
 export async function authRoutes(fastify: FastifyInstance) {
   // 1. Verify Student Status / Academic ID (SheerID & Institutional Token)
   fastify.post('/api/auth/verify-student', async (request, reply) => {
@@ -88,7 +93,8 @@ export async function authRoutes(fastify: FastifyInstance) {
       });
     }
 
-    const { email, fullName, role, password, academicId, faculty, phone, sheerIdVerificationId } = bodyResult.data;
+    const { email, fullName, password, academicId, faculty, phone, sheerIdVerificationId } = bodyResult.data;
+    const role = 'rider';
 
     try {
       const existingUser = await db.query.users.findFirst({
@@ -192,7 +198,7 @@ export async function authRoutes(fastify: FastifyInstance) {
         ipAddress: request.ip,
       });
 
-      return { success: true, user: newUser };
+      return { success: true, user: publicUser(newUser) };
     } catch (error: any) {
       fastify.log.error(error);
       return reply.status(500).send({ error: error.message || 'Database error during registration' });
@@ -398,7 +404,7 @@ export async function authRoutes(fastify: FastifyInstance) {
         ipAddress: request.ip,
       });
 
-      return { token, user, sessionId };
+      return { token, user: publicUser(user), sessionId };
     } catch (error: any) {
       return reply.status(401).send({ error: error.message || 'Login failed' });
     }
@@ -443,6 +449,6 @@ export async function authRoutes(fastify: FastifyInstance) {
       where: eq(schema.users.id, userId),
     });
 
-    return { user };
+    return { user: user ? publicUser(user) : null };
   });
 }

@@ -15,7 +15,10 @@ export default function CheckoutModal() {
   if (bookingType === 'round_trip' && (!activeArrivalTrip || !activeReturnTrip)) return null;
   if (bookingType !== 'round_trip' && !activeTrip) return null;
 
-  const fare = activeTrip?.priceEgp || activeArrivalTrip?.priceEgp || TRANSIT_CONFIG.DEFAULT_FARE_EGP;
+  const fare = activeTrip?.priceEgp ?? activeArrivalTrip?.priceEgp ?? TRANSIT_CONFIG.DEFAULT_FARE_EGP;
+  const isFreeTrip = bookingType === 'round_trip'
+    ? Number(activeArrivalTrip?.priceEgp) === 0 && Number(activeReturnTrip?.priceEgp) === 0
+    : Number(activeTrip?.priceEgp) === 0;
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
@@ -24,7 +27,7 @@ export default function CheckoutModal() {
           <div>
             <h3 className="text-lg font-bold text-primary flex items-center gap-2">
               <span className="material-symbols-outlined">credit_card</span>
-              Payment Gateway
+              {isFreeTrip ? 'Free Development Booking' : 'Payment Gateway'}
             </h3>
             <p className="text-xs text-text-secondary mt-0.5 font-medium">Galala Booking Transaction Portal</p>
           </div>
@@ -49,25 +52,27 @@ export default function CheckoutModal() {
             </div>
             <div className="flex justify-between items-center border-t border-border-whisper pt-3 mt-1">
               <span className="text-text-primary font-bold">Total Fare</span>
-              <span className="font-label-mono text-base font-bold text-primary-container">{fare}.00 EGP</span>
+              <span className="font-label-mono text-base font-bold text-primary-container">{fare} EGP</span>
             </div>
           </div>
         </div>
 
         <form onSubmit={handleCheckoutSubmit} className="space-y-5">
-          <div className="space-y-2">
+          {!isFreeTrip && <div className="space-y-2">
             <label className="text-xs text-text-secondary font-semibold">Choose Payment Type</label>
             <div className="flex border-b border-border-whisper">
-              {(['visa_mock', 'instapay', 'telda'] as const).map(m => (
+              {([...(process.env.NEXT_PUBLIC_ENABLE_MOCK_PAYMENTS === 'true' ? ['visa_mock' as const] : []), 'instapay' as const, 'telda' as const]).map(m => (
                 <button key={m} type="button" onClick={() => setPaymentMethod(m)}
                   className={`flex-1 py-2 text-xs font-semibold border-b-2 transition ${paymentMethod === m ? 'border-primary-container text-primary-container font-bold' : 'border-transparent text-text-secondary hover:text-text-primary'}`}>
                   {m === 'visa_mock' ? 'Credit Card' : m === 'instapay' ? 'Instapay' : 'Telda'}
                 </button>
               ))}
             </div>
-          </div>
+          </div>}
 
-          {paymentMethod === 'visa_mock' ? (
+          {isFreeTrip ? (
+            <p className="text-xs text-text-secondary">No payment or receipt is needed for this development test trip.</p>
+          ) : paymentMethod === 'visa_mock' ? (
             <div className="space-y-3 pt-1">
               <div className="space-y-1">
                 <label className="text-xs text-text-secondary font-medium">Card Number (Simulated)</label>

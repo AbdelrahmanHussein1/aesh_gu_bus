@@ -217,7 +217,7 @@ export type GalalaFaculty = typeof GALALA_FACULTIES[number];
 export const RegisterSchema = z.object({
   email: z.string().email({ message: "Invalid email address" }),
   fullName: z.string().min(2, { message: "Name must be at least 2 characters" }),
-  role: z.enum(['rider', 'supervisor', 'admin']).default('rider'),
+  role: z.literal('rider').default('rider'),
   password: z.string().min(4, { message: "Password must be at least 4 characters" }),
   academicId: z.string().optional(),
   faculty: z.string().optional(),
