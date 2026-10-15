@@ -2,7 +2,7 @@
   "expo": {
     "name": "Bus Aesh",
     "slug": "bus-aesh",
-    "version": "1.0.0",
+    "version": "1.2.1",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "icon": "./assets/icon.png",

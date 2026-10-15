@@ -16,23 +16,39 @@ export async function tripsRoutes(fastify: FastifyInstance) {
         stops: true,
       },
     });
-    return allRoutes;
+    return allRoutes.map(route => {
+      const byOrder = new Map<number, (typeof route.stops)[number]>();
+      for (const stop of route.stops) {
+        const previous = byOrder.get(stop.stopOrder);
+        if (!previous || stop.id > previous.id) byOrder.set(stop.stopOrder, stop);
+      }
+      return { ...route, stops: [...byOrder.values()].sort((a, b) => a.stopOrder - b.stopOrder) };
+    });
   });
 
   // 2. Fetch active trips by date, route, direction, and optional time slot
   fastify.get('/api/trips', async (request, reply) => {
-    const { date, routeId, direction, timeSlot, autoSeed } = request.query as {
+    const { date, routeId, direction, timeSlot, includePassengers } = request.query as {
       date?: string;
       routeId?: string;
       direction?: string;
       timeSlot?: string;
-      autoSeed?: string;
+      includePassengers?: string;
     };
     if (!date) {
       return reply.status(400).send({ error: 'Missing date query parameter' });
     }
 
-    const cacheKey = `cache:trips:${date}:${routeId || 'all'}:${direction || 'all'}:${timeSlot || 'all'}`;
+    const privileged = includePassengers === 'true';
+    if (privileged) {
+      await (fastify as any).authenticate(request, reply);
+      if (reply.sent) return;
+      if (!['admin', 'supervisor'].includes((request as any).user?.role)) {
+        return reply.status(403).send({ error: 'Forbidden' });
+      }
+    }
+
+    const cacheKey = `cache:trips:${privileged ? 'staff' : 'public'}:${date}:${routeId || 'all'}:${direction || 'all'}:${timeSlot || 'all'}`;
     const cached = await CacheService.getCache<any[]>(cacheKey);
     if (cached) {
       return cached;
@@ -68,96 +84,6 @@ export async function tripsRoutes(fastify: FastifyInstance) {
         },
       },
     });
-
-    // Check if admin has purged trips so we don't automatically regenerate hundreds of shifts
-    const isPurged = await redis.get('admin_purged_trips_flag');
-
-    // Only auto-generate if explicitly requested with autoSeed === 'true' AND admin hasn't explicitly purged the roster
-    if (activeTrips.length === 0 && !isPurged && autoSeed === 'true') {
-      const allRoutes = await db.query.routes.findMany({ where: eq(schema.routes.isActive, true) });
-      const [defaultBus] = await db.select().from(schema.buses).limit(1);
-      const [defaultSupervisor] = await db.select().from(schema.users).where(eq(schema.users.role, 'supervisor')).limit(1);
-
-      if (defaultBus && allRoutes.length > 0) {
-        const returnSlots = [
-          { slot: 'return_1', hour: 12, min: 30 },
-          { slot: 'return_2', hour: 14, min: 30 },
-          { slot: 'return_3', hour: 17, min: 30 },
-        ];
-
-        const tripsToInsert: any[] = [];
-        for (const r of allRoutes) {
-          // Morning trip (07:00 AM)
-          const depMorning = new Date(`${date}T07:00:00+02:00`);
-          const arrMorning = new Date(`${date}T09:00:00+02:00`);
-          tripsToInsert.push({
-            routeId: r.id,
-            busId: defaultBus.id,
-            driverId: defaultSupervisor?.id || null,
-            tripDate: date,
-            departureTime: depMorning,
-            returnTime: arrMorning,
-            direction: 'to_campus',
-            timeSlot: 'morning_1',
-            totalSeats: 50,
-            status: 'scheduled',
-            cancellationLockHours: 3,
-          });
-
-          // Return trips (12:30, 14:30, 17:30)
-          for (const ret of returnSlots) {
-            const depRet = new Date(`${date}T${ret.hour}:${ret.min}:00+02:00`);
-            const arrRet = new Date(depRet.getTime() + 2 * 60 * 60 * 1000);
-            tripsToInsert.push({
-              routeId: r.id,
-              busId: defaultBus.id,
-              driverId: defaultSupervisor?.id || null,
-              tripDate: date,
-              departureTime: depRet,
-              returnTime: arrRet,
-              direction: 'from_campus',
-              timeSlot: ret.slot,
-              totalSeats: 50,
-              status: 'scheduled',
-              cancellationLockHours: 3,
-            });
-          }
-        }
-
-        if (tripsToInsert.length > 0) {
-          const insertedTrips = await db.insert(schema.trips)
-            .values(tripsToInsert)
-            .onConflictDoNothing()
-            .returning();
-
-          if (defaultSupervisor && insertedTrips.length > 0) {
-            const supervisorMappings = insertedTrips.map(t => ({
-              tripId: t.id,
-              userId: defaultSupervisor.id,
-              assignedRole: 'line_supervisor',
-            }));
-            await db.insert(schema.tripSupervisors)
-              .values(supervisorMappings)
-              .onConflictDoNothing();
-          }
-        }
-
-        // Re-query with generated trips
-        activeTrips = await db.query.trips.findMany({
-          where: and(...conditions),
-          with: {
-            bus: true,
-            route: true,
-            driver: true,
-            supervisors: {
-              with: {
-                user: true,
-              },
-            },
-          },
-        });
-      }
-    }
 
     const tripIds = activeTrips.map(t => t.id);
     const bookingsByTrip = new Map<number, any[]>();
@@ -221,22 +147,22 @@ export async function tripsRoutes(fastify: FastifyInstance) {
         bookedSeats,
         boardedSeats,
         pendingSeats,
-        passengers,
+        passengers: privileged ? passengers : [],
         priceEgp: Number(t.priceEgp),
         status: t.status,
         cancellationLockHours: t.cancellationLockHours,
         bus: t.bus,
         route: t.route,
-        driver: t.driver ? {
+        driver: privileged && t.driver ? {
           nameAr: t.driver.fullNameAr || t.driver.fullName,
           nameEn: t.driver.fullName,
           phone: t.driver.phone || '',
         } : null,
-        supervisors: t.supervisors?.map((s: any) => ({
+        supervisors: privileged ? t.supervisors?.map((s: any) => ({
           nameAr: s.user.fullNameAr || s.user.fullName,
           nameEn: s.user.fullName,
           phone: s.user.phone || '',
-        })) || [],
+        })) || [] : [],
       };
     });
 

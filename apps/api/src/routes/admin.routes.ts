@@ -24,6 +24,32 @@ const isUuid = (val: unknown): boolean =>
   typeof val === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val.trim());
 
 export async function adminRoutes(fastify: FastifyInstance) {
+  fastify.post('/api/admin/bookings/:bookingId/verify-payment', {
+    preValidation: [(fastify as any).authenticate, requireRole(['admin'])],
+  }, async (request: any, reply) => {
+    const { bookingId } = request.params as { bookingId: string };
+    if (!isUuid(bookingId)) return reply.status(400).send({ error: 'Invalid bookingId' });
+    const booking = await db.query.bookings.findFirst({ where: eq(schema.bookings.id, bookingId) });
+    if (!booking) return reply.status(404).send({ error: 'Booking not found' });
+    if (!['confirmed', 'swapped'].includes(booking.status) || booking.paymentStatus !== 'receipt_uploaded') {
+      return reply.status(409).send({ error: 'Booking is not awaiting receipt verification' });
+    }
+    if (!booking.receiptRef && !booking.receiptImage) {
+      return reply.status(400).send({ error: 'Booking has no receipt evidence' });
+    }
+    await db.update(schema.bookings).set({ paymentStatus: 'paid', updatedAt: new Date() })
+      .where(and(eq(schema.bookings.id, bookingId), eq(schema.bookings.paymentStatus, 'receipt_uploaded')));
+    await logSecurityEvent({
+      userId: request.user.id,
+      action: 'ADMIN_VERIFIED_PAYMENT',
+      entityType: 'booking',
+      entityId: bookingId,
+      details: { bookingId, receiptRef: booking.receiptRef },
+      ipAddress: request.ip,
+    });
+    return { success: true, bookingId, paymentStatus: 'paid' };
+  });
+
   // 1. Dynamic Fleet Status Overview (Live Real-Time Fleet Monitor)
   // 1. Dynamic Fleet Status Overview (Live Real-Time Fleet Monitor with Full Custom Filtering)
   fastify.get('/api/admin/fleet', {
@@ -1243,7 +1269,14 @@ export async function adminRoutes(fastify: FastifyInstance) {
     const body = (request.body || {}) as any;
     const query = (request.query || {}) as any;
     const date = body.date || query.date;
-    const allDates = body.allDates === true || query.allDates === 'true' || (!date && !body.date);
+    const allDatesRequested = body.allDates === true || query.allDates === 'true';
+    if (!date && !allDatesRequested) {
+      return reply.status(400).send({
+        error: 'A date or explicit allDates=true is required',
+        messageAr: 'يجب تحديد تاريخ أو إرسال allDates=true صراحةً',
+      });
+    }
+    const allDates = allDatesRequested;
 
     let purgedShiftsCount = 0;
     let purgedBookingsCount = 0;
@@ -1301,8 +1334,9 @@ export async function adminRoutes(fastify: FastifyInstance) {
       if (keys && keys.length > 0) {
         await redis.del(...keys);
       }
-      // Set flag with 30-day expiration so auto-generator NEVER resurrects ghost shifts
-      await redis.set('admin_purged_trips_flag', '1', 'EX', 2592000);
+      if (allDates) {
+        await redis.set('admin_purged_trips_flag', '1', 'EX', 2592000);
+      }
     } catch {}
 
     await logSecurityEvent({

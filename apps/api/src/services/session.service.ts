@@ -4,7 +4,7 @@ import { db } from '../db/index.js';
 import * as schema from '../db/schema.js';
 import { eq } from 'drizzle-orm';
 
-const SESSION_TTL_SECONDS = 30 * 24 * 60 * 60; // 30 days
+const SESSION_TTL_SECONDS = 12 * 60 * 60; // 12 hours
 
 export class SessionService {
   /**

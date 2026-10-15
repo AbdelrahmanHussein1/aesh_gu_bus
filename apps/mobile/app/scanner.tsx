@@ -1,172 +1,101 @@
-import React, { useState } from 'react';
-import { StyleSheet, Text, View, Button, TouchableOpacity, ActivityIndicator, NativeModules, TextInput, Modal } from 'react-native';
+import React, { useRef, useState } from 'react';
+import { StyleSheet, Text, View, TouchableOpacity, ActivityIndicator, TextInput, Modal } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import { ApiError, apiRequest } from '../src/api';
+import { useAppContext } from '../src/app-context';
 
-// Dynamically resolve API URL using host IP in development mode
-const getApiUrl = () => {
-  const scriptURL = NativeModules.SourceCode?.scriptURL;
-  if (scriptURL) {
-    const match = scriptURL.match(/http:\/\/([^:/]+)/);
-    if (match && match[1]) {
-      return `http://${match[1]}:3000`;
-    }
-  }
-  // Fallback to the user's current computer IP address on Wi-Fi
-  return 'http://192.168.1.9:3000';
-};
-
-const API_URL = getApiUrl();
+interface ScanResult {
+  success: boolean;
+  result?: string;
+  message?: string;
+  riderName?: string;
+  seatNumber?: number;
+  route?: string;
+  bus?: string;
+}
 
 export default function QRScanner() {
   const router = useRouter();
-  const { legType, token: supervisorToken } = useLocalSearchParams<{ legType?: string; token?: string }>();
+  const { legType } = useLocalSearchParams<{ legType?: string }>();
+  const { serverUrl, user } = useAppContext();
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
-  const [result, setResult] = useState<any>(null);
+  const [result, setResult] = useState<ScanResult | null>(null);
   const [manualModalVisible, setManualModalVisible] = useState(false);
   const [manualCodeInput, setManualCodeInput] = useState('');
+  const scanInProgress = useRef(false);
+  const isSupervisor = !!user && ['supervisor', 'admin'].includes(user.role);
 
-  if (!permission) {
-    // Camera permissions are still loading.
+  const handleBarcodeScanned = async ({ data }: { data: string }) => {
+    if (!isSupervisor || scanInProgress.current) return;
+    scanInProgress.current = true;
+    setScanned(true);
+    setIsVerifying(true);
+    setResult(null);
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => undefined);
+
+    try {
+      const backendResult = await apiRequest<ScanResult>('/api/scan/verify', {
+        baseUrl: serverUrl,
+        token: user.token,
+        method: 'POST',
+        body: {
+          token: data.trim(),
+          expectedLegType: ['to_campus', 'from_campus'].includes(legType || '') ? legType : undefined,
+        },
+        timeoutMs: 8000,
+      });
+      setResult(backendResult);
+      void Haptics.notificationAsync(backendResult.success
+        ? Haptics.NotificationFeedbackType.Success
+        : Haptics.NotificationFeedbackType.Error).catch(() => undefined);
+    } catch (error) {
+      const apiError = error instanceof ApiError ? error : null;
+      setResult({
+        success: false,
+        result: apiError?.status === 401 || apiError?.status === 403
+          ? 'unauthorized'
+          : apiError?.status === 0 ? 'network_error' : 'unverified',
+        message: apiError?.message || 'Unable to verify this ticket with the server. Reconnect and try again.',
+      });
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => undefined);
+    } finally {
+      setIsVerifying(false);
+    }
+  };
+
+  const handleManualSubmit = () => {
+    if (!manualCodeInput.trim() || scanInProgress.current) return;
+    const code = manualCodeInput.trim().toUpperCase();
+    setManualModalVisible(false);
+    setManualCodeInput('');
+    void handleBarcodeScanned({ data: code });
+  };
+
+  const resetScanner = () => {
+    scanInProgress.current = false;
+    setScanned(false);
+    setResult(null);
+  };
+
+  if (!isSupervisor) {
     return (
       <View style={styles.container}>
-        <ActivityIndicator size="large" color="#38bdf8" />
-      </View>
-    );
-  }
-
-  if (!permission.granted) {
-    // Camera permissions are not granted yet.
-    return (
-      <View style={styles.container}>
-        <Text style={styles.permissionText}>We need your permission to show the camera</Text>
-        <TouchableOpacity style={styles.permissionBtn} onPress={requestPermission}>
-          <Text style={styles.permissionBtnText}>Grant Permission</Text>
+        <Text style={styles.permissionText}>Sign in with a supervisor account to use boarding scan.</Text>
+        <TouchableOpacity style={styles.permissionBtn} onPress={() => router.replace('/')}>
+          <Text style={styles.permissionBtnText}>Return to sign in</Text>
         </TouchableOpacity>
       </View>
     );
   }
 
-  const handleBarcodeScanned = async ({ data }: { data: string }) => {
-    setScanned(true);
-    setIsVerifying(true);
-    setResult(null);
-
-    // Trigger haptic feedback immediately on read
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-
-    console.log('[Scanner] Barcode read:', data);
-
-    try {
-      // 1. Try Live API verification first
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-      if (supervisorToken) {
-        headers['Authorization'] = `Bearer ${supervisorToken}`;
-      }
-
-      const response = await fetch(`${API_URL}/api/scan/verify`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ token: data, expectedLegType: legType }),
-      });
-
-      if (response.ok) {
-        const backendResult = await response.json();
-        setIsVerifying(false);
-        setResult(backendResult);
-
-        if (backendResult.success) {
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        } else {
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        }
-        return;
-      }
-    } catch (e) {
-      console.log('[Scanner] Live API failed/offline. Falling back to offline client validation...');
-    }
-
-    // 2. Offline Fallback Validation
-    setTimeout(() => {
-      setIsVerifying(false);
-
-      if (data.startsWith('GU-') || data.length === 4) {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        setResult({
-          success: true,
-          result: 'valid',
-          riderName: 'Student Passenger (Manual Code)',
-          seatNumber: Math.floor(Math.random() * 40) + 1,
-          route: 'Verified via Boarding Code',
-          bus: `Code: ${data}`
-        });
-        return;
-      }
-
-      const parts = data.split('.');
-      
-      if (parts.length < 5) {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        setResult({
-          success: false,
-          result: 'invalid',
-          message: 'INVALID SIGNATURE: QR Code is not authentic or has been tampered with.'
-        });
-        return;
-      }
-
-      const [bookingHex, tripHex, seatHex, dateHex, versionHex, legCode] = parts;
-      const seatNumber = parseInt(seatHex, 16);
-
-      // Check leg code if present
-      if (legType && legCode) {
-        const expectedLegCode = legType === 'to_campus' ? '0' : '1';
-        if (legCode !== expectedLegCode) {
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-          setResult({
-            success: false,
-            result: 'wrong_leg',
-            message: `WRONG LEG: This is a ${legCode === '0' ? 'University' : 'Return'} ticket, but you are scanning for ${legType === 'to_campus' ? 'University' : 'Return'} leg.`
-          });
-          return;
-        }
-      }
-      
-      // Decoded successfully
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setResult({
-        success: true,
-        result: 'valid',
-        riderName: 'Student Passenger',
-        seatNumber: seatNumber,
-        route: 'El Obour Line',
-        bus: 'Bus 116'
-      });
-    }, 300); // 300ms verification delay for offline feel
-  };
-
-  const handleManualSubmit = () => {
-    if (!manualCodeInput.trim()) return;
-    const code = manualCodeInput.trim().toUpperCase();
-    setManualModalVisible(false);
-    setManualCodeInput('');
-    handleBarcodeScanned({ data: code });
-  };
-
-  const resetScanner = () => {
-    setScanned(false);
-    setResult(null);
-  };
-
   return (
     <View style={styles.container}>
       {!scanned ? (
-        <CameraView
+        permission?.granted ? <CameraView
           style={StyleSheet.absoluteFillObject}
           facing="back"
           onBarcodeScanned={handleBarcodeScanned}
@@ -181,7 +110,14 @@ export default function QRScanner() {
             </View>
             <Text style={styles.overlayInstructions}>Position QR Code inside reticle</Text>
           </View>
-        </CameraView>
+        </CameraView> : <View style={styles.verifyingState}>
+          {permission ? <>
+            <Text style={styles.permissionText}>Camera permission is needed to scan QR codes. You can still enter a boarding code manually.</Text>
+            <TouchableOpacity style={styles.permissionBtn} onPress={requestPermission}>
+              <Text style={styles.permissionBtnText}>Grant Permission</Text>
+            </TouchableOpacity>
+          </> : <ActivityIndicator size="large" color="#38bdf8" />}
+        </View>
       ) : (
         <View style={styles.resultContainer}>
           {isVerifying ? (
@@ -193,10 +129,10 @@ export default function QRScanner() {
             <View style={styles.resultCard}>
               <View style={[
                 styles.resultStatusHeader, 
-                { backgroundColor: result.success ? '#10b981' : '#ef4444' }
+                  { backgroundColor: result.success ? '#10b981' : result.result === 'network_error' ? '#d97706' : '#ef4444' }
               ]}>
                 <Text style={styles.resultStatusText}>
-                  {result.success ? '✅ VALID TICKET' : '❌ DENIED'}
+                  {result.success ? '✅ VALID TICKET' : result.result === 'payment_pending' ? '⚠️ PAYMENT NOT VERIFIED' : result.result === 'already_checked_in' ? '⛔ ALREADY USED' : result.result === 'expired' ? '⌛ EXPIRED TICKET' : result.result === 'network_error' ? '⚠️ NETWORK ERROR' : result.result === 'unauthorized' ? '🔒 SESSION UNAUTHORIZED' : '❌ INVALID TICKET'}
                 </Text>
               </View>
 

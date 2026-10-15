@@ -30,6 +30,7 @@ export default function RegisterForm({ onSwitchTab }: Props = {}) {
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [verificationCode, setVerificationCode] = useState('');
+  const [verificationId, setVerificationId] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [successNotice, setSuccessNotice] = useState('');
@@ -45,12 +46,9 @@ export default function RegisterForm({ onSwitchTab }: Props = {}) {
     const cleanEmail = email.toLowerCase().trim();
     if (
       !cleanEmail.endsWith('@gu.edu.eg') &&
-      !cleanEmail.endsWith('@galala.edu.eg') &&
-      !cleanEmail.endsWith('@outlook.com') &&
-      !cleanEmail.startsWith('aes') &&
-      !cleanEmail.startsWith('test.')
+      !cleanEmail.endsWith('@galala.edu.eg')
     ) {
-      setError('Use a Galala University email (@gu.edu.eg) or an Outlook email (@outlook.com)');
+      setError('Registration is restricted to official Galala University student emails (@gu.edu.eg)');
       setLoading(false);
       return;
     }
@@ -73,6 +71,7 @@ export default function RegisterForm({ onSwitchTab }: Props = {}) {
       }
 
       setSuccessNotice(data.messageAr || 'تم إرسال كود التحقق إلى بريدك الجامعي');
+      setVerificationId(data.verificationId || '');
       setVerificationCode('');
       setStep('verify_code');
     } catch (err: any) {
@@ -117,7 +116,7 @@ export default function RegisterForm({ onSwitchTab }: Props = {}) {
           academicId: academicId.trim(),
           faculty,
           phone,
-          sheerIdVerificationId: `verified_${academicId}`,
+          sheerIdVerificationId: verificationId,
         }),
       });
 
@@ -177,7 +176,7 @@ export default function RegisterForm({ onSwitchTab }: Props = {}) {
           </div>
 
           <div className="flex flex-col gap-1.5 text-start">
-            <label className="text-xs font-semibold text-text-primary" htmlFor="reg-email">Student Email (@gu.edu.eg or @outlook.com)</label>
+            <label className="text-xs font-semibold text-text-primary" htmlFor="reg-email">Galala University Email (@gu.edu.eg)</label>
             <div className="relative">
               <span className="material-symbols-outlined absolute start-3 top-1/2 -translate-y-1/2 text-text-secondary text-base pointer-events-none">school</span>
               <input

@@ -198,7 +198,8 @@ export default function BusSeatInspectorModal({ tripId, onClose }: BusSeatInspec
     const { wsUrl } = getApiUrls();
     let socket: WebSocket | null = null;
     try {
-      socket = new WebSocket(`${wsUrl}/ws/trips/${tripId}/seats`);
+      if (!token) return;
+      socket = new WebSocket(`${wsUrl}/ws/trips/${tripId}/seats`, token);
       socket.onmessage = (event) => {
         try {
           const msg = JSON.parse(event.data);

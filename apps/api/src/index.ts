@@ -21,6 +21,18 @@ if (!jwtSecret) {
   throw new Error('JWT_SECRET environment variable is missing.');
 }
 const resendApiKey = process.env.RESEND_API_KEY || 're_mock_key';
+const configuredOrigins = (process.env.CORS_ORIGINS || 'http://localhost:3001,http://127.0.0.1:3001')
+  .split(',')
+  .map(origin => origin.trim())
+  .filter(Boolean);
+
+const getWebSocketToken = (request: any): string | undefined => {
+  const protocolHeader = request.headers?.['sec-websocket-protocol'];
+  if (typeof protocolHeader === 'string') {
+    return protocolHeader.split(',')[0]?.trim() || undefined;
+  }
+  return undefined;
+};
 
 const fastify = Fastify({
   logger: true,
@@ -28,7 +40,7 @@ const fastify = Fastify({
 
 // Configure Plugins
 await fastify.register(cors, {
-  origin: true, // Allow all origins for production web + mobile app
+  origin: configuredOrigins.length > 0 ? configuredOrigins : false,
   credentials: true,
 });
 
@@ -137,6 +149,14 @@ fastify.route({
       return;
     }
 
+    const token = getWebSocketToken(req);
+    try {
+      fastify.jwt.verify(token || '');
+    } catch {
+      socket.close(4001, 'Invalid auth token');
+      return;
+    }
+
     WebSocketHub.joinTripRoom(tripId, socket);
     console.log(`[WebSocket] Client joined trip room: ${tripId}`);
 
@@ -159,7 +179,7 @@ fastify.route({
   url: '/ws/user/session',
   wsHandler: (connection, req) => {
     const socket = (connection as any).socket || connection;
-    const token = (req.query as any)?.token;
+    const token = getWebSocketToken(req);
 
     if (!token) {
       socket.close(4000, 'Missing auth token');

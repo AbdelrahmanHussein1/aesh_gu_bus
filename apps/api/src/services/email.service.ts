@@ -1,4 +1,5 @@
 import { Resend } from 'resend';
+import QRCode from 'qrcode';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -8,6 +9,12 @@ const emailFrom = process.env.EMAIL_FROM || 'Bus Aesh <onboarding@resend.dev>';
 const sandboxOverrideRecipient = process.env.SANDBOX_OVERRIDE_RECIPIENT || '';
 
 const resend = new Resend(resendApiKey);
+const escapeHtml = (value: unknown): string => String(value ?? '')
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;');
 
 const timeSlotLabels: Record<string, string> = {
   morning_1: '09:00 AM (Shift 1)',
@@ -29,7 +36,9 @@ export class EmailService {
   static async sendForgotPasswordEmail(email: string, name: string, tempPassword: string) {
     const recipient = this.getEffectiveRecipient(email);
     console.log(`[Email] Sending password reset code to ${recipient} (original: ${email})...`);
-    if (resendApiKey === 're_mock_key') return;
+    if (resendApiKey === 're_mock_key') {
+      throw new Error('Email provider is not configured');
+    }
 
     await resend.emails.send({
       from: emailFrom,
@@ -38,11 +47,11 @@ export class EmailService {
       html: `
         <div style="max-width: 600px; margin: 0 auto; font-family: 'Segoe UI', Arial, sans-serif; background: #0f172a; color: #e2e8f0; padding: 32px; border-radius: 12px;">
           <h2 style="color: #38bdf8; margin-bottom: 16px;">🔑 Password Reset Request</h2>
-          <p>Hello <strong>${name}</strong>,</p>
+          <p>Hello <strong>${escapeHtml(name)}</strong>,</p>
           <p>You requested a password reset for your Bus Aesh account.</p>
           <div style="background: #1e293b; border-radius: 8px; padding: 20px; text-align: center; margin: 24px 0; border: 1px solid #334155;">
             <p style="color: #94a3b8; font-size: 12px; margin: 0 0 8px 0; text-transform: uppercase;">Temporary Password</p>
-            <p style="font-family: monospace; font-size: 28px; font-weight: bold; color: #38bdf8; margin: 0; letter-spacing: 2px;">${tempPassword}</p>
+            <p style="font-family: monospace; font-size: 28px; font-weight: bold; color: #38bdf8; margin: 0; letter-spacing: 2px;">${escapeHtml(tempPassword)}</p>
           </div>
           <p style="color: #f59e0b; font-size: 13px;">⚠️ Use this temporary password to log in. You can update your password in your settings once logged in.</p>
           <p style="color: #64748b; font-size: 11px; margin-top: 24px;">If you did not request this, you can ignore this email.</p>
@@ -62,9 +71,11 @@ export class EmailService {
     paymentId: string
   ) {
     const recipient = this.getEffectiveRecipient(email);
-    if (resendApiKey === 're_mock_key') return;
+    if (resendApiKey === 're_mock_key') {
+      throw new Error('Email provider is not configured');
+    }
 
-    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(qrToken)}`;
+    const qrUrl = await QRCode.toDataURL(qrToken, { width: 250, margin: 1 });
     const legLabel = legType === 'from_campus' ? 'Return Home' : 'Trip to Campus';
     const legLabelAr = legType === 'from_campus' ? 'عودة للمنزل' : 'ذهاب للجامعة';
 
@@ -89,7 +100,7 @@ export class EmailService {
           },
         ],
         paymentId,
-        amount: '160.00 EGP',
+        amount: `${Number(trip.priceEgp ?? 0).toFixed(2)} EGP`,
         cancellationLockHours: trip.cancellationLockHours,
       }),
     });
@@ -107,10 +118,14 @@ export class EmailService {
     paymentId: string
   ) {
     const recipient = this.getEffectiveRecipient(email);
-    if (resendApiKey === 're_mock_key') return;
+    if (resendApiKey === 're_mock_key') {
+      throw new Error('Email provider is not configured');
+    }
 
-    const arrivalQRUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(toCampusQR)}`;
-    const returnQRUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(fromCampusQR)}`;
+    const [arrivalQRUrl, returnQRUrl] = await Promise.all([
+      QRCode.toDataURL(toCampusQR, { width: 250, margin: 1 }),
+      QRCode.toDataURL(fromCampusQR, { width: 250, margin: 1 }),
+    ]);
 
     await resend.emails.send({
       from: emailFrom,
@@ -144,7 +159,7 @@ export class EmailService {
           },
         ],
         paymentId,
-        amount: '320.00 EGP',
+        amount: `${(Number(toCampusTrip.priceEgp ?? 0) + Number(fromCampusTrip.priceEgp ?? 0)).toFixed(2)} EGP`,
         cancellationLockHours: toCampusTrip.cancellationLockHours,
       }),
     });
@@ -152,9 +167,11 @@ export class EmailService {
 
   static async sendSwapNotificationEmail(email: string, name: string, oldTrip: any, newTrip: any, seatNumber: number, qrToken: string) {
     const recipient = this.getEffectiveRecipient(email);
-    if (resendApiKey === 're_mock_key') return;
+    if (resendApiKey === 're_mock_key') {
+      throw new Error('Email provider is not configured');
+    }
 
-    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(qrToken)}`;
+    const qrUrl = await QRCode.toDataURL(qrToken, { width: 250, margin: 1 });
     await resend.emails.send({
       from: emailFrom,
       to: recipient,
@@ -162,13 +179,13 @@ export class EmailService {
       html: `
         <div style="max-width: 600px; margin: 0 auto; font-family: 'Segoe UI', Arial, sans-serif; background: #0f172a; color: #e2e8f0; padding: 32px; border-radius: 12px;">
           <h2 style="color: #f59e0b; margin-bottom: 16px;">⚠️ Notice: Ticket Reassignment</h2>
-          <p>Hello <strong>${name}</strong>,</p>
+          <p>Hello <strong>${escapeHtml(name)}</strong>,</p>
           <p>Your bus ticket has been reassigned due to operational schedule updates.</p>
           <hr style="border: 1px solid #334155; margin: 24px 0;" />
           <table style="width: 100%; border-collapse: collapse;">
-            <tr><td style="padding: 8px; color: #94a3b8;">Old Trip:</td><td style="padding: 8px;">${oldTrip.route.nameEn} (${oldTrip.tripDate})</td></tr>
-            <tr><td style="padding: 8px; color: #94a3b8;">New Trip:</td><td style="padding: 8px; color: #38bdf8;">${newTrip.route.nameEn} (${newTrip.tripDate})</td></tr>
-            <tr><td style="padding: 8px; color: #94a3b8;">New Seat:</td><td style="padding: 8px; font-weight: bold; font-size: 18px;">${seatNumber}</td></tr>
+            <tr><td style="padding: 8px; color: #94a3b8;">Old Trip:</td><td style="padding: 8px;">${escapeHtml(oldTrip.route.nameEn)} (${escapeHtml(oldTrip.tripDate)})</td></tr>
+            <tr><td style="padding: 8px; color: #94a3b8;">New Trip:</td><td style="padding: 8px; color: #38bdf8;">${escapeHtml(newTrip.route.nameEn)} (${escapeHtml(newTrip.tripDate)})</td></tr>
+            <tr><td style="padding: 8px; color: #94a3b8;">New Seat:</td><td style="padding: 8px; font-weight: bold; font-size: 18px;">${escapeHtml(seatNumber)}</td></tr>
           </table>
           <hr style="border: 1px solid #334155; margin: 24px 0;" />
           <p style="color: #f59e0b;">⚠️ Your old QR code is now invalidated. Present this new QR code to board:</p>
@@ -204,18 +221,18 @@ export class EmailService {
     const legSections = data.legs.map((leg) => `
       <div style="background: #1e293b; border-radius: 8px; padding: 20px; margin-bottom: 16px; border-left: 4px solid ${leg.legLabel.includes('Return') ? '#a78bfa' : '#38bdf8'};">
         <h3 style="color: ${leg.legLabel.includes('Return') ? '#a78bfa' : '#38bdf8'}; margin: 0 0 12px 0; font-size: 16px;">
-          ${leg.legLabel} — ${leg.legLabelAr}
+          ${escapeHtml(leg.legLabel)} — ${escapeHtml(leg.legLabelAr)}
         </h3>
         <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
-          <tr><td style="padding: 6px 0; color: #94a3b8;">Route / المسار:</td><td style="padding: 6px 0;">${leg.routeEn} — ${leg.routeAr}</td></tr>
-          <tr><td style="padding: 6px 0; color: #94a3b8;">Date / التاريخ:</td><td style="padding: 6px 0;">${leg.date}</td></tr>
-          <tr><td style="padding: 6px 0; color: #94a3b8;">Time Slot / الوقت:</td><td style="padding: 6px 0;">${leg.timeSlot}</td></tr>
-          <tr><td style="padding: 6px 0; color: #94a3b8;">Departure / المغادرة:</td><td style="padding: 6px 0;">${leg.departureTime}</td></tr>
-          <tr><td style="padding: 6px 0; color: #94a3b8;">Seat / المقعد:</td><td style="padding: 6px 0; font-weight: bold; font-size: 18px; color: #38bdf8;">${leg.seatNumber}</td></tr>
+          <tr><td style="padding: 6px 0; color: #94a3b8;">Route / المسار:</td><td style="padding: 6px 0;">${escapeHtml(leg.routeEn)} — ${escapeHtml(leg.routeAr)}</td></tr>
+          <tr><td style="padding: 6px 0; color: #94a3b8;">Date / التاريخ:</td><td style="padding: 6px 0;">${escapeHtml(leg.date)}</td></tr>
+          <tr><td style="padding: 6px 0; color: #94a3b8;">Time Slot / الوقت:</td><td style="padding: 6px 0;">${escapeHtml(leg.timeSlot)}</td></tr>
+          <tr><td style="padding: 6px 0; color: #94a3b8;">Departure / المغادرة:</td><td style="padding: 6px 0;">${escapeHtml(leg.departureTime)}</td></tr>
+          <tr><td style="padding: 6px 0; color: #94a3b8;">Seat / المقعد:</td><td style="padding: 6px 0; font-weight: bold; font-size: 18px; color: #38bdf8;">${escapeHtml(leg.seatNumber)}</td></tr>
         </table>
         <div style="text-align: center; margin-top: 16px; padding: 12px; background: white; border-radius: 8px; display: inline-block;">
-          <img src="${leg.qrUrl}" alt="${leg.legLabel} QR Code" style="width: 200px; height: 200px;" />
-          <p style="color: #475569; font-size: 11px; margin: 8px 0 0 0;">${leg.legLabel} QR — Show this to board</p>
+          <img src="${escapeHtml(leg.qrUrl)}" alt="${escapeHtml(leg.legLabel)} QR Code" style="width: 200px; height: 200px;" />
+          <p style="color: #475569; font-size: 11px; margin: 8px 0 0 0;">${escapeHtml(leg.legLabel)} QR — Show this to board</p>
         </div>
       </div>
     `).join('');
@@ -231,11 +248,11 @@ export class EmailService {
           <div style="display: flex; justify-content: space-between; margin-bottom: 24px;">
             <div>
               <p style="color: #94a3b8; font-size: 12px; margin: 0;">Passenger / الراكب</p>
-              <p style="font-size: 18px; font-weight: bold; margin: 4px 0;">${data.name}</p>
+              <p style="font-size: 18px; font-weight: bold; margin: 4px 0;">${escapeHtml(data.name)}</p>
             </div>
             <div style="text-align: right;">
               <p style="color: #94a3b8; font-size: 12px; margin: 0;">Booking Type / نوع الحجز</p>
-              <p style="font-size: 14px; margin: 4px 0;">${bookingTypeLabel} — ${bookingTypeLabelAr}</p>
+              <p style="font-size: 14px; margin: 4px 0;">${escapeHtml(bookingTypeLabel)} — ${escapeHtml(bookingTypeLabelAr)}</p>
             </div>
           </div>
           <hr style="border: 1px solid #334155; margin: 0 0 24px 0;" />
@@ -243,8 +260,8 @@ export class EmailService {
           <div style="background: #1e293b; border-radius: 8px; padding: 20px; margin-top: 16px; border-left: 4px solid #22c55e;">
             <h3 style="color: #22c55e; margin: 0 0 12px 0; font-size: 16px;">💳 Payment Details — تفاصيل الدفع</h3>
             <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
-              <tr><td style="padding: 6px 0; color: #94a3b8;">Transaction ID:</td><td style="padding: 6px 0; font-family: monospace;">${data.paymentId}</td></tr>
-              <tr><td style="padding: 6px 0; color: #94a3b8;">Amount / المبلغ:</td><td style="padding: 6px 0; font-weight: bold; font-size: 18px; color: #22c55e;">${data.amount}</td></tr>
+              <tr><td style="padding: 6px 0; color: #94a3b8;">Transaction ID:</td><td style="padding: 6px 0; font-family: monospace;">${escapeHtml(data.paymentId)}</td></tr>
+              <tr><td style="padding: 6px 0; color: #94a3b8;">Amount / المبلغ:</td><td style="padding: 6px 0; font-weight: bold; font-size: 18px; color: #22c55e;">${escapeHtml(data.amount)}</td></tr>
               <tr><td style="padding: 6px 0; color: #94a3b8;">Status / الحالة:</td><td style="padding: 6px 0; color: #22c55e;">✅ Paid — مدفوع</td></tr>
             </table>
           </div>

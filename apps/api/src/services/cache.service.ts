@@ -53,11 +53,13 @@ export class CacheService {
    */
   static async invalidatePattern(pattern: string): Promise<number> {
     try {
-      const keys = await redis.keys(pattern);
-      if (Array.isArray(keys) && keys.length > 0) {
-        return await redis.del(...keys);
+      let deleted = 0;
+      for await (const keys of redis.scanStream({ match: pattern, count: 100 })) {
+        if (Array.isArray(keys) && keys.length > 0) {
+          deleted += await redis.del(...keys);
+        }
       }
-      return 0;
+      return deleted;
     } catch (err) {
       console.warn(`[CacheService] Error invalidating pattern "${pattern}":`, err);
       return 0;

@@ -24,7 +24,7 @@ async function postWebhook(url: string | undefined, payload: JsonPayload, label:
     });
 
     if (!response.ok) {
-      console.error(`[n8n] ${label}: webhook failed (${response.status}) ${url}`);
+      console.error(`[n8n] ${label}: webhook failed (${response.status})`);
       return false;
     }
 
@@ -46,16 +46,10 @@ export type BookingLegPayload = {
   date: string;
   time: string;
   seatNumber: number;
-  qrToken: string;
   boardingCode: string;
-  qrImageUrl: string;
 };
 
 export class N8nService {
-  static qrImageUrl(value: string): string {
-    return `https://api.qrserver.com/v1/create-qr-code/?size=280x280&format=png&data=${encodeURIComponent(value)}`;
-  }
-
   static notifyStudentOtp(params: {
     fullName: string;
     email: string;

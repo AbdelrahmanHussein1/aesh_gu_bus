@@ -11,8 +11,8 @@ import { CacheService } from '../services/cache.service.js';
 const jwtSecret = process.env.JWT_SECRET || '';
 const QR_EXPIRY_HOURS = 24;
 
-function getQrExpiresAt(): Date {
-  return new Date(Date.now() + QR_EXPIRY_HOURS * 60 * 60 * 1000);
+function getQrExpiresAt(departureTime: Date): Date {
+  return new Date(departureTime.getTime() + QR_EXPIRY_HOURS * 60 * 60 * 1000);
 }
 
 const requireRole = (roles: string[]) => async (request: any, reply: any) => {
@@ -94,7 +94,7 @@ export async function supervisorRoutes(fastify: FastifyInstance) {
         seatNumber: targetSeatNumber,
         qrToken: newQrToken,
         qrVersion: newQrVersion,
-        qrExpiresAt: getQrExpiresAt(),
+        qrExpiresAt: getQrExpiresAt(targetTrip.departureTime),
         qrUsedAt: null,
         status: 'swapped',
         updatedAt: new Date(),
@@ -232,6 +232,10 @@ export async function supervisorRoutes(fastify: FastifyInstance) {
       return { success: false, result: 'invalid', message: `Booking is ${booking.status}. Pass code is no longer valid.` };
     }
 
+    if (booking.paymentStatus !== 'paid') {
+      return { success: false, result: 'payment_pending', message: 'Payment must be verified before boarding.' };
+    }
+
     if (booking.qrExpiresAt && new Date() > new Date(booking.qrExpiresAt)) {
       return { success: false, result: 'expired', message: 'Pass code has expired (24-hour window passed).' };
     }
@@ -351,6 +355,10 @@ export async function supervisorRoutes(fastify: FastifyInstance) {
       return reply.status(404).send({ error: 'Booking not found' });
     }
 
+    if (!['confirmed', 'swapped'].includes(booking.status) || booking.paymentStatus !== 'paid') {
+      return reply.status(409).send({ error: 'Booking is not active or payment is unverified' });
+    }
+
     const isAlreadyBoarded = booking.qrUsedAt !== null || booking.boardingLogs.some(l => l.scanResult === 'valid');
     if (!isAlreadyBoarded) {
       const now = new Date();
@@ -404,7 +412,8 @@ export async function supervisorRoutes(fastify: FastifyInstance) {
     const tripBookings = await db.query.bookings.findMany({
       where: and(
         eq(schema.bookings.tripId, tripId),
-        inArray(schema.bookings.status, ['confirmed', 'swapped'])
+        inArray(schema.bookings.status, ['confirmed', 'swapped']),
+        eq(schema.bookings.paymentStatus, 'paid')
       ),
       with: { user: true, boardingLogs: true },
     });

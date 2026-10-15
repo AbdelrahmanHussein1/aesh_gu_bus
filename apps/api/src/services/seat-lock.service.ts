@@ -28,8 +28,8 @@ export async function countHeldSeatsForTrips(trips: TripCapacity[]): Promise<Map
       counts.set(trips[i].id, tripLocks.filter(Boolean).length);
       offset += keysByTrip[i].length;
     }
-  } catch {
-    for (const trip of trips) counts.set(trip.id, 0);
+  } catch (error) {
+    throw new Error(`Unable to read seat locks: ${error instanceof Error ? error.message : 'unknown error'}`);
   }
 
   return counts;
@@ -49,7 +49,9 @@ export async function getSeatLockHolders(
       const val = lockValues[i];
       if (val) holders.set(i + 1, val);
     }
-  } catch {}
+  } catch (error) {
+    throw new Error(`Unable to read seat lock holders: ${error instanceof Error ? error.message : 'unknown error'}`);
+  }
   return holders;
 }
 
@@ -74,11 +76,14 @@ export async function getSeatLockTtls(
 
     for (let i = 0; i < seatNumbers.length; i++) {
       const [, ttl] = results[i] ?? [null, -2];
-      const seconds = typeof ttl === 'number' && ttl > 0 ? ttl : 300;
+      if (typeof ttl !== 'number' || ttl < 0) {
+        continue;
+      }
+      const seconds = ttl;
       ttls.set(seatNumbers[i], seconds);
     }
-  } catch {
-    for (const seatNumber of seatNumbers) ttls.set(seatNumber, 300);
+  } catch (error) {
+    throw new Error(`Unable to read seat lock TTLs: ${error instanceof Error ? error.message : 'unknown error'}`);
   }
 
   return ttls;

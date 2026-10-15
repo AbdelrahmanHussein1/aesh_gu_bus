@@ -27,7 +27,7 @@
 6. [Future Scaling, Expansion & Integration Roadmap](#6-future-scaling-expansion--integration-roadmap)
 7. [Production Deployment & Operations Guide](#7-production-deployment--operations-guide)
 8. [Environment Configuration Reference](#8-environment-configuration-reference)
-9. [Default Test Credentials](#9-default-test-credentials)
+9. [Account Provisioning](#9-account-provisioning)
 
 ---
 
@@ -609,24 +609,20 @@ The application is configured through environment variables defined in `.env`:
 
 ### Automatic Outlook emails with n8n
 
-n8n is included in Docker at `http://localhost:5678`. It does not replace the API. After Postgres, Redis, and the API are up, import and **activate** the two Outlook workflows in [`n8n/`](./n8n):
+n8n is an optional Docker profile at `http://localhost:5678`; it does not replace the API. Start it with `docker compose --profile bundled-n8n up -d`, then import and activate the two Outlook workflows in [`n8n/`](./n8n):
 
 - Student OTP: `http://n8n:5678/webhook/galala-bus-otp`
 - Ticket confirmation: `http://n8n:5678/webhook/galala-bus-confirm`
 
-Connect one Microsoft Outlook OAuth credential (Mail.Send). Full steps: [`n8n/README.md`](./n8n/README.md). Do not commit OAuth tokens.
+Connect one Microsoft Outlook OAuth credential (Mail.Send). Ticket emails use the stored manual boarding code; the app retains the server-issued QR. Full steps: [`n8n/README.md`](./n8n/README.md). Do not commit OAuth tokens.
 
-## 9. Default Test Credentials
+## 9. Account Provisioning
 
-For rapid evaluation and demonstration, the database includes pre-configured accounts:
+Seeding requires a private `SEED_BOOTSTRAP_PASSWORD` for the initial administrator. Use a strong, unique value. Supervisor and driver accounts are seeded without local passwords and require individual provisioning. Students register with their university email. The 2026-10-14 live development credentials were rotated and are stored outside this repository.
 
-| Role | Email | Password | Access Capabilities |
-| :--- | :--- | :--- | :--- |
-| **System Administrator** | `admin@gu.edu.eg` | `1111` *(or `123456`)* | Master operations, fleet live status, shift hub, audit logs, dataset explorer |
-| **Line Supervisor** | `supervisor@gu.edu.eg` | `1111` *(or `123456`)* | Live camera QR scanning, manual code boarding, passenger manifest, seat swaps |
-| **Student / Rider** | `student@gu.edu.eg` | `1111` *(or `123456`)* | Route selection, 50-seat cabin selector, seat locking, payments, boarding passes |
+Paid Instapay and Telda bookings require a receipt reference or image and remain unverified until an administrator checks the transfer against the payment account and calls `POST /api/admin/bookings/:bookingId/verify-payment` with an administrator token. For round trips, verify each booking ID. Boarding is blocked until payment is verified. The mock card method is disabled unless `ENABLE_MOCK_PAYMENTS=true` is explicitly set on the API (and `NEXT_PUBLIC_ENABLE_MOCK_PAYMENTS=true` on the web build).
 
-*(Students can also register new accounts directly using their `@gu.edu.eg` university email address).*
+The live development VM has a clearly named `CODEX DEVELOPMENT TEST ROUTE - NO REAL SERVICE` with zero-fare trips for 15–21 October 2026 except Friday. It exists to exercise booking and boarding while the current university timetable is unavailable. No driver or supervisor is assigned, and it must not be presented as a university-operated bus.
 
 ---
 

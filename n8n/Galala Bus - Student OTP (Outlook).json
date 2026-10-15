@@ -5,7 +5,7 @@
       "parameters": {
         "httpMethod": "POST",
         "path": "galala-bus-otp",
-        "responseMode": "onReceived",
+        "responseMode": "lastNode",
         "options": {
           "allowedOrigins": "*"
         }
@@ -14,18 +14,24 @@
       "name": "Webhook - Student OTP",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [-640, 80],
+      "position": [
+        -640,
+        80
+      ],
       "webhookId": "galala-bus-otp"
     },
     {
       "parameters": {
-        "jsCode": "const input = $input.first().json;\nconst body = input.body ?? input;\n\nconst required = ['fullName', 'email', 'academicId', 'otp'];\nconst missing = required.filter((key) => !body[key]);\nif (missing.length) {\n  throw new Error('Missing OTP fields: ' + missing.join(', '));\n}\n\nconst html = `<div style=\"font-family:Segoe UI,Arial,sans-serif;max-width:560px;margin:0 auto;background:#0f172a;color:#e2e8f0;border-radius:16px;overflow:hidden;\">\n  <div style=\"padding:24px;background:linear-gradient(135deg,#002b49,#0369a1);text-align:center;\">\n    <div style=\"color:#bae6fd;font-size:12px;letter-spacing:1px;text-transform:uppercase;\">Galala University Transport</div>\n    <h1 style=\"margin:8px 0 0;color:#ffffff;font-size:22px;\">Your account verification code</h1>\n  </div>\n  <div style=\"padding:28px;\">\n    <p style=\"margin:0 0 16px;font-size:15px;\">Hello <strong>${body.fullName}</strong>,</p>\n    <p style=\"margin:0 0 20px;color:#cbd5e1;font-size:14px;line-height:1.6;\">Use this one-time password to finish creating your Bus Aesh student account.</p>\n    <table style=\"width:100%;border-collapse:collapse;font-size:14px;margin-bottom:20px;\">\n      <tr><td style=\"padding:6px 0;color:#94a3b8;\">Name</td><td style=\"padding:6px 0;color:#ffffff;\">${body.fullName}</td></tr>\n      <tr><td style=\"padding:6px 0;color:#94a3b8;\">Gmail / Outlook</td><td style=\"padding:6px 0;color:#ffffff;\">${body.email}</td></tr>\n      <tr><td style=\"padding:6px 0;color:#94a3b8;\">Academic ID</td><td style=\"padding:6px 0;color:#ffffff;\">${body.academicId}</td></tr>\n    </table>\n    <div style=\"background:#1e293b;border:2px dashed #38bdf8;border-radius:12px;padding:20px;text-align:center;\">\n      <div style=\"color:#94a3b8;font-size:11px;letter-spacing:1px;text-transform:uppercase;\">OTP</div>\n      <div style=\"font-family:Consolas,monospace;font-size:34px;font-weight:800;letter-spacing:8px;color:#38bdf8;margin-top:6px;\">${body.otp}</div>\n    </div>\n    <p style=\"margin:18px 0 0;color:#f59e0b;font-size:13px;\">This code expires in ${body.expiresInMinutes || 15} minutes.</p>\n  </div>\n</div>`;\n\nreturn [{\n  json: {\n    fullName: body.fullName,\n    email: body.email,\n    academicId: String(body.academicId),\n    otp: String(body.otp),\n    subject: `Galala Bus verification code: ${body.otp}`,\n    html,\n  },\n}];"
+        "jsCode": "const input = $input.first().json;\nconst body = input.body ?? input;\n\nconst required = ['fullName', 'email', 'academicId', 'otp'];\nconst missing = required.filter((key) => !body[key]);\nif (missing.length) {\n  throw new Error('Missing OTP fields: ' + missing.join(', '));\n}\n\nfunction escapeHtml(value) {\n  const entities = { '&': '&amp;', '<': '&lt;', '>': '&gt;' };\n  return String(value ?? \"\").replace(/[&<>]/g, (character) => entities[character]);\n}\nconst html = `<div style=\"font-family:Segoe UI,Arial,sans-serif;max-width:560px;margin:0 auto;background:#0f172a;color:#e2e8f0;border-radius:16px;overflow:hidden;\">\n  <div style=\"padding:24px;background:linear-gradient(135deg,#002b49,#0369a1);text-align:center;\">\n    <div style=\"color:#bae6fd;font-size:12px;letter-spacing:1px;text-transform:uppercase;\">Galala University Transport</div>\n    <h1 style=\"margin:8px 0 0;color:#ffffff;font-size:22px;\">Your account verification code</h1>\n  </div>\n  <div style=\"padding:28px;\">\n    <p style=\"margin:0 0 16px;font-size:15px;\">Hello <strong>${escapeHtml(body.fullName)}</strong>,</p>\n    <p style=\"margin:0 0 20px;color:#cbd5e1;font-size:14px;line-height:1.6;\">Use this one-time password to finish creating your Bus Aesh student account.</p>\n    <table style=\"width:100%;border-collapse:collapse;font-size:14px;margin-bottom:20px;\">\n      <tr><td style=\"padding:6px 0;color:#94a3b8;\">Name</td><td style=\"padding:6px 0;color:#ffffff;\">${escapeHtml(body.fullName)}</td></tr>\n      <tr><td style=\"padding:6px 0;color:#94a3b8;\">Gmail / Outlook</td><td style=\"padding:6px 0;color:#ffffff;\">${escapeHtml(body.email)}</td></tr>\n      <tr><td style=\"padding:6px 0;color:#94a3b8;\">Academic ID</td><td style=\"padding:6px 0;color:#ffffff;\">${escapeHtml(body.academicId)}</td></tr>\n    </table>\n    <div style=\"background:#1e293b;border:2px dashed #38bdf8;border-radius:12px;padding:20px;text-align:center;\">\n      <div style=\"color:#94a3b8;font-size:11px;letter-spacing:1px;text-transform:uppercase;\">OTP</div>\n      <div style=\"font-family:Consolas,monospace;font-size:34px;font-weight:800;letter-spacing:8px;color:#38bdf8;margin-top:6px;\">${escapeHtml(body.otp)}</div>\n    </div>\n    <p style=\"margin:18px 0 0;color:#f59e0b;font-size:13px;\">This code expires in ${escapeHtml(body.expiresInMinutes || 15)} minutes.</p>\n  </div>\n</div>`;\n\nreturn [{\n  json: {\n    fullName: body.fullName,\n    email: body.email,\n    academicId: String(body.academicId),\n    otp: String(body.otp),\n    subject: `Galala Bus verification code: ${escapeHtml(body.otp)}`,\n    html,\n  },\n}];"
       },
       "id": "b22d1e4f-7c32-4e9b-8a1f-otp-prepare-002",
       "name": "Prepare OTP Email",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [-360, 80]
+      "position": [
+        -360,
+        80
+      ]
     },
     {
       "parameters": {
@@ -43,7 +49,10 @@
       "name": "Send OTP with Outlook",
       "type": "n8n-nodes-base.microsoftOutlook",
       "typeVersion": 2,
-      "position": [-80, 80],
+      "position": [
+        -80,
+        80
+      ],
       "credentials": {
         "microsoftOutlookOAuth2Api": {
           "id": "outlook-account",
@@ -54,10 +63,26 @@
   ],
   "connections": {
     "Webhook - Student OTP": {
-      "main": [[{ "node": "Prepare OTP Email", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Prepare OTP Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Prepare OTP Email": {
-      "main": [[{ "node": "Send OTP with Outlook", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Send OTP with Outlook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "pinData": {},

@@ -160,7 +160,7 @@ export const LoginSchema = z.object({
 export const CreateBookingSchema = z.object({
   tripId: z.number().int().positive(),
   seatNumber: z.number().int().min(1).max(100),
-  paymentMethod: z.enum(['visa_mock', 'instapay', 'telda']),
+  paymentMethod: z.enum(['visa_mock', 'instapay', 'telda', 'none']),
   bookingType: z.enum(['one_way', 'round_trip', 'to_campus', 'from_campus']).default('one_way').transform(v => (v === 'round_trip' ? 'round_trip' : 'one_way')),
   legType: z.enum(['to_campus', 'from_campus']).default('to_campus'),
   receiptImage: z.string().optional(), // Base64 receipt for Instapay/Telda manual validation
@@ -217,7 +217,7 @@ export type GalalaFaculty = typeof GALALA_FACULTIES[number];
 export const RegisterSchema = z.object({
   email: z.string().email({ message: "Invalid email address" }),
   fullName: z.string().min(2, { message: "Name must be at least 2 characters" }),
-  role: z.enum(['rider', 'supervisor', 'admin']).default('rider'),
+  role: z.literal('rider').default('rider'),
   password: z.string().min(4, { message: "Password must be at least 4 characters" }),
   academicId: z.string().optional(),
   faculty: z.string().optional(),
@@ -239,11 +239,15 @@ export const VerifySheerIdSchema = z.object({
  */
 export function generateBoardingCode(): string {
   const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
-  let code = '';
-  for (let i = 0; i < 4; i++) {
-    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  const values = new Uint32Array(4);
+  if (typeof globalThis.crypto?.getRandomValues === 'function') {
+    globalThis.crypto.getRandomValues(values);
+  } else {
+    for (let i = 0; i < values.length; i++) {
+      values[i] = Math.floor(Math.random() * 0xffffffff);
+    }
   }
-  return `GU-${code}`;
+  return `GU-${Array.from(values, value => chars[value % chars.length]).join('')}`;
 }
 
 // Compact QR Token Codec
@@ -332,4 +336,3 @@ export class QRCodec {
     return constantTimeEqual(signature.toLowerCase(), expectedSignature.toLowerCase());
   }
 }
-

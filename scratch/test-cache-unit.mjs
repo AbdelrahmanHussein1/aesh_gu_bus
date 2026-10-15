@@ -1,5 +1,8 @@
-import { CacheService } from '../apps/api/dist/services/cache.service.js';
-import { redis } from '../apps/api/dist/redis.js';
+import assert from 'node:assert/strict';
+
+// Force the deterministic in-memory backend before importing the API modules.
+process.env.REDIS_URL = '';
+const { CacheService } = await import('../apps/api/dist/services/cache.service.js');
 
 async function runTests() {
   console.log('--- Testing Redis Cache-Aside Layer & Pattern Invalidation ---');
@@ -7,7 +10,7 @@ async function runTests() {
   // 1. Basic Set & Get
   await CacheService.setCache('cache:test:1', { message: 'hello world', num: 42 }, 10);
   const val = await CacheService.getCache('cache:test:1');
-  console.assert(val && val.num === 42, 'FAIL: setCache / getCache mismatch');
+  assert.equal(val?.num, 42, 'setCache / getCache mismatch');
   console.log('✓ setCache and getCache working');
 
   // 2. Schedule cache pattern
@@ -16,7 +19,7 @@ async function runTests() {
   await CacheService.setCache('cache:fleet:2026-09-08:all:all:all:all:none', [{ tripId: 101, status: 'scheduled' }], 30);
 
   const sched1 = await CacheService.getCache('cache:schedules:2026-09-08:all');
-  console.assert(sched1 && sched1.length === 1, 'FAIL: schedule cache missing');
+  assert.equal(sched1?.length, 1, 'schedule cache missing');
   console.log('✓ Schedule and fleet caches set successfully');
 
   // 3. Invalidate schedules and fleet
@@ -24,8 +27,8 @@ async function runTests() {
 
   const schedAfter = await CacheService.getCache('cache:schedules:2026-09-08:all');
   const fleetAfter = await CacheService.getCache('cache:fleet:2026-09-08:all:all:all:all:none');
-  console.assert(schedAfter === null, 'FAIL: schedule cache not invalidated');
-  console.assert(fleetAfter === null, 'FAIL: fleet cache not invalidated');
+  assert.equal(schedAfter, null, 'schedule cache not invalidated');
+  assert.equal(fleetAfter, null, 'fleet cache not invalidated');
   console.log('✓ invalidateTripsAndFleetCache successfully purged all schedule and fleet caches');
 
   // 4. Seat cache
@@ -33,13 +36,13 @@ async function runTests() {
   await CacheService.setCache('cache:seat_details:101', { trip: { id: 101 }, seats: [] }, 5);
 
   let seats = await CacheService.getCache('cache:trip_seats:101');
-  console.assert(seats && seats[0].status === 'booked', 'FAIL: seat cache missing');
+  assert.equal(seats?.[0]?.status, 'booked', 'seat cache missing');
 
   await CacheService.invalidateSeatCache(101);
   const seatsAfter = await CacheService.getCache('cache:trip_seats:101');
   const detailsAfter = await CacheService.getCache('cache:seat_details:101');
-  console.assert(seatsAfter === null, 'FAIL: seat cache not invalidated');
-  console.assert(detailsAfter === null, 'FAIL: seat details cache not invalidated');
+  assert.equal(seatsAfter, null, 'seat cache not invalidated');
+  assert.equal(detailsAfter, null, 'seat details cache not invalidated');
   console.log('✓ invalidateSeatCache successfully purged trip seat maps');
 
   console.log('--- ALL CACHE TESTS PASSED SUCCESSFULLY! ---');

@@ -50,7 +50,11 @@ async function seed() {
     // Insert Default System Admin account
     console.log('Inserting default user roles...');
 
-    const defaultHashedPassword = hashPassword('1111');
+    const bootstrapPassword = process.env.SEED_BOOTSTRAP_PASSWORD;
+    if (!bootstrapPassword) {
+      throw new Error('SEED_BOOTSTRAP_PASSWORD must be configured before seeding');
+    }
+    const defaultHashedPassword = hashPassword(bootstrapPassword);
 
     await db.insert(schema.users).values({
       email: 'admin@gu.edu.eg',
@@ -59,13 +63,7 @@ async function seed() {
       phone: '01000000000',
       role: 'admin',
       password: defaultHashedPassword,
-    }).onConflictDoUpdate({
-      target: schema.users.email,
-      set: {
-        password: defaultHashedPassword,
-        role: 'admin',
-      },
-    });
+    }).onConflictDoNothing();
 
     // Insert Real Drivers and Supervisors
     console.log(`Seeding ${REAL_PERSONNEL.length} drivers and line supervisors...`);
@@ -76,14 +74,8 @@ async function seed() {
         fullNameAr: p.nameAr,
         phone: p.phone,
         role: p.role,
-        password: defaultHashedPassword,
-      }).onConflictDoUpdate({
-        target: schema.users.email,
-        set: {
-          role: p.role,
-          password: defaultHashedPassword,
-        },
-      }).returning();
+        password: null,
+      }).onConflictDoNothing().returning();
 
       if (inserted) {
         personnelByPhone.set(p.phone, inserted.id);
@@ -183,7 +175,7 @@ async function seed() {
               departTime: '09:10',
               stopOrder: 3,
             }
-          ]);
+          ]).onConflictDoNothing();
         }
       }
 
@@ -416,7 +408,7 @@ async function seed() {
     process.exit(0);
   } catch (error) {
     console.error('Seeding failed:', error);
-    process.exit(0);
+    process.exit(1);
   }
 }
 

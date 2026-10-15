@@ -3,7 +3,7 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
+const redisUrl = process.env.REDIS_URL;
 
 class MemoryRedis {
   private store = new Map<string, { value: string; expiresAt?: number }>();
@@ -116,10 +116,13 @@ class MemoryRedis {
   }
 
   async incr(key: string): Promise<number> {
-    const current = await this.get(key);
-    const num = current ? parseInt(current, 10) + 1 : 1;
     const item = this.store.get(key);
-    this.store.set(key, { value: String(num), expiresAt: item?.expiresAt });
+    if (item?.expiresAt && Date.now() > item.expiresAt) {
+      this.store.delete(key);
+    }
+    const current = this.store.get(key);
+    const num = current ? parseInt(current.value, 10) + 1 : 1;
+    this.store.set(key, { value: String(num), expiresAt: current?.expiresAt });
     return num;
   }
 
@@ -148,36 +151,27 @@ class MemoryRedis {
 const memoryRedis = new MemoryRedis();
 
 let rawRedis: Redis | null = null;
-try {
+if (redisUrl) {
   rawRedis = new Redis(redisUrl, {
     maxRetriesPerRequest: 1,
-    retryStrategy: () => null,
+    // Redis can start after the API during a VM or Compose restart. Keep
+    // reconnecting so authentication and seat locks recover automatically.
+    retryStrategy: (attempt) => Math.min(100 * 2 ** Math.min(attempt, 5), 2000),
     enableOfflineQueue: false,
-    connectTimeout: 500,
+    connectTimeout: 2000,
   });
 
   rawRedis.on('connect', () => {
     console.log('Connected to Redis successfully');
   });
 
-  rawRedis.on('error', () => {
-    // In-memory fallback active
+  rawRedis.on('error', (error) => {
+    console.warn('[Redis] Connection unavailable; retrying:', error.message);
   });
-} catch {
-  // Use memoryRedis
 }
 
-export const redis: any = new Proxy(memoryRedis, {
-  get(target, prop, receiver) {
-    if (rawRedis && (rawRedis as any).status === 'ready') {
-      return Reflect.get(rawRedis, prop, receiver);
-    }
-    if (prop in target) {
-      return Reflect.get(target, prop, receiver);
-    }
-    return () => null;
-  }
-});
+// Select the backend once. Switching backends during a request can make locks
+// invisible across requests and instances.
+export const redis: any = rawRedis || memoryRedis;
 
 export const redisClient = redis;
-

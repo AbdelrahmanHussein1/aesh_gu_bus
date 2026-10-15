@@ -9,18 +9,18 @@ import { EmailService } from '../services/email.service.js';
 import { N8nService, type BookingLegPayload } from '../services/n8n.service.js';
 import { getHoursUntilDeparture } from '../utils/trip-time.js';
 import { CacheService } from '../services/cache.service.js';
+import { randomBytes, randomUUID } from 'node:crypto';
 
 const jwtSecret = process.env.JWT_SECRET || '';
 const QR_EXPIRY_HOURS = 24;
+const mockPaymentsEnabled = process.env.ENABLE_MOCK_PAYMENTS === 'true';
 
-function getQrExpiresAt(): Date {
-  return new Date(Date.now() + QR_EXPIRY_HOURS * 60 * 60 * 1000);
+function getQrExpiresAt(departureTime: Date): Date {
+  return new Date(departureTime.getTime() + QR_EXPIRY_HOURS * 60 * 60 * 1000);
 }
 
-import { randomBytes } from 'node:crypto';
-
 function generatePaymentId(): string {
-  return `TXN-${Math.random().toString(36).substring(2, 9).toUpperCase()}`;
+  return `TXN-${randomUUID().replace(/-/g, '').slice(0, 12).toUpperCase()}`;
 }
 
 function generateBookingRef(): string {
@@ -40,7 +40,6 @@ function buildBookingLeg(params: {
   kind: 'go' | 'return';
   trip: any;
   seatNumber: number;
-  qrToken: string;
   boardingCode: string;
 }): BookingLegPayload {
   const isReturn = params.kind === 'return';
@@ -55,9 +54,7 @@ function buildBookingLeg(params: {
     date: params.trip.tripDate,
     time: formatTripClock(new Date(params.trip.departureTime)),
     seatNumber: params.seatNumber,
-    qrToken: params.qrToken,
     boardingCode: params.boardingCode,
-    qrImageUrl: N8nService.qrImageUrl(params.qrToken),
   };
 }
 
@@ -81,6 +78,16 @@ export async function bookingsRoutes(fastify: FastifyInstance) {
     }
 
     const { tripId, seatNumber, paymentMethod, bookingType, legType, receiptImage, receiptRef } = bodyResult.data;
+    if (paymentMethod === 'visa_mock' && !mockPaymentsEnabled) {
+      return reply.status(400).send({ error: 'Mock card payments are disabled' });
+    }
+    if (paymentMethod === 'none' && bookingType !== 'one_way') {
+      return reply.status(400).send({
+        success: false,
+        code: 'PAYMENT_METHOD_UNAVAILABLE',
+        error: 'The no-payment option is only valid for single one-way bookings.',
+      });
+    }
     const userId = request.user.id;
     const userEmail = request.user.email;
     const userName = request.user.fullName;
@@ -117,9 +124,15 @@ export async function bookingsRoutes(fastify: FastifyInstance) {
         if (!trip) {
           throw new Error('Trip not found');
         }
+        if (paymentMethod === 'none' && Number(trip.priceEgp) !== 0) {
+          throw new Error('PAYMENT_REQUIRED');
+        }
+        if (Number(trip.priceEgp) > 0 && !receiptRef?.trim() && !receiptImage?.trim() && paymentMethod !== 'visa_mock') {
+          throw new Error('Receipt evidence is required for paid trips');
+        }
 
-        const paymentStatus = paymentMethod === 'visa_mock' ? 'paid' : 'receipt_uploaded';
-        const qrExpiresAt = getQrExpiresAt();
+        const paymentStatus = Number(trip.priceEgp) === 0 || paymentMethod === 'visa_mock' ? 'paid' : 'receipt_uploaded';
+        const qrExpiresAt = getQrExpiresAt(trip.departureTime);
         const paymentId = generatePaymentId();
         const bookingRef = generateBookingRef();
 
@@ -166,6 +179,14 @@ export async function bookingsRoutes(fastify: FastifyInstance) {
           messageEn: 'This seat was just booked by another student. Please select an available seat.',
         });
       }
+      if (err.message === 'PAYMENT_REQUIRED') {
+        return reply.status(400).send({
+          success: false,
+          code: 'PAYMENT_REQUIRED',
+          error: 'Paid bookings are unavailable in this app.',
+          messageEn: 'Paid trips cannot use paymentMethod none.',
+        });
+      }
       return reply.status(400).send({ error: err.message || 'Booking transaction failed' });
     }
 
@@ -188,11 +209,6 @@ export async function bookingsRoutes(fastify: FastifyInstance) {
     await CacheService.invalidateSeatCache(tripId);
     await CacheService.invalidateTripsAndFleetCache(tripId);
 
-    // Send confirmation email
-    EmailService.sendConfirmationEmail(userEmail, userName, trip, seatNumber, qrToken, legType, bookingType, booking.paymentId!).catch(err => {
-      console.error('Failed to send confirmation email:', err);
-    });
-
     // Payment confirmation must never wait on, or fail because of, ticket delivery.
     if (booking.paymentStatus === 'paid') {
       const kind = legType === 'from_campus' ? 'return' : 'go';
@@ -202,7 +218,7 @@ export async function bookingsRoutes(fastify: FastifyInstance) {
         studentEmail: userEmail,
         route: trip.route.nameEn,
         date: trip.tripDate,
-        price: `${trip.priceEgp || '160'} EGP`,
+        price: `${Number(trip.priceEgp ?? 0)} EGP`,
         bookingRef: booking.bookingRef!,
         paymentRef: booking.paymentId!,
         bookingType: 'one_way',
@@ -211,10 +227,14 @@ export async function bookingsRoutes(fastify: FastifyInstance) {
             kind,
             trip,
             seatNumber,
-            qrToken,
             boardingCode: booking.boardingCode!,
           }),
         ],
+      }).then((sent) => {
+        if (sent) return;
+        return EmailService.sendConfirmationEmail(userEmail, userName, trip, seatNumber, qrToken, legType, bookingType, booking.paymentId!);
+      }).catch(err => {
+        console.error('Failed to send booking confirmation:', err);
       });
     }
 
@@ -247,6 +267,15 @@ export async function bookingsRoutes(fastify: FastifyInstance) {
     }
 
     const { toCampusTripId, toCampusSeatNumber, fromCampusTripId, fromCampusSeatNumber, paymentMethod, receiptImage, receiptRef } = bodyResult.data;
+    if (paymentMethod === 'visa_mock' && !mockPaymentsEnabled) {
+      return reply.status(400).send({ error: 'Mock card payments are disabled' });
+    }
+    if (toCampusTripId === fromCampusTripId) {
+      return reply.status(400).send({
+        error: 'Round-trip legs must use different trips',
+        messageAr: 'يجب أن يستخدم الحجز ذهاباً وعودة رحلتين مختلفتين',
+      });
+    }
     const userId = request.user.id;
     const userEmail = request.user.email;
     const userName = request.user.fullName;
@@ -265,6 +294,9 @@ export async function bookingsRoutes(fastify: FastifyInstance) {
 
         if (!toCampusTrip) throw new Error('To-campus trip not found');
         if (!fromCampusTrip) throw new Error('From-campus trip not found');
+        if ((Number(toCampusTrip.priceEgp) > 0 || Number(fromCampusTrip.priceEgp) > 0) && !receiptRef?.trim() && !receiptImage?.trim() && paymentMethod !== 'visa_mock') {
+          throw new Error('Receipt evidence is required for paid trips');
+        }
 
         // Check seat conflicts with pessimistic lock
         await tx.execute(sql`
@@ -297,10 +329,9 @@ export async function bookingsRoutes(fastify: FastifyInstance) {
           throw new Error('SEAT_ALREADY_BOOKED');
         }
 
-        const paymentStatus = paymentMethod === 'visa_mock' ? 'paid' : 'receipt_uploaded';
+        const paymentStatus = (Number(toCampusTrip.priceEgp) === 0 && Number(fromCampusTrip.priceEgp) === 0) || paymentMethod === 'visa_mock' ? 'paid' : 'receipt_uploaded';
         const paymentId = generatePaymentId();
         const bookingRef = generateBookingRef();
-        const qrExpiresAt = getQrExpiresAt();
 
         const arrivalBoardingCode = generateBoardingCode();
         const returnBoardingCode = generateBoardingCode();
@@ -318,7 +349,7 @@ export async function bookingsRoutes(fastify: FastifyInstance) {
           paymentStatus,
           receiptImage,
           receiptRef,
-          qrExpiresAt,
+          qrExpiresAt: getQrExpiresAt(toCampusTrip.departureTime),
         }).returning();
 
         const [returnBooking] = await tx.insert(schema.bookings).values({
@@ -335,7 +366,7 @@ export async function bookingsRoutes(fastify: FastifyInstance) {
           paymentStatus,
           receiptImage,
           receiptRef,
-          qrExpiresAt,
+          qrExpiresAt: getQrExpiresAt(fromCampusTrip.departureTime),
         }).returning();
 
         await tx.update(schema.bookings)
@@ -402,20 +433,6 @@ export async function bookingsRoutes(fastify: FastifyInstance) {
     await CacheService.invalidateSeatCache(fromCampusTripId);
     await CacheService.invalidateTripsAndFleetCache();
 
-    EmailService.sendRoundTripEmailConfirmation(
-      userEmail,
-      userName,
-      toCampusTrip,
-      toCampusSeatNumber,
-      arrivalQR,
-      fromCampusTrip,
-      fromCampusSeatNumber,
-      returnQR,
-      paymentId
-    ).catch(err => {
-      console.error('Failed to send round-trip email:', err);
-    });
-
     if (arrivalBooking.paymentStatus === 'paid') {
       void N8nService.notifyBookingConfirmation({
         studentName: userName,
@@ -423,7 +440,7 @@ export async function bookingsRoutes(fastify: FastifyInstance) {
         studentEmail: userEmail,
         route: toCampusTrip.route.nameEn,
         date: toCampusTrip.tripDate,
-        price: `${(toCampusTrip.priceEgp || 160) + (fromCampusTrip.priceEgp || 160)} EGP`,
+        price: `${Number(toCampusTrip.priceEgp ?? 0) + Number(fromCampusTrip.priceEgp ?? 0)} EGP`,
         bookingRef: arrivalBooking.bookingRef!,
         paymentRef: arrivalBooking.paymentId!,
         bookingType: 'round_trip',
@@ -432,17 +449,30 @@ export async function bookingsRoutes(fastify: FastifyInstance) {
             kind: 'go',
             trip: toCampusTrip,
             seatNumber: toCampusSeatNumber,
-            qrToken: arrivalQR,
             boardingCode: arrivalBooking.boardingCode!,
           }),
           buildBookingLeg({
             kind: 'return',
             trip: fromCampusTrip,
             seatNumber: fromCampusSeatNumber,
-            qrToken: returnQR,
             boardingCode: returnBooking.boardingCode!,
           }),
         ],
+      }).then((sent) => {
+        if (sent) return;
+        return EmailService.sendRoundTripEmailConfirmation(
+          userEmail,
+          userName,
+          toCampusTrip,
+          toCampusSeatNumber,
+          arrivalQR,
+          fromCampusTrip,
+          fromCampusSeatNumber,
+          returnQR,
+          paymentId
+        );
+      }).catch(err => {
+        console.error('Failed to send round-trip confirmation:', err);
       });
     }
 

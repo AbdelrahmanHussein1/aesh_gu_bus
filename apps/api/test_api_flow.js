@@ -46,7 +46,7 @@ async function testFlow() {
 
   // 4. Test WebSocket Realtime Connection
   console.log('\n[4] Connecting to WebSocket seat map room...');
-  const ws = new WebSocket(`${WS_URL}/ws/trips/${trip.id}/seats`);
+  const ws = new WebSocket(`${WS_URL}/ws/trips/${trip.id}/seats`, token);
 
   const wsMessages = [];
   ws.on('open', () => {

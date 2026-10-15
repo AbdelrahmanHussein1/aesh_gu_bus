@@ -52,6 +52,7 @@ tmp/
 temp/
 .temp/
 .tmp/
+.playwright-mcp/
 dist-release/
 stitch.zip
 stitch/

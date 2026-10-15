@@ -1,6 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
-  StyleSheet, 
   Text, 
   View, 
   TextInput, 
@@ -10,11 +9,18 @@ import {
   Modal, 
   Alert,
   Image,
-  NativeModules,
-  Linking
+  Linking,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as Notifications from 'expo-notifications';
+import { ApiError, apiRequest, normalizeApiUrl, toWebSocketUrl } from '../src/api';
+import { useAppContext } from '../src/app-context';
+import { formatDepartureTime } from '../src/format';
+import type { Route, Seat, Ticket, Trip } from '../src/types';
+import TicketCard from '../src/components/TicketCard';
+import styles from '../src/styles/home';
 
 try {
   Notifications.setNotificationHandler({
@@ -25,17 +31,6 @@ try {
     }),
   });
 } catch {}
-
-const getDefaultApiUrl = () => {
-  const scriptURL = NativeModules.SourceCode?.scriptURL;
-  if (scriptURL) {
-    const match = scriptURL.match(/http:\/\/([^:/]+)/);
-    if (match && match[1]) {
-      return `http://${match[1]}:3000`;
-    }
-  }
-  return 'https://movers-primarily-ham-determines.trycloudflare.com';
-};
 
 const triggerLocalNotification = async (title: string, body: string) => {
   try {
@@ -64,11 +59,25 @@ const FACULTIES = [
   'Applied Health Sciences',
 ];
 
+function authenticatedUser(data: any) {
+  const account = data?.user;
+  if (!data?.token || !account?.id || !account?.email || !account?.role) {
+    throw new ApiError('The server did not return a complete authenticated session.', 502, 'INVALID_SESSION');
+  }
+  return {
+    id: String(account.id),
+    email: String(account.email),
+    fullName: String(account.fullName || account.email),
+    role: String(account.role),
+    token: String(data.token),
+  };
+}
+
 export default function AppHome() {
   const router = useRouter();
+  const { serverUrl, setServerUrl, user, setUser, signOut } = useAppContext();
 
   // Server URL configuration
-  const [serverUrl, setServerUrl] = useState(getDefaultApiUrl());
   const [showServerModal, setShowServerModal] = useState(false);
   const [customServerInput, setCustomServerInput] = useState('');
 
@@ -76,7 +85,6 @@ export default function AppHome() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
-  const [user, setUser] = useState<any>(null);
 
   // Student Registration States
   const [showRegisterModal, setShowRegisterModal] = useState(false);
@@ -88,19 +96,15 @@ export default function AppHome() {
   const [regPhone, setRegPhone] = useState('');
   const [regPassword, setRegPassword] = useState('');
   const [regOtp, setRegOtp] = useState('');
+  const [regVerificationId, setRegVerificationId] = useState('');
+  const [registrationPreverified, setRegistrationPreverified] = useState(false);
   const [regLoading, setRegLoading] = useState(false);
 
   // Selector states
-  const [routes, setRoutes] = useState<any[]>([
-    { id: 1, nameAr: 'العبور', nameEn: 'El Obour' },
-    { id: 3, nameAr: 'اكتوبر', nameEn: '6th of October' },
-    { id: 4, nameAr: 'حدائق الاهرام', nameEn: 'Hadayek Al Ahram' },
-    { id: 12, nameAr: 'مدينة نصر', nameEn: 'Nasr City' },
-    { id: 25, nameAr: 'مدينتى', nameEn: 'Madinaty' },
-    { id: 29, nameAr: 'بورتوفيق', nameEn: 'Port Tawfik (Suez)' },
-    { id: 33, nameAr: 'نبي الله', nameEn: 'Suez (Nabi Allah)' },
-  ]);
-  const [selectedRouteId, setSelectedRouteId] = useState(1);
+  const [routes, setRoutes] = useState<Route[]>([]);
+  const [selectedRouteId, setSelectedRouteId] = useState<number | null>(null);
+  const [routesError, setRoutesError] = useState<string | null>(null);
+  const [isLoadingRoutes, setIsLoadingRoutes] = useState(false);
   const [selectedDirection, setSelectedDirection] = useState<'to_campus' | 'from_campus'>('to_campus');
   const [selectedDate, setSelectedDate] = useState(() => {
     const d = new Date();
@@ -137,130 +141,151 @@ export default function AppHome() {
     });
   }, []);
 
-  const [trips, setTrips] = useState<any[]>([]);
-  const [activeTrip, setActiveTrip] = useState<any>(null);
+  const [trips, setTrips] = useState<Trip[]>([]);
+  const [activeTrip, setActiveTrip] = useState<Trip | null>(null);
   const [isLoadingTrips, setIsLoadingTrips] = useState(false);
+  const [tripsError, setTripsError] = useState<string | null>(null);
   
   // Seat state
-  const [seats, setSeats] = useState<any[]>([]);
+  const [seats, setSeats] = useState<Seat[]>([]);
   const [selectedSeat, setSelectedSeat] = useState<number | null>(null);
-  const [myTickets, setMyTickets] = useState<any[]>([]);
+  const [myTickets, setMyTickets] = useState<Ticket[]>([]);
   const [isLoadingSeats, setIsLoadingSeats] = useState(false);
+  const [seatsError, setSeatsError] = useState<string | null>(null);
+  const [ticketsError, setTicketsError] = useState<string | null>(null);
+  const [isLoadingTickets, setIsLoadingTickets] = useState(false);
   
-  // Checkout
-  const [checkoutVisible, setCheckoutVisible] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<'visa' | 'instapay'>('visa');
-  const [cardNumber, setCardNumber] = useState('');
-  const [receiptRef, setReceiptRef] = useState('');
-  const [isProcessingPay, setIsProcessingPay] = useState(false);
+  // Zero-fare booking confirmation
+  const [bookingConfirmationVisible, setBookingConfirmationVisible] = useState(false);
+  const [isBooking, setIsBooking] = useState(false);
+  const bookingInProgress = useRef(false);
+  const [bookingError, setBookingError] = useState<string | null>(null);
+  const [pendingBooking, setPendingBooking] = useState<{ tripId: number; seatNumber: number } | null>(null);
+  const fetchTripsRef = useRef<() => Promise<void>>(async () => undefined);
+  const routeRequestId = useRef(0);
+  const tripRequestId = useRef(0);
+  const seatRequestId = useRef(0);
+  const ticketRequestId = useRef(0);
 
-  // 1. Fetch Real Routes
+  // Routes always come from the API; an unavailable server is not a route list.
   const fetchRoutes = useCallback(async () => {
+    const requestId = ++routeRequestId.current;
+    setIsLoadingRoutes(true);
+    setRoutesError(null);
     try {
-      const res = await fetch(`${serverUrl}/api/routes`);
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data) && data.length > 0) {
-          setRoutes(data);
-          if (!data.some((r: any) => r.id === selectedRouteId)) {
-            setSelectedRouteId(data[0].id);
-          }
-        }
-      }
-    } catch {}
-  }, [serverUrl, selectedRouteId]);
+      const data = await apiRequest<Route[]>('/api/routes', { baseUrl: serverUrl });
+      if (!Array.isArray(data)) throw new ApiError('The server returned an invalid route list.', 502, 'INVALID_RESPONSE');
+      if (requestId !== routeRequestId.current) return;
+      setRoutes(data);
+      setSelectedRouteId(current => data.some(route => route.id === current) ? current : data[0]?.id ?? null);
+    } catch (error) {
+      if (requestId !== routeRequestId.current) return;
+      setRoutes([]);
+      setSelectedRouteId(null);
+      setRoutesError(error instanceof Error ? error.message : 'Could not load routes.');
+    } finally {
+      if (requestId === routeRequestId.current) setIsLoadingRoutes(false);
+    }
+  }, [serverUrl]);
 
-  // 2. Fetch Real Trips
-  const fetchTrips = useCallback(async () => {
-    setIsLoadingTrips(true);
-    try {
-      const url = `${serverUrl}/api/trips?date=${selectedDate}&routeId=${selectedRouteId}&direction=${selectedDirection}`;
-      const res = await fetch(url);
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data) && data.length > 0) {
-          setTrips(data);
-          setActiveTrip(data[0]);
-          fetchSeatsForTrip(data[0].id);
-          setIsLoadingTrips(false);
-          return;
-        }
-      }
-    } catch {}
-
-    // Fallback trip if backend has no scheduled trip for this exact slot
-    const matched = routes.find(r => r.id === selectedRouteId);
-    const fallbackTrip = {
-      id: selectedRouteId * 10 + 1,
-      routeId: selectedRouteId,
-      name: `${matched?.nameEn || 'Galala Line'}/07:00 AM`,
-      departureTime: `${selectedDate}T07:00:00+02:00`,
-      time: selectedDirection === 'to_campus' ? '07:00 AM' : '04:45 PM',
-      priceEgp: 160,
-      totalSeats: 50,
-      bus: { name: 'Superjet Bus 104', licensePlate: 'أ ب ج 402' }
-    };
-    setTrips([fallbackTrip]);
-    setActiveTrip(fallbackTrip);
-    generateFallbackSeats();
-    setIsLoadingTrips(false);
-  }, [serverUrl, selectedDate, selectedRouteId, selectedDirection, routes]);
-
-  // 3. Fetch Real Seats for Trip
-  const fetchSeatsForTrip = async (tripId: number) => {
+  const fetchSeatsForTrip = useCallback(async (tripId: number) => {
+    const requestId = ++seatRequestId.current;
     setIsLoadingSeats(true);
+    setSeatsError(null);
+    setSeats([]);
+    setSelectedSeat(null);
     try {
-      const res = await fetch(`${serverUrl}/api/trips/${tripId}/seats`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data?.seats && Array.isArray(data.seats)) {
-          setSeats(data.seats);
-          setIsLoadingSeats(false);
-          return;
-        }
-      }
-    } catch {}
-    generateFallbackSeats();
-    setIsLoadingSeats(false);
-  };
-
-  const generateFallbackSeats = () => {
-    const mockSeats = Array.from({ length: 50 }, (_, i) => ({
-      seatNumber: i + 1,
-      status: (i === 3 || i === 7 || i === 12) ? 'booked' : 'free',
-      userId: null
-    }));
-    setSeats(mockSeats);
-  };
-
-  // 4. Fetch User Tickets
-  const fetchMyBookings = async (authToken?: string) => {
-    const token = authToken || user?.token;
-    if (!token) return;
-    try {
-      const res = await fetch(`${serverUrl}/api/bookings/my`, {
-        headers: { Authorization: `Bearer ${token}` }
+      const data = await apiRequest<Seat[]>(`/api/trips/${tripId}/seats`, {
+        baseUrl: serverUrl,
+        token: user?.token,
       });
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data)) {
-          const formatted = data.map((b: any) => ({
-            id: b.id,
-            route: b.trip?.route?.nameEn || b.trip?.route?.nameAr || 'Galala Route',
-            seatNumber: b.seatNumber,
-            date: b.trip?.tripDate || selectedDate,
-            time: b.trip?.timeSlot || '07:00 AM',
-            boardingCode: b.boardingCode || ('GU-' + b.id.substring(0, 4).toUpperCase()),
-            qrToken: b.qrToken || `${b.id}.token`,
-            status: b.status,
-            cancelReason: b.cancelReason,
-            isBoarded: b.qrUsedAt !== null,
-          }));
-          setMyTickets(formatted);
-        }
+      if (!Array.isArray(data)) throw new ApiError('The server returned an invalid seat map.', 502, 'INVALID_RESPONSE');
+      if (requestId === seatRequestId.current) setSeats(data);
+    } catch (error) {
+      if (requestId === seatRequestId.current) setSeatsError(error instanceof Error ? error.message : 'Could not load seats.');
+    } finally {
+      if (requestId === seatRequestId.current) setIsLoadingSeats(false);
+    }
+  }, [serverUrl, user?.token]);
+
+  // Trips and seat maps are never generated on the device.
+  const fetchTrips = useCallback(async () => {
+    const requestId = ++tripRequestId.current;
+    if (!selectedRouteId) {
+      setIsLoadingTrips(false);
+      setTrips([]);
+      setActiveTrip(null);
+      setSeats([]);
+      setSelectedSeat(null);
+      setTripsError(null);
+      return;
+    }
+    setIsLoadingTrips(true);
+    setTripsError(null);
+    setTrips([]);
+    setActiveTrip(null);
+    setSeats([]);
+    setSelectedSeat(null);
+    try {
+      const data = await apiRequest<Trip[]>(
+        `/api/trips?date=${encodeURIComponent(selectedDate)}&routeId=${selectedRouteId}&direction=${selectedDirection}`,
+        { baseUrl: serverUrl, token: user?.token },
+      );
+      if (!Array.isArray(data)) throw new ApiError('The server returned an invalid trip list.', 502, 'INVALID_RESPONSE');
+      if (requestId !== tripRequestId.current) return;
+      setTrips(data);
+      const nextTrip = data[0] ?? null;
+      setActiveTrip(nextTrip);
+      if (nextTrip) await fetchSeatsForTrip(nextTrip.id);
+    } catch (error) {
+      if (requestId !== tripRequestId.current) return;
+      setTripsError(error instanceof Error ? error.message : 'Could not load trips.');
+    } finally {
+      if (requestId === tripRequestId.current) setIsLoadingTrips(false);
+    }
+  }, [serverUrl, selectedDate, selectedRouteId, selectedDirection, user?.token, fetchSeatsForTrip]);
+  fetchTripsRef.current = fetchTrips;
+
+  const fetchMyBookings = useCallback(async (): Promise<Ticket[] | null> => {
+    const requestId = ++ticketRequestId.current;
+    if (!user?.token) {
+      setMyTickets([]);
+      return null;
+    }
+    setIsLoadingTickets(true);
+    setTicketsError(null);
+    try {
+      const data = await apiRequest<any[]>('/api/bookings/my', {
+        baseUrl: serverUrl,
+        token: user.token,
+      });
+      if (!Array.isArray(data)) throw new ApiError('The server returned an invalid booking list.', 502, 'INVALID_RESPONSE');
+      if (requestId !== ticketRequestId.current) return null;
+      const tickets: Ticket[] = data.map(booking => ({
+        id: String(booking.id),
+        tripId: Number(booking.tripId),
+        route: booking.routeEn || booking.routeAr || null,
+        seatNumber: Number(booking.seatNumber),
+        date: booking.tripDate || null,
+        time: booking.departureTime || booking.timeSlot || null,
+        boardingCode: booking.boardingCode || null,
+        qrToken: booking.qrToken || null,
+        status: String(booking.status),
+        paymentStatus: booking.paymentStatus || null,
+        cancelReason: booking.cancelReason || null,
+        isBoarded: Boolean(booking.qrUsedAt),
+      }));
+      setMyTickets(tickets);
+      return tickets;
+    } catch (error) {
+      if (requestId === ticketRequestId.current) {
+        setTicketsError(error instanceof Error ? error.message : 'Could not load your bookings.');
       }
-    } catch {}
-  };
+      return null;
+    } finally {
+      if (requestId === ticketRequestId.current) setIsLoadingTickets(false);
+    }
+  }, [serverUrl, user?.token]);
 
   useEffect(() => {
     fetchRoutes();
@@ -270,13 +295,27 @@ export default function AppHome() {
     fetchTrips();
   }, [fetchTrips]);
 
+  useEffect(() => {
+    if (user?.token) void fetchMyBookings();
+    else {
+      ticketRequestId.current++;
+      setMyTickets([]);
+      setTicketsError(null);
+      setIsLoadingTickets(false);
+      setPendingBooking(null);
+      setBookingConfirmationVisible(false);
+      setPassword('');
+      setRegPassword('');
+    }
+  }, [user?.token, serverUrl, fetchMyBookings]);
+
   // 5. Live WebSocket listener for real-time notifications
   useEffect(() => {
-    if (!user) return;
-    const wsUrl = serverUrl.replace(/^http/, 'ws');
+    if (!user?.token || !serverUrl) return;
+    const wsUrl = toWebSocketUrl(serverUrl);
     let socket: WebSocket | null = null;
     try {
-      socket = new WebSocket(`${wsUrl}/ws/user/session?token=${user.token || user.id}`);
+      socket = new WebSocket(`${wsUrl}/ws/user/session`, user.token || '');
       socket.onmessage = (event) => {
         try {
           const msg = JSON.parse(event.data);
@@ -284,15 +323,15 @@ export default function AppHome() {
           // Supervisor Cancellation Notice
           if (msg.type === 'SUPERVISOR_CANCELLED_TICKET') {
             triggerLocalNotification(
-              "⚠️ تم إلغاء حجزك واسترداد المبلغ",
-              `قام مشرف الخط بإلغاء حجز المقعد رقم (${msg.seatNumber}). تم استرداد المبلغ بالكامل (160 ج.م) لحسابك.`
+              'تم إلغاء الحجز',
+              `قام مشرف الخط بإلغاء حجز المقعد رقم (${msg.seatNumber}).`
             );
             Alert.alert(
-              "⚠️ تم إلغاء الحجز واسترداد المبلغ",
-              msg.messageAr || `قام مشرف الرحلة بإلغاء حجزك للمقعد رقم (${msg.seatNumber}). تم تحويل 160 ج.م كاسترداد فوري لحسابك.`,
+              'تم إلغاء الحجز',
+              msg.messageAr || `قام مشرف الرحلة بإلغاء حجزك للمقعد رقم (${msg.seatNumber}).`,
               [{ text: "فهمت (Dismiss)" }]
             );
-            setMyTickets(prev => prev.map(t => (t.id === msg.bookingId || t.seatNumber === msg.seatNumber) ? {
+            setMyTickets(prev => prev.map(t => (t.id === String(msg.bookingId)) ? {
               ...t,
               status: 'cancelled',
               cancelReason: msg.messageAr,
@@ -307,13 +346,12 @@ export default function AppHome() {
             Alert.alert(
               "🚌 باص جديد متاح الآن!",
               msg.messageAr || `تمت إضافة باص جديد على رحلات الجلالة. الحجز متاح الآن!`,
-              [{ text: "عرض الرحلات", onPress: () => fetchTrips() }]
+              [{ text: "عرض الرحلات", onPress: () => fetchTripsRef.current() }]
             );
-            fetchTrips();
           }
           // Boarding Confirmed
           else if (msg.type === 'rider_boarded') {
-            setMyTickets(prev => prev.map(t => (t.id === msg.bookingId || t.seatNumber === msg.seatNumber) ? {
+            setMyTickets(prev => prev.map(t => (t.id === String(msg.bookingId)) ? {
               ...t,
               isBoarded: true,
             } : t));
@@ -323,9 +361,9 @@ export default function AppHome() {
             Alert.alert(
               "⚠️ جلسة من جهاز آخر",
               "تم تسجيل الدخول إلى هذا الحساب من جهاز آخر. تم إنهاء جلستك لحماية بياناتك.",
-              [{ text: "تسجيل الدخول مجدداً", onPress: () => setUser(null) }]
+              [{ text: 'تسجيل الدخول مجدداً', onPress: signOut }]
             );
-            setUser(null);
+            signOut();
           }
         } catch {}
       };
@@ -336,7 +374,7 @@ export default function AppHome() {
     return () => {
       if (socket) socket.close();
     };
-  }, [user, serverUrl, fetchTrips]);
+  }, [user?.token, serverUrl, signOut]);
 
   // Handle Login via Real API
   const handleLogin = async () => {
@@ -347,46 +385,14 @@ export default function AppHome() {
     setIsLoggingIn(true);
 
     try {
-      const res = await fetch(`${serverUrl}/api/auth/login`, {
+      const data = await apiRequest<any>('/api/auth/login', {
+        baseUrl: serverUrl,
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim(), password }),
+        body: { email: email.trim(), password },
       });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.messageAr || data.error || 'Login failed');
-      }
-
-      const loggedUser = {
-        id: data.user?.id || 'usr-' + Date.now(),
-        email: data.user?.email || email,
-        fullName: data.user?.fullName || email.split('@')[0],
-        role: data.user?.role || 'rider',
-        token: data.token,
-      };
-
-      setUser(loggedUser);
-      fetchMyBookings(data.token);
+      setUser(authenticatedUser(data));
     } catch (err: any) {
-      // Fallback demo login if server not reached
-      Alert.alert(
-        'Server Notice',
-        `Live login attempt (${err.message}). Connecting in demo session...`,
-        [{
-          text: 'Continue in Demo',
-          onPress: () => {
-            const isSuper = email.startsWith('supervisor') || email.startsWith('driver');
-            setUser({
-              id: isSuper ? 'user-super' : 'user-student',
-              email,
-              fullName: isSuper ? 'Supervisor Aesh' : email.split('@')[0] || 'Galala Student',
-              role: isSuper ? 'supervisor' : 'rider',
-              token: 'demo-token',
-            });
-          }
-        }]
-      );
+      Alert.alert('Login Error', err.message || 'Unable to reach the authentication server.');
     } finally {
       setIsLoggingIn(false);
     }
@@ -400,28 +406,24 @@ export default function AppHome() {
     }
 
     const cleanEmail = regEmail.toLowerCase().trim();
-    if (!cleanEmail.endsWith('@gu.edu.eg') && !cleanEmail.endsWith('@galala.edu.eg') && !cleanEmail.endsWith('@outlook.com') && !cleanEmail.startsWith('test.')) {
-      Alert.alert('Domain Error', 'Use a Galala University email (@gu.edu.eg) or an Outlook email (@outlook.com).');
+    if (!cleanEmail.endsWith('@gu.edu.eg') && !cleanEmail.endsWith('@galala.edu.eg')) {
+      Alert.alert('Domain Error', 'Registration is restricted to official Galala University student emails (@gu.edu.eg).');
       return;
     }
 
     setRegLoading(true);
     try {
-      const res = await fetch(`${serverUrl}/api/auth/verify-student`, {
+      const data = await apiRequest<any>('/api/auth/verify-student', {
+        baseUrl: serverUrl,
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+        body: {
           email: cleanEmail,
-          fullName: regName || 'Galala Student',
+          fullName: regName.trim(),
           academicId: regAcademicId.trim(),
           faculty: regFaculty,
-        }),
+        },
       });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.messageAr || data.error || 'Verification failed');
-      }
+      if (!data?.verificationId) throw new ApiError('The server did not return a verification ID.', 502, 'INVALID_VERIFICATION');
 
       Alert.alert(
         '📧 رمز التحقق',
@@ -429,6 +431,8 @@ export default function AppHome() {
         [{ text: 'متابعة' }]
       );
       setRegOtp('');
+      setRegVerificationId(String(data.verificationId));
+      setRegistrationPreverified(data.status === 'APPROVED');
       setRegStep('verify_code');
     } catch (err: any) {
       Alert.alert('Verification Error', err.message || 'Could not verify student ID.');
@@ -439,7 +443,7 @@ export default function AppHome() {
 
   // Student Registration Step 2: Confirm OTP & Create Account
   const handleRegisterConfirm = async () => {
-    if (!regOtp) {
+    if (!registrationPreverified && !regOtp) {
       Alert.alert('Error', 'Please enter the 6-digit verification code');
       return;
     }
@@ -447,143 +451,150 @@ export default function AppHome() {
     setRegLoading(true);
     try {
       // 1. Confirm code
-      await fetch(`${serverUrl}/api/auth/confirm-code`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: regEmail.toLowerCase().trim(), code: regOtp.trim() }),
-      });
+      if (!registrationPreverified) {
+        await apiRequest('/api/auth/confirm-code', {
+          baseUrl: serverUrl,
+          method: 'POST',
+          body: { email: regEmail.toLowerCase().trim(), code: regOtp.trim() },
+        });
+      }
 
       // 2. Register user
-      const res = await fetch(`${serverUrl}/api/auth/register`, {
+      await apiRequest('/api/auth/register', {
+        baseUrl: serverUrl,
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+        body: {
           email: regEmail.toLowerCase().trim(),
-          password: regPassword || '123456',
-          fullName: regName || 'Galala Student',
+          password: regPassword,
+          fullName: regName.trim(),
           academicId: regAcademicId.trim(),
           faculty: regFaculty,
-          phone: regPhone || '01000000000',
+          phone: regPhone,
           role: 'rider',
-        }),
+          sheerIdVerificationId: regVerificationId,
+        },
       });
 
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.messageAr || data.error || 'Registration failed');
-      }
+      const session = await apiRequest<any>('/api/auth/login', {
+        baseUrl: serverUrl,
+        method: 'POST',
+        body: { email: regEmail.toLowerCase().trim(), password: regPassword },
+      });
 
       Alert.alert('🎉 تم التسجيل بنجاح', 'مرحباً بك في منظومة باصات جامعة الجلالة! تم تسجيل حسابك بنجاح.');
       setShowRegisterModal(false);
-      
-      // Auto login
-      const loggedUser = {
-        id: data.user?.id || 'usr-' + Date.now(),
-        email: data.user?.email || regEmail,
-        fullName: data.user?.fullName || regName,
-        role: 'rider',
-        token: data.token,
-      };
-      setUser(loggedUser);
-      fetchMyBookings(data.token);
+      setUser(authenticatedUser(session));
     } catch (err: any) {
-      Alert.alert('Notice', err.message || 'Registration completed in local mode.');
-      setShowRegisterModal(false);
-      setUser({
-        id: 'usr-new-' + Date.now(),
-        email: regEmail,
-        fullName: regName || 'Galala Student',
-        role: 'rider',
-        token: 'demo-token',
-      });
+      Alert.alert('Registration Error', err.message || 'Registration failed.');
     } finally {
       setRegLoading(false);
     }
   };
 
   const handleSeatSelect = (seatNum: number, status: string) => {
-    if (status === 'booked') return;
+    if (status !== 'free' || Number(activeTrip?.priceEgp) !== 0 || !user?.token) return;
     setSelectedSeat(selectedSeat === seatNum ? null : seatNum);
   };
 
-  // Real Booking Submission
   const handleBookingSubmit = async () => {
-    if (!selectedSeat || !activeTrip) return;
-    setIsProcessingPay(true);
-
+    if (!selectedSeat || !activeTrip || !user?.token || Number(activeTrip.priceEgp) !== 0 || bookingInProgress.current || pendingBooking) return;
+    bookingInProgress.current = true;
+    setIsBooking(true);
+    setBookingError(null);
+    const seatNumber = selectedSeat;
     try {
-      const res = await fetch(`${serverUrl}/api/bookings`, {
+      const data = await apiRequest<any>('/api/bookings', {
+        baseUrl: serverUrl,
+        token: user.token,
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${user?.token || ''}`,
-        },
-        body: JSON.stringify({
+        body: {
           tripId: activeTrip.id,
-          seatNumber: selectedSeat,
-          paymentMethod,
+          seatNumber,
+          paymentMethod: 'none',
           bookingType: 'one_way',
           legType: selectedDirection,
-        }),
+        },
       });
-
-      if (res.ok) {
-        const data = await res.json();
-        const newTicket = {
-          id: data.booking?.id || `book-${Date.now()}`,
-          route: routes.find(r => r.id === selectedRouteId)?.nameEn || 'Galala Line',
-          seatNumber: selectedSeat,
-          time: activeTrip.time || '07:00 AM',
-          date: selectedDate,
-          boardingCode: data.booking?.boardingCode || ('GU-' + Math.random().toString(36).substring(2, 6).toUpperCase()),
-          qrToken: data.booking?.qrToken || `mock.qr.${Date.now()}`,
-          status: 'confirmed',
-          isBoarded: false,
-        };
-
-        setMyTickets(prev => [newTicket, ...prev]);
-        setSeats(prev => prev.map(s => s.seatNumber === selectedSeat ? { ...s, status: 'booked' } : s));
-        setIsProcessingPay(false);
-        setCheckoutVisible(false);
+      if (!data?.success || !data?.bookingId || !data?.qrToken || Number(data?.seatNumber) !== seatNumber) {
+        throw new ApiError('The server did not return a complete booking ticket. Refresh bookings before retrying.', 502, 'INVALID_BOOKING_RESPONSE');
+      }
+      setSelectedSeat(null);
+      setPendingBooking(null);
+      setBookingConfirmationVisible(false);
+      const [bookingsLoaded] = await Promise.all([fetchMyBookings(), fetchSeatsForTrip(activeTrip.id)]);
+      if (!bookingsLoaded) {
+        Alert.alert('Booking confirmed', 'Your booking was created on the server. The ticket list could not refresh; use Refresh to load it.');
+      } else {
+        Alert.alert('Booking confirmed', 'Your free seat is booked. The ticket and boarding QR were issued by the server.');
+      }
+    } catch (error) {
+      const apiError = error instanceof ApiError ? error : null;
+      if (apiError?.status === 409 || apiError?.code === 'SEAT_ALREADY_BOOKED') {
+        const tickets = await fetchMyBookings();
+        const ownBooking = tickets?.find(ticket => ticket.tripId === activeTrip.id && ticket.seatNumber === seatNumber && ['confirmed', 'swapped'].includes(ticket.status));
         setSelectedSeat(null);
-        Alert.alert("تم تأكيد الحجز بنجاح", "تم حجز مقعدك وإصدار كود الصعود الخاص بك. تجد تذكرتك في الأسفل.");
+        setBookingConfirmationVisible(false);
+        await fetchSeatsForTrip(activeTrip.id);
+        if (ownBooking) {
+          setPendingBooking(null);
+          Alert.alert('Booking found', 'This seat is already booked on your account. Your server-issued ticket is in My Boarding Tickets.');
+        } else {
+          Alert.alert('Seat unavailable', 'That seat was just booked. The seat map has been refreshed.');
+        }
+      } else if (apiError?.status === 0 || (apiError?.status !== undefined && apiError.status >= 500) || apiError?.code === 'INVALID_BOOKING_RESPONSE') {
+        setPendingBooking({ tripId: activeTrip.id, seatNumber });
+        setBookingError('The connection failed after sending this request. The server may have booked the seat. Reconnect and check booking status before trying again.');
+      } else {
+        setBookingError(error instanceof Error ? error.message : 'Booking failed. No ticket was created on this device.');
+      }
+    } finally {
+      bookingInProgress.current = false;
+      setIsBooking(false);
+    }
+  };
+
+  const handleBookingStatusCheck = async () => {
+    if (!pendingBooking || !user?.token || bookingInProgress.current) return;
+    bookingInProgress.current = true;
+    setIsBooking(true);
+    const { tripId, seatNumber } = pendingBooking;
+    try {
+      const tickets = await fetchMyBookings();
+      if (!tickets) {
+        setBookingError('Could not check the server yet. Reconnect and check booking status again.');
         return;
       }
-    } catch {}
-
-    // Fallback ticket creation
-    const bookingId = `book-${Math.random().toString(36).substring(2, 9)}`;
-    const boardingCode = 'GU-' + Math.random().toString(36).substring(2, 6).toUpperCase();
-    const fallbackTicket = {
-      id: bookingId,
-      route: routes.find(r => r.id === selectedRouteId)?.nameEn || 'Galala Line',
-      seatNumber: selectedSeat,
-      time: activeTrip.time || '07:00 AM',
-      date: selectedDate,
-      boardingCode,
-      qrToken: `${bookingId}.token`,
-      status: 'confirmed',
-      isBoarded: false,
-    };
-
-    setMyTickets(prev => [fallbackTicket, ...prev]);
-    setSeats(prev => prev.map(s => s.seatNumber === selectedSeat ? { ...s, status: 'booked' } : s));
-    setIsProcessingPay(false);
-    setCheckoutVisible(false);
-    setSelectedSeat(null);
-    Alert.alert("Success", "Seat booked successfully! View your QR code and unique Boarding Code below.");
+      const ownBooking = tickets.find(ticket => ticket.tripId === tripId && ticket.seatNumber === seatNumber && ['confirmed', 'swapped'].includes(ticket.status));
+      if (ownBooking) {
+        setPendingBooking(null);
+        setSelectedSeat(null);
+        setBookingConfirmationVisible(false);
+        Alert.alert('Booking found', 'The server booked this seat. Your ticket is in My Boarding Tickets.');
+      } else {
+        setPendingBooking(null);
+        setSelectedSeat(null);
+        setBookingConfirmationVisible(false);
+        setBookingError(null);
+        Alert.alert('No booking found', 'The server has no booking for that seat. Choose an available seat to try again.');
+      }
+      if (activeTrip?.id === tripId) await fetchSeatsForTrip(tripId);
+    } finally {
+      bookingInProgress.current = false;
+      setIsBooking(false);
+    }
   };
 
   // Login Screen
   if (!user) {
     return (
-      <ScrollView contentContainerStyle={styles.loginContainer}>
+      <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <ScrollView contentContainerStyle={styles.loginContainer} keyboardShouldPersistTaps="handled" keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}>
         {/* Server Config Button */}
         <TouchableOpacity 
           onPress={() => { setCustomServerInput(serverUrl); setShowServerModal(true); }}
           style={styles.serverConfigBtn}
         >
-          <Text style={styles.serverConfigBtnText}>⚙️ Server: {serverUrl.replace(/https?:\/\//, '')}</Text>
+          <Text style={styles.serverConfigBtnText}>⚙️ Server: {serverUrl ? serverUrl.replace(/https?:\/\//, '') : 'Not configured'}</Text>
         </TouchableOpacity>
 
         <Image 
@@ -632,17 +643,15 @@ export default function AppHome() {
 
         {/* Register Button */}
         <TouchableOpacity 
-          onPress={() => { setRegStep('details'); setShowRegisterModal(true); }}
+          onPress={() => { setRegStep('details'); setRegistrationPreverified(false); setShowRegisterModal(true); }}
           style={styles.registerBtn}
         >
           <Text style={styles.registerBtnText}>🎓 Register as Galala Student (حساب جديد)</Text>
         </TouchableOpacity>
 
-        {/* Demo helpers */}
         <View style={styles.infoBox}>
           <Text style={styles.infoText}>Galala University Transportation</Text>
           <Text style={styles.infoTextSub}>Students: Please register with your @gu.edu.eg email.</Text>
-          <Text style={styles.infoTextSub}>Supervisors: supervisor@gu.edu.eg / 123456</Text>
         </View>
 
         {/* Server Config Modal */}
@@ -675,8 +684,12 @@ export default function AppHome() {
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => {
-                    if (customServerInput) setServerUrl(customServerInput.trim());
-                    setShowServerModal(false);
+                    try {
+                      setServerUrl(customServerInput);
+                      setShowServerModal(false);
+                    } catch (error) {
+                      Alert.alert('Invalid server URL', error instanceof Error ? error.message : 'Enter a valid API URL.');
+                    }
                   }}
                   style={[styles.modalActionBtn, {backgroundColor: '#38bdf8'}]}
                 >
@@ -703,7 +716,7 @@ export default function AppHome() {
                 <Text style={{color: '#94a3b8', fontSize: 12, marginTop: 4, marginBottom: 12}}>
                   {regStep === 'details' 
                     ? 'Registration is restricted to Galala University students (@gu.edu.eg).'
-                    : 'A 6-digit OTP code has been sent to your Outlook mailbox.'}
+                    : registrationPreverified ? 'Your student status was approved by the university verification service.' : 'A 6-digit OTP code has been sent to your Outlook mailbox.'}
                 </Text>
 
                 {regStep === 'details' ? (
@@ -780,34 +793,30 @@ export default function AppHome() {
                   </View>
                 ) : (
                   <View style={{gap: 12}}>
-                    {/* Outlook Button */}
-                    <TouchableOpacity
-                      onPress={() => Linking.openURL('https://outlook.office.com/mail/')}
-                      style={styles.outlookBtn}
-                    >
-                      <Text style={styles.outlookBtnText}>📥 Open Galala Outlook Webmail</Text>
-                    </TouchableOpacity>
-
-                    {/* Quick Demo Fill */}
-                    <TouchableOpacity
-                      onPress={() => setRegOtp('123456')}
-                      style={styles.demoFillBtn}
-                    >
-                      <Text style={styles.demoFillBtnText}>⚡ Use Quick Test Code: 123456</Text>
-                    </TouchableOpacity>
-
-                    <View>
-                      <Text style={styles.label}>Enter 6-Digit OTP Code</Text>
-                      <TextInput
-                        value={regOtp}
-                        onChangeText={setRegOtp}
-                        keyboardType="number-pad"
-                        maxLength={6}
-                        placeholder="123456"
-                        placeholderTextColor="#64748b"
-                        style={[styles.input, {textAlign: 'center', fontSize: 24, letterSpacing: 6, fontWeight: 'bold'}]}
-                      />
-                    </View>
+                    {registrationPreverified ? (
+                      <Text style={styles.emptyHint}>The server verified this student automatically. Continue to create the account.</Text>
+                    ) : (
+                      <>
+                        <TouchableOpacity
+                          onPress={() => Linking.openURL('https://outlook.office.com/mail/')}
+                          style={styles.outlookBtn}
+                        >
+                          <Text style={styles.outlookBtnText}>📥 Open Galala Outlook Webmail</Text>
+                        </TouchableOpacity>
+                        <View>
+                          <Text style={styles.label}>Enter 6-Digit OTP Code</Text>
+                          <TextInput
+                            value={regOtp}
+                            onChangeText={setRegOtp}
+                            keyboardType="number-pad"
+                            maxLength={6}
+                            placeholder="Enter the code sent to your email"
+                            placeholderTextColor="#64748b"
+                            style={[styles.input, {textAlign: 'center', fontSize: 24, letterSpacing: 6, fontWeight: 'bold'}]}
+                          />
+                        </View>
+                      </>
+                    )}
 
                     <View style={styles.modalActions}>
                       <TouchableOpacity
@@ -842,31 +851,33 @@ export default function AppHome() {
           </View>
         </Modal>
       </ScrollView>
+      </KeyboardAvoidingView>
     );
   }
 
   // Logged-in screen (Rider Portal / Supervisor console hub)
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+    <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled" keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}>
       
       {/* Header */}
       <View style={styles.header}>
         <View>
           <Text style={styles.welcomeText}>Hello,</Text>
           <Text style={styles.userName}>{user.fullName}</Text>
-          <Text style={styles.userRoleBadge}>{user.role === 'supervisor' ? '👮 Line Supervisor' : '🎓 Galala Student'}</Text>
+          <Text style={styles.userRoleBadge}>{user.role === 'supervisor' ? '👮 Line Supervisor' : user.role === 'admin' ? '🛡️ Administrator' : '🎓 Galala Student'}</Text>
         </View>
         
         {/* Sign Out */}
-        <TouchableOpacity onPress={() => setUser(null)} style={styles.signOutBtn}>
+        <TouchableOpacity onPress={signOut} style={styles.signOutBtn}>
           <Text style={styles.signOutText}>Sign Out</Text>
         </TouchableOpacity>
       </View>
 
       {/* Supervisor quick switch */}
-      {user.role === 'supervisor' && (
+      {['supervisor', 'admin'].includes(user.role) && (
         <TouchableOpacity 
-          onPress={() => router.push({ pathname: '/scanner', params: { legType: selectedDirection, token: user.token } })}
+          onPress={() => router.push({ pathname: '/scanner', params: { legType: selectedDirection } })}
           style={styles.supervisorBanner}
         >
           <Text style={styles.supervisorBannerText}>🚀 Open Camera QR & Code Boarding Scanner</Text>
@@ -885,6 +896,13 @@ export default function AppHome() {
         {/* Route select chips */}
         <View style={{ marginBottom: 12, marginTop: 8 }}>
           <Text style={styles.selectLabel}>Select Bus Line (خط الباص)</Text>
+          {isLoadingRoutes ? <ActivityIndicator color="#38bdf8" style={{marginTop: 10}} /> : null}
+          {routesError ? (
+            <View style={styles.inlineError}>
+              <Text style={styles.inlineErrorText}>{routesError}</Text>
+              <TouchableOpacity onPress={fetchRoutes} style={styles.retryBtn}><Text style={styles.retryText}>Retry</Text></TouchableOpacity>
+            </View>
+          ) : null}
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 6 }}>
             {routes.map(r => (
               <TouchableOpacity
@@ -898,6 +916,7 @@ export default function AppHome() {
               </TouchableOpacity>
             ))}
           </ScrollView>
+          {!isLoadingRoutes && !routesError && routes.length === 0 ? <Text style={styles.emptyHint}>No routes are configured on the server.</Text> : null}
         </View>
 
         {/* Direction toggle */}
@@ -924,7 +943,7 @@ export default function AppHome() {
         <View style={{ marginTop: 14 }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
             <Text style={styles.selectLabel}>Operational Date (تاريخ الحجز)</Text>
-            <Text style={{ fontSize: 10, color: '#38bdf8', fontWeight: 'bold' }}>الحجز لرحلات الغد (Tomorrow)</Text>
+            <Text style={{ fontSize: 10, color: '#38bdf8', fontWeight: 'bold' }}>Choose a travel date</Text>
           </View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
             {operationalDates.map(od => {
@@ -1019,22 +1038,28 @@ export default function AppHome() {
         <Text style={styles.cardTitle}>2. Scheduled Buses ({selectedDate})</Text>
         {isLoadingTrips ? (
           <ActivityIndicator color="#38bdf8" style={{marginVertical: 12}} />
+        ) : tripsError ? (
+          <View style={styles.inlineError}>
+            <Text style={styles.inlineErrorText}>{tripsError}</Text>
+            <TouchableOpacity onPress={fetchTrips} style={styles.retryBtn}><Text style={styles.retryText}>Retry</Text></TouchableOpacity>
+          </View>
         ) : trips.length === 0 ? (
-          <Text style={{color: '#64748b', fontSize: 12, marginVertical: 8}}>No trips available for this route.</Text>
+          <Text style={{color: '#64748b', fontSize: 12, marginVertical: 8}}>No trips are scheduled for this route and date.</Text>
         ) : (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{marginTop: 8}}>
             {trips.map(t => (
               <TouchableOpacity
                 key={t.id}
-                onPress={() => { setActiveTrip(t); fetchSeatsForTrip(t.id); }}
+                onPress={() => { setActiveTrip(t); void fetchSeatsForTrip(t.id); }}
                 style={[styles.tripCard, activeTrip?.id === t.id && styles.activeTripCard]}
               >
                 <Text style={[styles.tripCardTitle, activeTrip?.id === t.id && {color: '#38bdf8'}]}>
-                  {t.bus?.name || 'Galala Transit Bus'}
+                  {t.bus?.name || 'Bus details unavailable'}
                 </Text>
-                <Text style={styles.tripCardSub}>{t.time || t.timeSlot || '07:00 AM'}</Text>
-                <Text style={styles.tripCardPlate}>Plate: {t.bus?.licensePlate || 'أ ب ج 402'}</Text>
-                <Text style={styles.tripCardPrice}>160.00 EGP</Text>
+                <Text style={styles.tripCardSub}>{t.departureTime ? formatDepartureTime(t.departureTime) : t.timeSlot || 'Departure time unavailable'}</Text>
+                {t.bus?.licensePlate ? <Text style={styles.tripCardPlate}>Plate: {t.bus.licensePlate}</Text> : null}
+                <Text style={styles.tripCardPrice}>{Number(t.priceEgp).toFixed(2)} EGP</Text>
+                {Number(t.priceEgp) > 0 ? <Text style={styles.paidUnavailable}>Paid booking unavailable in app</Text> : null}
               </TouchableOpacity>
             ))}
           </ScrollView>
@@ -1061,6 +1086,15 @@ export default function AppHome() {
 
         {isLoadingSeats ? (
           <ActivityIndicator color="#38bdf8" style={{marginVertical: 16}} />
+        ) : seatsError ? (
+          <View style={styles.inlineError}>
+            <Text style={styles.inlineErrorText}>{seatsError}</Text>
+            {activeTrip ? <TouchableOpacity onPress={() => fetchSeatsForTrip(activeTrip.id)} style={styles.retryBtn}><Text style={styles.retryText}>Retry</Text></TouchableOpacity> : null}
+          </View>
+        ) : !activeTrip ? (
+          <Text style={styles.emptyHint}>Choose a server-provided trip to see its seat map.</Text>
+        ) : seats.length === 0 ? (
+          <Text style={styles.emptyHint}>No seat data was returned for this trip.</Text>
         ) : (
           <View style={{ alignItems: 'center', marginTop: 12 }}>
             <View style={styles.busLayout}>
@@ -1072,7 +1106,7 @@ export default function AppHome() {
                 {seats.map((seat) => {
                   const isSelected = selectedSeat === seat.seatNumber;
                   let seatColor = '#1e293b';
-                  if (seat.status === 'booked') seatColor = '#ef444433';
+                  if (seat.status !== 'free') seatColor = '#ef444433';
                   if (isSelected) seatColor = '#38bdf8';
 
                   // Center aisle space after seat 2
@@ -1082,7 +1116,7 @@ export default function AppHome() {
                     return (
                       <React.Fragment key={seat.seatNumber}>
                         <TouchableOpacity
-                          disabled={seat.status === 'booked'}
+                          disabled={seat.status !== 'free' || Number(activeTrip.priceEgp) !== 0}
                           onPress={() => handleSeatSelect(seat.seatNumber, seat.status)}
                           style={[styles.seat, { backgroundColor: seatColor }]}
                         >
@@ -1096,7 +1130,7 @@ export default function AppHome() {
                   return (
                     <TouchableOpacity
                       key={seat.seatNumber}
-                      disabled={seat.status === 'booked'}
+                      disabled={seat.status !== 'free' || Number(activeTrip.priceEgp) !== 0}
                       onPress={() => handleSeatSelect(seat.seatNumber, seat.status)}
                       style={[styles.seat, { backgroundColor: seatColor }]}
                     >
@@ -1107,831 +1141,90 @@ export default function AppHome() {
               </View>
             </View>
 
-            {selectedSeat && (
+            {selectedSeat && Number(activeTrip.priceEgp) === 0 && !pendingBooking && (
               <TouchableOpacity
-                onPress={() => setCheckoutVisible(true)}
+                onPress={() => { setBookingError(null); setBookingConfirmationVisible(true); }}
                 style={styles.payBtn}
               >
-                <Text style={styles.payBtnText}>Book Seat {selectedSeat} (160 EGP)</Text>
+                <Text style={styles.payBtnText}>Continue with free seat {selectedSeat} · 0 EGP</Text>
               </TouchableOpacity>
             )}
+            {Number(activeTrip.priceEgp) > 0 ? <Text style={styles.paidUnavailable}>Paid bookings are currently unavailable in the mobile app.</Text> : null}
           </View>
         )}
       </View>
 
+      {pendingBooking ? (
+        <View style={styles.inlineError}>
+          <Text style={styles.inlineErrorText}>The booking result for seat {pendingBooking.seatNumber} is unknown. Check the server before booking another seat.</Text>
+          <TouchableOpacity onPress={handleBookingStatusCheck} disabled={isBooking} style={styles.retryBtn}>
+            <Text style={styles.retryText}>{isBooking ? 'Checking…' : 'Check booking status'}</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
+
       {/* Ticket History List */}
       <View style={{ marginTop: 12, marginBottom: 40 }}>
-        <Text style={styles.sectionHeader}>🎟️ My Boarding Tickets & QR Codes</Text>
-        
-        {myTickets.length === 0 ? (
-          <Text style={styles.noTicketsText}>No active tickets found. Book a seat above to get your ticket.</Text>
+        <View style={styles.ticketListHeader}>
+          <Text style={styles.sectionHeader}>🎟️ My Boarding Tickets</Text>
+          <TouchableOpacity onPress={() => void fetchMyBookings()} style={styles.refreshBtn}>
+            <Text style={styles.refreshBtnText}>Refresh</Text>
+          </TouchableOpacity>
+        </View>
+        {isLoadingTickets ? (
+          <ActivityIndicator color="#38bdf8" style={{marginVertical: 12}} />
+        ) : ticketsError ? (
+          <View style={styles.inlineError}>
+            <Text style={styles.inlineErrorText}>{ticketsError}</Text>
+            <TouchableOpacity onPress={() => void fetchMyBookings()} style={styles.retryBtn}><Text style={styles.retryText}>Retry</Text></TouchableOpacity>
+          </View>
+        ) : myTickets.length === 0 ? (
+          <Text style={styles.noTicketsText}>No bookings were returned for this account.</Text>
         ) : (
-          myTickets.map(t => (
-            <View key={t.id} style={styles.ticketCard}>
-              <View style={styles.ticketHeader}>
-                <View>
-                  <Text style={styles.ticketRoute}>{t.route}</Text>
-                  <Text style={styles.ticketTime}>{t.date} • {t.time}</Text>
-                </View>
-                <View style={styles.ticketSeatBadge}>
-                  <Text style={styles.ticketSeatText}>Seat {t.seatNumber}</Text>
-                </View>
-              </View>
-
-              {/* Status Display: Cancelled / Boarded / Scannable QR + Manual Code */}
-              {t.status === 'cancelled' ? (
-                <View style={styles.cancelledBox}>
-                  <View style={styles.cancelledIcon}>
-                    <Text style={{ fontSize: 20, color: '#ef4444', fontWeight: 'bold' }}>✕</Text>
-                  </View>
-                  <Text style={styles.cancelledTitle}>CANCELLED BY SUPERVISOR</Text>
-                  <Text style={styles.refundText}>💰 Full Refund Processed (160 EGP)</Text>
-                  <Text style={styles.cancelReasonText}>{t.cancelReason || 'Amount credited back to your account'}</Text>
-                </View>
-              ) : t.isBoarded ? (
-                <View style={styles.boardedBox}>
-                  <View style={styles.boardedIcon}>
-                    <Text style={{ fontSize: 22, color: '#22c55e', fontWeight: 'bold' }}>✓</Text>
-                  </View>
-                  <Text style={styles.boardedTitle}>PASSENGER BOARDED</Text>
-                  <Text style={{ fontSize: 10, color: '#16a34a', marginTop: 2 }}>Gate Verified</Text>
-                </View>
-              ) : (
-                <View style={styles.qrContainer}>
-                  {/* Scannable Ticket Box */}
-                  <View style={styles.qrWrapper}>
-                    <View style={{width: 140, height: 140, backgroundColor: 'white', padding: 8, borderRadius: 12, alignItems: 'center', justifyContent: 'center'}}>
-                      <Text style={{fontSize: 28}}>📲</Text>
-                      <Text style={{fontSize: 9, color: '#0f172a', marginTop: 4, fontWeight: '900', textAlign: 'center'}}>
-                        GALALA TRANSIT PASS
-                      </Text>
-                      <Text style={{fontSize: 8, color: '#64748b', textAlign: 'center', marginTop: 2}}>
-                        Scan for Boarding
-                      </Text>
-                    </View>
-                  </View>
-
-                  {/* Manual Memorizable Boarding Code */}
-                  <View style={styles.manualCodeBox}>
-                    <Text style={styles.manualCodeLabel}>ALTERNATIVE BOARDING CODE (كود الصعود اليدوي)</Text>
-                    <Text style={styles.manualCodeValue}>
-                      {t.boardingCode || ('GU-' + t.id.substring(0, 4).toUpperCase())}
-                    </Text>
-                    <Text style={styles.manualCodeSub}>
-                      Give this code to the supervisor if phone camera scan is not available.
-                    </Text>
-                  </View>
-                  <Text style={styles.qrTokenText} numberOfLines={1}>Token: {t.qrToken}</Text>
-                </View>
-              )}
-            </View>
-          ))
+          myTickets.map(ticket => <TicketCard key={ticket.id} ticket={ticket} />)
         )}
       </View>
 
-      {/* CHECKOUT MODAL */}
+      {/* Server-verified zero-fare booking confirmation */}
       <Modal
-        visible={checkoutVisible}
+        visible={bookingConfirmationVisible}
         animationType="slide"
-        transparent={true}
-        onRequestClose={() => setCheckoutVisible(false)}
+        transparent
+        onRequestClose={() => setBookingConfirmationVisible(false)}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Checkout — Bus Aesh</Text>
-            
+            <Text style={styles.modalTitle}>Confirm free booking</Text>
             <View style={styles.modalDetails}>
-              <Text style={styles.detailsText}>Trip: <Text style={{fontWeight: 'bold', color: '#fff'}}>{activeTrip?.name || 'Galala Route'}</Text></Text>
+              <Text style={styles.detailsText}>Route: <Text style={{fontWeight: 'bold', color: '#fff'}}>{activeTrip?.route?.nameEn || activeTrip?.routeEn || 'Route details unavailable'}</Text></Text>
+              <Text style={styles.detailsText}>Departure: <Text style={{fontWeight: 'bold', color: '#fff'}}>{activeTrip?.departureTime ? formatDepartureTime(activeTrip.departureTime) : activeTrip?.timeSlot || 'Time unavailable'}</Text></Text>
               <Text style={styles.detailsText}>Selected Seat: <Text style={{fontWeight: 'bold', color: '#38bdf8'}}>Seat {selectedSeat}</Text></Text>
-              <Text style={styles.detailsText}>Amount: <Text style={{fontWeight: 'bold', color: '#38bdf8'}}>160.00 EGP</Text></Text>
+              <Text style={styles.detailsText}>Fare: <Text style={{fontWeight: 'bold', color: '#38bdf8'}}>0 EGP</Text></Text>
             </View>
-
-            {/* Payment Method selector */}
-            <View style={styles.paymentMethodRow}>
-              <TouchableOpacity
-                onPress={() => setPaymentMethod('visa')}
-                style={[styles.paymentMethodBtn, paymentMethod === 'visa' && styles.activePaymentBtn]}
-              >
-                <Text style={[styles.paymentMethodText, paymentMethod === 'visa' && styles.activePaymentText]}>Credit Card</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => setPaymentMethod('instapay')}
-                style={[styles.paymentMethodBtn, paymentMethod === 'instapay' && styles.activePaymentBtn]}
-              >
-                <Text style={[styles.paymentMethodText, paymentMethod === 'instapay' && styles.activePaymentText]}>Instapay</Text>
-              </TouchableOpacity>
-            </View>
-
-            {paymentMethod === 'visa' ? (
-              <View style={{gap: 8, marginTop: 12}}>
-                <TextInput
-                  placeholder="Card Number"
-                  placeholderTextColor="#64748b"
-                  value={cardNumber}
-                  onChangeText={setCardNumber}
-                  style={styles.input}
-                />
-                <View style={{flexDirection: 'row', gap: 8}}>
-                  <TextInput
-                    placeholder="MM/YY"
-                    placeholderTextColor="#64748b"
-                    style={[styles.input, {flex: 1}]}
-                  />
-                  <TextInput
-                    placeholder="CVV"
-                    secureTextEntry
-                    placeholderTextColor="#64748b"
-                    style={[styles.input, {flex: 1}]}
-                  />
-                </View>
-              </View>
-            ) : (
-              <View style={styles.instapayContainer}>
-                <Text style={styles.instapayAddress}>Send to: <Text style={{fontWeight: 'bold', color: '#38bdf8'}}>01007883492@instapay</Text></Text>
-                <TextInput
-                  placeholder="Enter Transfer Ref / Mobile No."
-                  placeholderTextColor="#64748b"
-                  value={receiptRef}
-                  onChangeText={setReceiptRef}
-                  style={styles.input}
-                />
-              </View>
-            )}
-
+            {bookingError ? <Text style={styles.inlineErrorText}>{bookingError}</Text> : null}
             <View style={styles.modalActions}>
               <TouchableOpacity
-                onPress={() => setCheckoutVisible(false)}
+                onPress={() => setBookingConfirmationVisible(false)}
                 style={[styles.modalActionBtn, {backgroundColor: '#1e293b'}]}
               >
                 <Text style={styles.modalActionText}>Cancel</Text>
               </TouchableOpacity>
-              
               <TouchableOpacity
-                onPress={handleBookingSubmit}
-                disabled={isProcessingPay}
+                onPress={pendingBooking ? handleBookingStatusCheck : handleBookingSubmit}
+                disabled={isBooking || (!pendingBooking && (!selectedSeat || Number(activeTrip?.priceEgp) !== 0))}
                 style={[styles.modalActionBtn, {backgroundColor: '#38bdf8'}]}
               >
-                {isProcessingPay ? (
+                {isBooking ? (
                   <ActivityIndicator color="#0b0f19" />
                 ) : (
-                  <Text style={[styles.modalActionText, {color: '#0b0f19'}]}>Confirm Payment</Text>
+                  <Text style={[styles.modalActionText, {color: '#0b0f19'}]}>{pendingBooking ? 'Check booking status' : 'Book free seat'}</Text>
                 )}
               </TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
-
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    backgroundColor: '#0b0f19',
-    padding: 16,
-    paddingTop: 48,
-  },
-  loginContainer: {
-    flexGrow: 1,
-    backgroundColor: '#0b0f19',
-    padding: 24,
-    justifyContent: 'center',
-  },
-  serverConfigBtn: {
-    alignSelf: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    backgroundColor: '#1e293b',
-    marginBottom: 16,
-  },
-  serverConfigBtnText: {
-    color: '#94a3b8',
-    fontSize: 11,
-    fontWeight: 'bold',
-  },
-  logoImage: {
-    width: 64,
-    height: 64,
-    alignSelf: 'center',
-    marginBottom: 8,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#f8fafc',
-    textAlign: 'center',
-  },
-  subtitle: {
-    fontSize: 13,
-    color: '#94a3b8',
-    textAlign: 'center',
-    marginBottom: 24,
-  },
-  inputContainer: {
-    marginBottom: 12,
-  },
-  label: {
-    fontSize: 12,
-    color: '#94a3b8',
-    marginBottom: 6,
-    fontWeight: '500',
-  },
-  input: {
-    backgroundColor: '#0f172a',
-    borderWidth: 1,
-    borderColor: '#1e293b',
-    borderRadius: 10,
-    padding: 12,
-    color: '#f8fafc',
-    fontSize: 14,
-  },
-  button: {
-    backgroundColor: '#38bdf8',
-    padding: 14,
-    borderRadius: 10,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  buttonText: {
-    color: '#0b0f19',
-    fontSize: 14,
-    fontWeight: 'bold',
-  },
-  registerBtn: {
-    borderWidth: 1,
-    borderColor: '#38bdf8',
-    padding: 14,
-    borderRadius: 10,
-    alignItems: 'center',
-    marginTop: 10,
-    backgroundColor: 'rgba(56, 189, 248, 0.05)',
-  },
-  registerBtnText: {
-    color: '#38bdf8',
-    fontSize: 13,
-    fontWeight: 'bold',
-  },
-  infoBox: {
-    marginTop: 24,
-    padding: 14,
-    backgroundColor: '#0f172a',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#1e293b',
-  },
-  infoText: {
-    fontSize: 12,
-    color: '#38bdf8',
-    fontWeight: 'bold',
-    marginBottom: 4,
-  },
-  infoTextSub: {
-    fontSize: 11,
-    color: '#64748b',
-    marginTop: 2,
-  },
-  outlookBtn: {
-    backgroundColor: '#0078d4',
-    padding: 12,
-    borderRadius: 10,
-    alignItems: 'center',
-    marginVertical: 4,
-  },
-  outlookBtnText: {
-    color: '#ffffff',
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-  demoFillBtn: {
-    backgroundColor: 'rgba(56, 189, 248, 0.1)',
-    borderWidth: 1,
-    borderColor: '#38bdf8',
-    padding: 10,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  demoFillBtnText: {
-    color: '#38bdf8',
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 16,
-  },
-  welcomeText: {
-    color: '#94a3b8',
-    fontSize: 13,
-  },
-  userName: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  userRoleBadge: {
-    color: '#38bdf8',
-    fontSize: 11,
-    marginTop: 2,
-    fontWeight: '600',
-  },
-  signOutBtn: {
-    backgroundColor: '#1e293b',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  signOutText: {
-    color: '#94a3b8',
-    fontSize: 12,
-  },
-  supervisorBanner: {
-    backgroundColor: 'rgba(56, 189, 248, 0.15)',
-    borderWidth: 1,
-    borderColor: '#38bdf8',
-    padding: 12,
-    borderRadius: 12,
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  supervisorBannerText: {
-    color: '#38bdf8',
-    fontWeight: 'bold',
-    fontSize: 13,
-  },
-  card: {
-    backgroundColor: '#0f172a',
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#1e293b',
-    marginBottom: 16,
-  },
-  cardTitle: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: 'bold',
-  },
-  refreshBtn: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    backgroundColor: '#1e293b',
-  },
-  refreshBtnText: {
-    color: '#38bdf8',
-    fontSize: 11,
-    fontWeight: 'bold',
-  },
-  selectLabel: {
-    color: '#94a3b8',
-    fontSize: 11,
-    marginBottom: 4,
-  },
-  chip: {
-    backgroundColor: '#020617',
-    borderWidth: 1,
-    borderColor: '#1e293b',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-    marginRight: 8,
-  },
-  activeChip: {
-    borderColor: '#38bdf8',
-    backgroundColor: 'rgba(56, 189, 248, 0.1)',
-  },
-  chipText: {
-    color: '#64748b',
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  activeChipText: {
-    color: '#38bdf8',
-    fontWeight: 'bold',
-  },
-  directionToggle: {
-    flexDirection: 'row',
-    backgroundColor: '#020617',
-    padding: 4,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#1e293b',
-  },
-  directionBtn: {
-    flex: 1,
-    paddingVertical: 10,
-    alignItems: 'center',
-    borderRadius: 8,
-  },
-  activeDirectionBtn: {
-    backgroundColor: '#38bdf8',
-  },
-  directionBtnText: {
-    color: '#64748b',
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-  activeDirectionBtnText: {
-    color: '#0b0f19',
-  },
-  dateCard: {
-    padding: 10,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 8,
-    minWidth: 95,
-  },
-  dateBadge: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
-    marginBottom: 4,
-  },
-  dateBadgeText: {
-    fontSize: 8,
-    fontWeight: 'bold',
-    textTransform: 'uppercase',
-  },
-  dateDayText: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#fff',
-  },
-  dateSubText: {
-    fontSize: 10,
-    color: '#94a3b8',
-    marginTop: 2,
-  },
-  dateStatusBadge: {
-    fontSize: 8,
-    fontWeight: 'bold',
-    paddingHorizontal: 4,
-    paddingVertical: 1,
-    borderRadius: 4,
-    marginTop: 4,
-    backgroundColor: 'rgba(148, 163, 184, 0.1)',
-    color: '#94a3b8',
-  },
-  tripCard: {
-    backgroundColor: '#020617',
-    borderWidth: 1,
-    borderColor: '#1e293b',
-    padding: 14,
-    borderRadius: 14,
-    marginRight: 10,
-    minWidth: 160,
-  },
-  activeTripCard: {
-    borderColor: '#38bdf8',
-    backgroundColor: 'rgba(56, 189, 248, 0.08)',
-  },
-  tripCardTitle: {
-    color: '#f8fafc',
-    fontSize: 13,
-    fontWeight: 'bold',
-  },
-  tripCardSub: {
-    color: '#94a3b8',
-    fontSize: 12,
-    marginTop: 2,
-  },
-  tripCardPlate: {
-    color: '#64748b',
-    fontSize: 10,
-    marginTop: 2,
-  },
-  tripCardPrice: {
-    color: '#38bdf8',
-    fontSize: 13,
-    fontWeight: 'bold',
-    marginTop: 6,
-  },
-  legendRow: {
-    flexDirection: 'row',
-    gap: 16,
-    marginTop: 10,
-  },
-  legendItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  legendBox: {
-    width: 12,
-    height: 12,
-    borderRadius: 3,
-  },
-  legendText: {
-    color: '#94a3b8',
-    fontSize: 10,
-  },
-  busLayout: {
-    width: 260,
-    backgroundColor: '#020617',
-    borderWidth: 1,
-    borderColor: '#1e293b',
-    borderRadius: 24,
-    padding: 16,
-  },
-  busFront: {
-    alignSelf: 'center',
-    width: 90,
-    paddingVertical: 4,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#1e293b',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  busFrontText: {
-    color: '#475569',
-    fontSize: 9,
-    fontWeight: 'bold',
-    textTransform: 'uppercase',
-  },
-  gridRowContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  seat: {
-    width: 40,
-    height: 40,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  seatText: {
-    color: '#fff',
-    fontSize: 11,
-    fontWeight: 'bold',
-  },
-  aisleSpace: {
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  payBtn: {
-    width: '100%',
-    backgroundColor: '#38bdf8',
-    borderRadius: 12,
-    padding: 14,
-    alignItems: 'center',
-    marginTop: 16,
-  },
-  payBtnText: {
-    color: '#0b0f19',
-    fontSize: 14,
-    fontWeight: 'bold',
-  },
-  sectionHeader: {
-    fontSize: 15,
-    fontWeight: 'bold',
-    color: '#f8fafc',
-    marginBottom: 10,
-  },
-  noTicketsText: {
-    color: '#64748b',
-    fontSize: 12,
-    fontStyle: 'italic',
-  },
-  ticketCard: {
-    backgroundColor: '#0f172a',
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#1e293b',
-    marginBottom: 12,
-  },
-  ticketHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderBottomWidth: 1,
-    borderBottomColor: '#1e293b',
-    paddingBottom: 12,
-  },
-  ticketRoute: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#fff',
-  },
-  ticketTime: {
-    fontSize: 11,
-    color: '#64748b',
-    marginTop: 2,
-  },
-  ticketSeatBadge: {
-    backgroundColor: '#38bdf81a',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: '#38bdf833',
-  },
-  ticketSeatText: {
-    color: '#38bdf8',
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-  cancelledBox: {
-    width: '100%',
-    backgroundColor: 'rgba(239, 68, 68, 0.08)',
-    borderWidth: 1.5,
-    borderColor: 'rgba(239, 68, 68, 0.35)',
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 14,
-    marginVertical: 8,
-  },
-  cancelledIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    borderWidth: 2,
-    borderColor: '#ef4444',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 6,
-    backgroundColor: 'rgba(239, 68, 68, 0.15)',
-  },
-  cancelledTitle: {
-    fontSize: 13,
-    fontWeight: '900',
-    color: '#ef4444',
-    letterSpacing: 2,
-  },
-  refundText: {
-    fontSize: 11,
-    color: '#10b981',
-    marginTop: 4,
-    fontWeight: 'bold',
-  },
-  cancelReasonText: {
-    fontSize: 9,
-    color: '#94a3b8',
-    marginTop: 2,
-    textAlign: 'center',
-    paddingHorizontal: 10,
-  },
-  boardedBox: {
-    width: '100%',
-    backgroundColor: 'rgba(34, 197, 94, 0.1)',
-    borderWidth: 2,
-    borderColor: 'rgba(34, 197, 94, 0.4)',
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 16,
-    marginVertical: 8,
-  },
-  boardedIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    borderWidth: 2,
-    borderColor: '#22c55e',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 6,
-    backgroundColor: 'rgba(34, 197, 94, 0.15)',
-  },
-  boardedTitle: {
-    fontSize: 13,
-    fontWeight: '900',
-    color: '#22c55e',
-    letterSpacing: 2,
-  },
-  qrContainer: {
-    marginTop: 12,
-    alignItems: 'center',
-  },
-  qrWrapper: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 8,
-  },
-  manualCodeBox: {
-    marginTop: 8,
-    width: '100%',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    backgroundColor: 'rgba(56, 189, 248, 0.08)',
-    borderWidth: 1.5,
-    borderColor: 'rgba(56, 189, 248, 0.35)',
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  manualCodeLabel: {
-    fontSize: 9,
-    color: '#94a3b8',
-    fontWeight: 'bold',
-    letterSpacing: 0.5,
-  },
-  manualCodeValue: {
-    fontSize: 22,
-    fontWeight: '900',
-    color: '#38bdf8',
-    letterSpacing: 3,
-    marginVertical: 4,
-  },
-  manualCodeSub: {
-    fontSize: 8,
-    color: '#64748b',
-    textAlign: 'center',
-  },
-  qrTokenText: {
-    fontSize: 8,
-    color: '#475569',
-    marginTop: 6,
-    width: '100%',
-    textAlign: 'center',
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(2, 6, 23, 0.85)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    backgroundColor: '#0f172a',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 24,
-    borderWidth: 1,
-    borderColor: '#1e293b',
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#fff',
-  },
-  modalDetails: {
-    backgroundColor: '#020617',
-    padding: 12,
-    borderRadius: 12,
-    marginTop: 12,
-    gap: 4,
-  },
-  detailsText: {
-    color: '#94a3b8',
-    fontSize: 12,
-  },
-  paymentMethodRow: {
-    flexDirection: 'row',
-    backgroundColor: '#020617',
-    padding: 4,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#1e293b',
-    marginTop: 12,
-  },
-  paymentMethodBtn: {
-    flex: 1,
-    paddingVertical: 10,
-    alignItems: 'center',
-    borderRadius: 8,
-  },
-  activePaymentBtn: {
-    backgroundColor: '#38bdf8',
-  },
-  paymentMethodText: {
-    color: '#64748b',
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-  activePaymentText: {
-    color: '#0b0f19',
-  },
-  instapayContainer: {
-    marginTop: 12,
-    gap: 8,
-  },
-  instapayAddress: {
-    fontSize: 12,
-    color: '#94a3b8',
-  },
-  modalActions: {
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 16,
-  },
-  modalActionBtn: {
-    flex: 1,
-    padding: 14,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  modalActionText: {
-    color: '#fff',
-    fontSize: 13,
-    fontWeight: 'bold',
-  }
-});

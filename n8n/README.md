@@ -11,7 +11,7 @@ You do **not** replace Postgres, Redis, or the API with n8n. After `docker compo
 
 ## What to run
 
-1. Start the stack (`postgres`, `redis`, `app`, `n8n`).
+1. Start the stack with `docker compose --profile bundled-n8n up -d` (`postgres`, `redis`, `app`, `n8n`).
 2. Open **http://localhost:5678** (this is the n8n editor from Docker, not a second local n8n unless you chose that).
 3. Create the n8n owner login the first time (n8n's own login, not Microsoft yet).
 4. Import:
@@ -35,7 +35,7 @@ http://n8n:5678/webhook/galala-bus-confirm
 | What | Why |
 | :--- | :--- |
 | n8n owner account | Protects the editor at port 5678 |
-| Microsoft Outlook OAuth2 | Lets n8n send mail from **your** mailbox to the student's `@outlook.com` address |
+| Microsoft Outlook OAuth2 | Lets n8n send mail from **your** mailbox to the student's university address |
 | Optional `N8N_WEBHOOK_SECRET` | If set, the API sends header `x-n8n-secret`. Add Header Auth on the webhook nodes with the same value |
 
 Outlook OAuth is the only extra auth for sending. Create it in n8n: **Credentials → Microsoft Outlook OAuth2 API**. Sign in with the mailbox that should appear as the sender (university or your test Outlook). Grant **Mail.Send**.
@@ -48,13 +48,13 @@ Do **not** put Outlook passwords in git.
 
 **OTP (3 nodes):** Webhook receives `{ fullName, email, academicId, otp }` → Code node builds HTML → Outlook sends it to that student email.
 
-**Booking (3 nodes):** Webhook receives student details plus `legs[]` from the API. One-way = one QR and one manual code. Go + return = two of each. The QR image and `GU-XXXX` code are the ones already stored on the booking, so supervisors scan the same ticket as the app.
+**Booking (3 nodes):** Webhook receives student details plus `legs[]` from the API. The email shows the booking reference and the real stored manual boarding code for each leg. The app keeps the server-issued QR; the workflow does not send ticket tokens to a third-party QR image service.
 
 ## If mail does not arrive
 
 - Workflow must be **Active** (inactive webhooks return 404).
 - Check **Executions** in n8n.
 - API logs: `docker compose logs -f app n8n`
-- If n8n is down, OTP still falls back to SMTP / console in the API.
+- If n8n is down, OTP falls back to configured SMTP or Resend in the API. Configure one provider or OTP delivery will fail.
 
-Older Gmail/SMTP JSON files in this folder are optional. Use the Outlook files for this project.
+Use the Outlook workflows in this folder. The older Gmail and SMTP ticket templates were removed because they generated boarding codes that the API could not verify.

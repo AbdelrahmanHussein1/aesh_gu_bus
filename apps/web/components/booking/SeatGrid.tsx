@@ -27,7 +27,7 @@ export default function SeatGrid() {
     : Boolean(activeTrip);
 
   const currentTrip = activeTrip || activeArrivalTrip;
-  const fare = currentTrip?.priceEgp || 160;
+  const fare = currentTrip?.priceEgp ?? 160;
   const totalFare = bookingType === 'round_trip' ? fare * 2 : fare;
 
   const holdTimeLeft = heldExpiresAt ? Math.max(0, Math.floor((heldExpiresAt - now) / 1000)) : 0;
