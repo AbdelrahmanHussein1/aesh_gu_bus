@@ -5,6 +5,7 @@ import * as schema from '../db/schema.js';
 import { eq, and, gt, desc } from 'drizzle-orm';
 import { Resend } from 'resend';
 import { MailService } from './mail.service.js';
+import { N8nService } from './n8n.service.js';
 import { redisClient } from '../redis.js';
 
 const resendApiKey = process.env.RESEND_API_KEY || 're_mock_key';
@@ -151,13 +152,21 @@ export class SheerIDService {
       expiresAt,
     });
 
-    // Send verification OTP via MailService (Microsoft 365 / Outlook SMTP, Resend, or Console)
-    await MailService.sendStudentOtpEmail({
+    // Prefer the optional n8n Outlook workflow, then fall back to the API mail provider.
+    const n8nSent = await N8nService.notifyStudentOtp({
       email: email.toLowerCase().trim(),
       fullName,
       academicId,
       otp: verificationCode,
     });
+    if (!n8nSent) {
+      await MailService.sendStudentOtpEmail({
+        email: email.toLowerCase().trim(),
+        fullName,
+        academicId,
+        otp: verificationCode,
+      });
+    }
 
     return {
       success: true,

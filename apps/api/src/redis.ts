@@ -154,17 +154,19 @@ let rawRedis: Redis | null = null;
 if (redisUrl) {
   rawRedis = new Redis(redisUrl, {
     maxRetriesPerRequest: 1,
-    retryStrategy: () => null,
+    // Redis can start after the API during a VM or Compose restart. Keep
+    // reconnecting so authentication and seat locks recover automatically.
+    retryStrategy: (attempt) => Math.min(100 * 2 ** Math.min(attempt, 5), 2000),
     enableOfflineQueue: false,
-    connectTimeout: 500,
+    connectTimeout: 2000,
   });
 
   rawRedis.on('connect', () => {
     console.log('Connected to Redis successfully');
   });
 
-  rawRedis.on('error', () => {
-    // In-memory fallback active
+  rawRedis.on('error', (error) => {
+    console.warn('[Redis] Connection unavailable; retrying:', error.message);
   });
 }
 

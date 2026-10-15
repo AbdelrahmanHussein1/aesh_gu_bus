@@ -112,7 +112,7 @@ export async function authRoutes(fastify: FastifyInstance) {
       if (role === 'rider') {
         if (!SheerIDService.isGalalaEmail(email)) {
           return reply.status(400).send({
-            error: 'Registration requires official Galala University email (@gu.edu.eg)',
+            error: 'Registration requires an official Galala University email (@gu.edu.eg)',
             messageAr: 'التسجيل كطالب يتطلب بريد جامعة الجلالة الرسمي (@gu.edu.eg)',
           });
         }
@@ -406,7 +406,11 @@ export async function authRoutes(fastify: FastifyInstance) {
 
       return { token, user: publicUser(user), sessionId };
     } catch (error: any) {
-      return reply.status(401).send({ error: error.message || 'Login failed' });
+      fastify.log.error({ err: error }, 'Login failed unexpectedly');
+      const redisUnavailable = typeof redisClient.status === 'string' && redisClient.status !== 'ready';
+      return reply.status(redisUnavailable ? 503 : 500).send({
+        error: redisUnavailable ? 'Authentication is temporarily unavailable. Try again shortly.' : 'Login failed unexpectedly.',
+      });
     }
   });
 

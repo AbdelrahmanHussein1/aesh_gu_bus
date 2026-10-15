@@ -27,7 +27,7 @@
 6. [Future Scaling, Expansion & Integration Roadmap](#6-future-scaling-expansion--integration-roadmap)
 7. [Production Deployment & Operations Guide](#7-production-deployment--operations-guide)
 8. [Environment Configuration Reference](#8-environment-configuration-reference)
-9. [Default Test Credentials](#9-default-test-credentials)
+9. [Account Provisioning](#9-account-provisioning)
 
 ---
 
@@ -606,6 +606,15 @@ The application is configured through environment variables defined in `.env`:
 | `SMTP_PASS` | `app_password_here` | Outlook App Password |
 
 ---
+
+### Automatic Outlook emails with n8n
+
+n8n is an optional Docker profile at `http://localhost:5678`; it does not replace the API. Start it with `docker compose --profile bundled-n8n up -d`, then import and activate the two Outlook workflows in [`n8n/`](./n8n):
+
+- Student OTP: `http://n8n:5678/webhook/galala-bus-otp`
+- Ticket confirmation: `http://n8n:5678/webhook/galala-bus-confirm`
+
+Connect one Microsoft Outlook OAuth credential (Mail.Send). Ticket emails use the stored manual boarding code; the app retains the server-issued QR. Full steps: [`n8n/README.md`](./n8n/README.md). Do not commit OAuth tokens.
 
 ## 9. Account Provisioning
 

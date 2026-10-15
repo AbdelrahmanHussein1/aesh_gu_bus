@@ -100,7 +100,7 @@ export class EmailService {
           },
         ],
         paymentId,
-        amount: '160.00 EGP',
+        amount: `${Number(trip.priceEgp ?? 0).toFixed(2)} EGP`,
         cancellationLockHours: trip.cancellationLockHours,
       }),
     });
@@ -159,7 +159,7 @@ export class EmailService {
           },
         ],
         paymentId,
-        amount: '320.00 EGP',
+        amount: `${(Number(toCampusTrip.priceEgp ?? 0) + Number(fromCampusTrip.priceEgp ?? 0)).toFixed(2)} EGP`,
         cancellationLockHours: toCampusTrip.cancellationLockHours,
       }),
     });

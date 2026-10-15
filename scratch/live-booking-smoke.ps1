@@ -1,10 +1,15 @@
 param(
+  [Parameter(Mandatory=$true)][string]$ApiBaseUrl,
   [Parameter(Mandatory=$true)][string]$VmPassword,
   [Parameter(Mandatory=$true)][string]$CredentialFile
 )
 
 $ErrorActionPreference = 'Stop'
-$base = 'https://realized-alexandria-murphy-packaging.trycloudflare.com'
+$base = $ApiBaseUrl.TrimEnd('/')
+$parsedApiUrl = $null
+if (-not [Uri]::TryCreate($base, [UriKind]::Absolute, [ref]$parsedApiUrl) -or $parsedApiUrl.Scheme -notin @('http', 'https')) {
+  throw 'ApiBaseUrl must be an absolute http:// or https:// URL'
+}
 $email = 'codex-qa-20261014@gu.edu.eg'
 $date = '2027-01-09'
 $vbox = 'C:\Program Files\Oracle\VirtualBox\VBoxManage.exe'
