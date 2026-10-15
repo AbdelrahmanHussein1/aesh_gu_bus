@@ -44,6 +44,13 @@ export async function bookingsRoutes(fastify: FastifyInstance) {
     if (paymentMethod === 'visa_mock' && !mockPaymentsEnabled) {
       return reply.status(400).send({ error: 'Mock card payments are disabled' });
     }
+    if (paymentMethod === 'none' && bookingType !== 'one_way') {
+      return reply.status(400).send({
+        success: false,
+        code: 'PAYMENT_METHOD_UNAVAILABLE',
+        error: 'The no-payment option is only valid for single one-way bookings.',
+      });
+    }
     const userId = request.user.id;
     const userEmail = request.user.email;
     const userName = request.user.fullName;
@@ -79,6 +86,9 @@ export async function bookingsRoutes(fastify: FastifyInstance) {
 
         if (!trip) {
           throw new Error('Trip not found');
+        }
+        if (paymentMethod === 'none' && Number(trip.priceEgp) !== 0) {
+          throw new Error('PAYMENT_REQUIRED');
         }
         if (Number(trip.priceEgp) > 0 && !receiptRef?.trim() && !receiptImage?.trim() && paymentMethod !== 'visa_mock') {
           throw new Error('Receipt evidence is required for paid trips');
@@ -128,6 +138,14 @@ export async function bookingsRoutes(fastify: FastifyInstance) {
           error: 'Seat already booked',
           message: 'عذراً، تم حجز هذا المقعد للتو من قبل راكب آخر. يرجى اختيار مقعد متاح.',
           messageEn: 'This seat was just booked by another student. Please select an available seat.',
+        });
+      }
+      if (err.message === 'PAYMENT_REQUIRED') {
+        return reply.status(400).send({
+          success: false,
+          code: 'PAYMENT_REQUIRED',
+          error: 'Paid bookings are unavailable in this app.',
+          messageEn: 'Paid trips cannot use paymentMethod none.',
         });
       }
       return reply.status(400).send({ error: err.message || 'Booking transaction failed' });

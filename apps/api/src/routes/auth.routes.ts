@@ -406,7 +406,11 @@ export async function authRoutes(fastify: FastifyInstance) {
 
       return { token, user: publicUser(user), sessionId };
     } catch (error: any) {
-      return reply.status(401).send({ error: error.message || 'Login failed' });
+      fastify.log.error({ err: error }, 'Login failed unexpectedly');
+      const redisUnavailable = typeof redisClient.status === 'string' && redisClient.status !== 'ready';
+      return reply.status(redisUnavailable ? 503 : 500).send({
+        error: redisUnavailable ? 'Authentication is temporarily unavailable. Try again shortly.' : 'Login failed unexpectedly.',
+      });
     }
   });
 
