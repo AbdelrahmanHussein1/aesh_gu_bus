@@ -11,6 +11,7 @@ export interface MobileUser {
 
 interface AppContextValue {
   serverUrl: string;
+  serverUrlError: string | null;
   setServerUrl: (url: string) => void;
   user: MobileUser | null;
   setUser: (user: MobileUser | null) => void;
@@ -20,14 +21,23 @@ interface AppContextValue {
 const AppContext = createContext<AppContextValue | null>(null);
 
 export function AppProvider({ children }: React.PropsWithChildren) {
-  const [serverUrl, setServerUrlState] = useState(getInitialApiUrl);
+  const [{ serverUrl, serverUrlError }, setServer] = useState(() => {
+    try {
+      return { serverUrl: getInitialApiUrl(), serverUrlError: null as string | null };
+    } catch (error) {
+      return {
+        serverUrl: '',
+        serverUrlError: `EXPO_PUBLIC_API_URL: ${error instanceof Error ? error.message : 'Configure a valid API origin.'}`,
+      };
+    }
+  });
   const [user, setUser] = useState<MobileUser | null>(null);
 
   const setServerUrl = useCallback((url: string) => {
-    setServerUrlState(normalizeApiUrl(url));
+    setServer({ serverUrl: normalizeApiUrl(url), serverUrlError: null });
   }, []);
   const signOut = useCallback(() => setUser(null), []);
-  const value = useMemo(() => ({ serverUrl, setServerUrl, user, setUser, signOut }), [serverUrl, setServerUrl, user, signOut]);
+  const value = useMemo(() => ({ serverUrl, serverUrlError, setServerUrl, user, setUser, signOut }), [serverUrl, serverUrlError, setServerUrl, user, signOut]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }

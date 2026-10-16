@@ -80,15 +80,17 @@ export default function RouteSelector() {
       </div>
 
       {/* Governorate / Region Category Tabs */}
-      <div className="grid grid-cols-3 gap-1.5 p-1 bg-surface rounded-xl border border-border-whisper">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 p-1 bg-surface rounded-xl border border-border-whisper">
         {ROUTE_CATEGORIES.map(cat => {
           const isActive = activeCategory === cat.key;
           return (
             <button
               key={cat.key}
               type="button"
+              disabled={getCategoryRoutes(cat.key, routes).length === 0}
+              aria-pressed={isActive}
               onClick={() => handleSelectCategory(cat.key)}
-              className={`py-2 px-1.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1 ${
+              className={`min-h-11 py-2 px-1.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1 disabled:opacity-40 ${
                 isActive
                   ? 'bg-primary-container text-on-primary-container shadow-sm ring-1 ring-primary-container/20'
                   : 'text-text-secondary hover:text-text-primary hover:bg-surface-container'
@@ -103,14 +105,17 @@ export default function RouteSelector() {
 
       {/* Station Dropdown */}
       <div className="relative">
-        <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary">
+        <span className="material-symbols-outlined absolute start-3 top-1/2 -translate-y-1/2 text-text-secondary pointer-events-none">
           location_on
         </span>
         <select
+          aria-label={locale === 'ar' ? 'خط الحافلة' : 'Bus route'}
+          disabled={!filteredCategoryRoutes.length}
           value={selectedRouteId}
           onChange={e => setSelectedRouteId(Number(e.target.value))}
-          className="w-full pl-10 pr-4 py-3 bg-surface border border-border-whisper rounded-lg text-body-md text-text-primary font-medium focus:ring-2 focus:ring-primary-container/30 focus:border-primary-container outline-none transition"
+          className="w-full min-w-0 ps-10 pe-4 py-3 bg-surface border border-border-whisper rounded-lg text-body-md text-text-primary font-medium focus:ring-2 focus:ring-primary-container/30 focus:border-primary-container outline-none transition disabled:opacity-50"
         >
+          {!filteredCategoryRoutes.length && <option value="">{locale === 'ar' ? 'لا توجد خطوط متاحة' : 'No routes available'}</option>}
           {filteredCategoryRoutes.map(r => (
             <option key={r.id} value={r.id}>
               {locale === 'ar' ? `${r.nameAr} (${r.nameEn})` : `${r.nameEn} (${r.nameAr})`}

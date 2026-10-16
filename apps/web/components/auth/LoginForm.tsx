@@ -21,7 +21,7 @@ export default function LoginForm({ onSwitchTab }: Props) {
     setError('');
     setLoading(true);
     try {
-      await login(email, password);
+      await login(email.trim(), password);
       const saved = typeof window !== 'undefined' ? sessionStorage.getItem('aesh_web_user') : null;
       const userRole = saved ? JSON.parse(saved).role : 'rider';
       if (userRole === 'supervisor') window.location.href = '/supervisor';
@@ -35,13 +35,13 @@ export default function LoginForm({ onSwitchTab }: Props) {
   };
 
   return (
-    <form onSubmit={handleSubmit} autoComplete="off" className="flex flex-col gap-5">
+    <form onSubmit={handleSubmit} aria-busy={loading} className="flex flex-col gap-5">
       {/* Honeypot / dummy fields to deter aggressive browser autofill */}
-      <input type="text" name="prevent_autofill_user" tabIndex={-1} aria-hidden="true" className="hidden opacity-0 absolute -top-9999px -left-9999px h-0 w-0 pointer-events-none" />
-      <input type="password" name="prevent_autofill_pwd" tabIndex={-1} aria-hidden="true" className="hidden opacity-0 absolute -top-9999px -left-9999px h-0 w-0 pointer-events-none" />
+      <input type="text" name="prevent_autofill_user" tabIndex={-1} aria-hidden="true" className="hidden" />
+      <input type="password" name="prevent_autofill_pwd" tabIndex={-1} aria-hidden="true" className="hidden" />
 
       {error && (
-        <div className="bg-error-container/50 border border-error-container text-on-error-container px-4 py-3 rounded-lg text-xs flex items-center gap-2">
+        <div role="alert" className="bg-error-container/50 border border-error-container text-on-error-container px-4 py-3 rounded-lg text-xs flex items-center gap-2">
           <span className="material-symbols-outlined text-sm">error</span>
           <span className="font-semibold">{error}</span>
         </div>
@@ -58,7 +58,9 @@ export default function LoginForm({ onSwitchTab }: Props) {
             name="gu_login_email"
             type="email"
             required
-            autoComplete="off"
+            autoComplete="username"
+            inputMode="email"
+            autoCapitalize="none"
             placeholder={locale === 'ar' ? 'student@gu.edu.eg' : 'name@gu.edu.eg'}
             value={email}
             onChange={e => setEmail(e.target.value)}
@@ -78,24 +80,21 @@ export default function LoginForm({ onSwitchTab }: Props) {
             name="gu_login_pass"
             type={showPw ? 'text' : 'password'}
             required
-            autoComplete="new-password"
+            autoComplete="current-password"
             placeholder="••••••••"
             value={password}
             onChange={e => setPassword(e.target.value)}
             className="w-full h-[44px] ps-10 pe-10 bg-[var(--input-bg)] border border-[var(--input-border)] rounded-[6px] font-body-md text-body-md text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:border-primary-container focus:ring-1 focus:ring-primary-container transition-all"
           />
-          <button type="button" onClick={() => setShowPw(p => !p)} className="absolute end-3 top-1/2 -translate-y-1/2 text-text-secondary hover:text-text-primary">
+          <button type="button" aria-label={showPw ? 'Hide password / إخفاء كلمة المرور' : 'Show password / إظهار كلمة المرور'} aria-pressed={showPw} onClick={() => setShowPw(p => !p)} className="absolute end-0 top-1/2 -translate-y-1/2 w-11 h-11 flex items-center justify-center text-text-secondary hover:text-text-primary">
             <span className="material-symbols-outlined text-lg">{showPw ? 'visibility' : 'visibility_off'}</span>
           </button>
         </div>
       </div>
 
-      <div className="flex items-center gap-2 mt-1 text-start">
-        <input id="remember" type="checkbox" className="w-4 h-4 rounded border-border-whisper text-primary-container focus:ring-primary-container bg-[var(--input-bg)] cursor-pointer" />
-        <label htmlFor="remember" className="font-body-sm text-body-sm text-text-secondary cursor-pointer">
-          {locale === 'ar' ? 'تذكر بيانات الدخول' : 'Remember me'}
-        </label>
-      </div>
+      <p className="text-xs text-text-secondary text-start">
+        {locale === 'ar' ? 'تظل جلستك نشطة في علامة التبويب الحالية.' : 'Your session stays active in this browser tab.'}
+      </p>
 
       <button
         type="submit" disabled={loading}

@@ -50,6 +50,13 @@
       "when": 1791970000000,
       "tag": "0006_dedupe_stops",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1792159567978,
+      "tag": "0007_add_booking_ref",
+      "breakpoints": true
     }
   ]
 }

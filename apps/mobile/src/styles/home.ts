@@ -8,7 +8,7 @@ const styles = StyleSheet.create({
   container: {
     backgroundColor: '#0b0f19',
     padding: 16,
-    paddingTop: 48,
+    paddingTop: 20,
   },
   loginContainer: {
     flexGrow: 1,
@@ -23,6 +23,9 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     backgroundColor: '#1e293b',
     marginBottom: 16,
+    minHeight: 44,
+    maxWidth: '100%',
+    justifyContent: 'center',
   },
   serverConfigBtnText: {
     color: '#94a3b8',
@@ -148,6 +151,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 8,
+    minHeight: 44,
+    justifyContent: 'center',
   },
   signOutText: {
     color: '#94a3b8',
@@ -185,6 +190,8 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 6,
     backgroundColor: '#1e293b',
+    minHeight: 44,
+    justifyContent: 'center',
   },
   refreshBtnText: {
     color: '#38bdf8',
@@ -211,6 +218,8 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
     borderRadius: 7,
     backgroundColor: '#1e293b',
+    minHeight: 44,
+    justifyContent: 'center',
   },
   retryText: {
     color: '#38bdf8',
@@ -248,6 +257,8 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 20,
     marginRight: 8,
+    minHeight: 44,
+    justifyContent: 'center',
   },
   activeChip: {
     borderColor: '#38bdf8',
@@ -275,6 +286,9 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     alignItems: 'center',
     borderRadius: 8,
+    minHeight: 44,
+    paddingHorizontal: 4,
+    justifyContent: 'center',
   },
   activeDirectionBtn: {
     backgroundColor: '#38bdf8',
@@ -283,6 +297,7 @@ const styles = StyleSheet.create({
     color: '#64748b',
     fontSize: 12,
     fontWeight: 'bold',
+    textAlign: 'center',
   },
   activeDirectionBtnText: {
     color: '#0b0f19',
@@ -362,7 +377,8 @@ const styles = StyleSheet.create({
   },
   legendRow: {
     flexDirection: 'row',
-    gap: 16,
+    flexWrap: 'wrap',
+    gap: 10,
     marginTop: 10,
   },
   legendItem: {
@@ -380,12 +396,13 @@ const styles = StyleSheet.create({
     fontSize: 10,
   },
   busLayout: {
-    width: 260,
+    width: 280,
+    maxWidth: '100%',
     backgroundColor: '#020617',
     borderWidth: 1,
     borderColor: '#1e293b',
     borderRadius: 24,
-    padding: 16,
+    padding: 12,
   },
   busFront: {
     alignSelf: 'center',
@@ -404,14 +421,16 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   gridRowContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
     gap: 8,
   },
+  seatRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 4,
+  },
   seat: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
@@ -422,8 +441,8 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   aisleSpace: {
-    width: 40,
-    height: 40,
+    width: 16,
+    height: 44,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -490,6 +509,11 @@ const styles = StyleSheet.create({
     padding: 14,
     borderRadius: 12,
     alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 48,
+  },
+  disabledButton: {
+    opacity: 0.5,
   },
   modalActionText: {
     color: '#fff',
