@@ -530,6 +530,6 @@ Use the **CODEX DEVELOPMENT TEST ROUTE - NO REAL SERVICE** fixture and identifie
 
 The Mermaid diagrams above are architecture/workflow artifacts. These checked-in images are branding artwork, not runtime screenshots or validation evidence.
 
-<p><img src="apps/web/public/gu-logo-colored.png" alt="Galala University logo" width="240" /> <img src="apps/mobile/assets/icon.png" alt="Bus Aesh mobile icon" width="104" /></p>
 
-![Bus Aesh social preview artwork](apps/web/public/og-image.png)
+
+
