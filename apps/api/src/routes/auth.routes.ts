@@ -6,6 +6,7 @@ import { eq, and, gt } from 'drizzle-orm';
 import { SessionService } from '../services/session.service.js';
 import { SheerIDService } from '../services/sheerid.service.js';
 import { EmailService } from '../services/email.service.js';
+import { EmailDeliveryError } from '../services/mail.service.js';
 import { WebSocketHub } from '../websocket/hub.js';
 import { authenticateOdoo } from '../auth/odoo.js';
 import { logSecurityEvent } from '../services/audit.service.js';
@@ -43,12 +44,20 @@ export async function authRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: 'Email and Academic ID are required' });
     }
 
-    const result = await SheerIDService.verifyStudent({
-      email,
-      fullName: fullName || 'Galala Student',
-      academicId,
-      faculty,
-    });
+    let result;
+    try {
+      result = await SheerIDService.verifyStudent({
+        email,
+        fullName: fullName || 'Galala Student',
+        academicId,
+        faculty,
+      });
+    } catch (error) {
+      if (error instanceof EmailDeliveryError) {
+        return reply.status(503).send({ error: 'Email delivery is temporarily unavailable. Please try again shortly.' });
+      }
+      throw error;
+    }
 
     if (!result.success) {
       return reply.status(400).send({
@@ -224,14 +233,20 @@ export async function authRoutes(fastify: FastifyInstance) {
 
       const tempPassword = crypto.randomBytes(6).toString('base64url').slice(0, 10);
 
-      await db.update(schema.users)
-        .set({ password: hashPassword(tempPassword) })
-        .where(eq(schema.users.id, user.id));
+      await db.transaction(async tx => {
+        await tx.update(schema.users)
+          .set({ password: hashPassword(tempPassword) })
+          .where(eq(schema.users.id, user.id));
 
-      await EmailService.sendForgotPasswordEmail(user.email, user.fullName, tempPassword);
+        await EmailService.sendForgotPasswordEmail(user.email, user.fullName, tempPassword);
+      });
 
       return { success: true, message: 'If an account exists, reset instructions will be sent shortly.' };
     } catch (error: any) {
+      if (error instanceof EmailDeliveryError) {
+        fastify.log.warn('Password reset email was not accepted by SMTP; account password was left unchanged.');
+        return { success: true, message: 'If an account exists, reset instructions will be sent shortly.' };
+      }
       fastify.log.error(error);
       return reply.status(500).send({ error: error.message || 'Database error during password reset' });
     }

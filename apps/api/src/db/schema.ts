@@ -183,6 +183,27 @@ export const auditLogs = pgTable('audit_logs', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 });
 
+export type EmailOutboxPayload =
+  | { bookingIds: string[] }
+  | { swapLogId: number };
+
+export const emailOutbox = pgTable('email_outbox', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  eventKey: varchar('event_key', { length: 255 }).notNull().unique(),
+  eventType: varchar('event_type', { length: 40 }).notNull(),
+  payload: jsonb('payload').$type<EmailOutboxPayload>().notNull(),
+  status: varchar('status', { length: 20 }).default('pending').notNull(),
+  attempts: integer('attempts').default(0).notNull(),
+  availableAt: timestamp('available_at', { withTimezone: true }).defaultNow().notNull(),
+  lockedUntil: timestamp('locked_until', { withTimezone: true }),
+  lastError: varchar('last_error', { length: 80 }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  sentAt: timestamp('sent_at', { withTimezone: true }),
+}, table => ({
+  availableIdx: dCore.index('idx_email_outbox_available').on(table.status, table.availableAt, table.createdAt),
+}));
+
 // System Settings
 export const systemSettings = pgTable('system_settings', {
   key: varchar('key', { length: 100 }).primaryKey(),

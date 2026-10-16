@@ -14,3 +14,11 @@ apps/web/.next
 apps/web/out
 apps/api/dist
 packages/shared/dist
+
+# Private configuration must never enter image layers
+.env
+.env.*
+**/.env
+**/.env.*
+*.apk
+*.tsbuildinfo

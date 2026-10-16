@@ -1,68 +1,24 @@
-# Production Deployment & Download Guide
+# Deployment — Bus Aesh 1.3.0
 
-This document explains how to download, deploy, and host the **Bus Aesh** transport platform on the internet for production.
+Download the source archives from the GitHub release, or clone the repository and check out `v1.3.0`. Both archives contain the full source, including Android/iOS shared mobile code. They require a build; they do not contain credentials, node_modules, or a prebuilt web server.
 
----
+## Docker Compose
 
-## 1. Download Pre-Packaged Releases from GitHub
+1. Install Docker Engine and Docker Compose v2.
+2. Create a private root `.env` with `JWT_SECRET` and Cloudflare settings if required. Configure `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, optional `SMTP_SECURE`, and `EMAIL_FROM` in `apps/api/.env`.
+3. Start with `docker compose up -d --build`.
+4. Check `http://localhost:3001/health` and the API's sanitized email status. The gateway exposes the web app and API on port 3001; the API also listens on port 3000.
 
-Every tagged release automatically generates a downloadable production bundle on GitHub:
+Startup applies database migrations, verifies SMTP, and resumes pending email outbox jobs. SMTP outages degrade email health while the API remains available. Seeding is disabled by default; do not enable it against existing rider data. Back up PostgreSQL before deploying migrations.
 
-1. Navigate to: **[https://github.com/AbdelrahmanHussein1/aesh_gu_bus/releases](https://github.com/AbdelrahmanHussein1/aesh_gu_bus/releases)**
-2. Download `bus-aesh-v1.0.0-production.zip`.
-3. Extract and run on any server with Node.js 20+:
-   ```bash
-   unzip bus-aesh-v1.0.0-production.zip -d bus-aesh
-   cd bus-aesh
-   npm install --omit=dev
-   npm run start --workspace=apps/api   # Starts API on Port 3000
-   npm run start --workspace=apps/web   # Starts Web Portal on Port 3001
-   ```
+The bundled PostgreSQL and Redis port mappings/default credentials are intended for local development. For internet hosting, restrict database/cache ports and configure strong database credentials consistently in the app and PostgreSQL service. Terminate TLS at your proxy or Cloudflare tunnel.
 
----
+## Local builds
 
-## 2. Deploy with Docker Compose (Recommended for Internet VPS)
+Use Node.js 22 and run `npm ci`, then `npm run build --workspace=packages/shared`, `npm run build --workspace=apps/api`, and `npm run build --workspace=apps/web`. PostgreSQL, Redis, and private API configuration must be available before starting the services. Mobile setup remains in the repository README; Android builds require JDK 17 and the Android SDK.
 
-To host on an internet VPS (e.g. DigitalOcean, Hetzner, AWS EC2, or Azure):
+## Packaging
 
-```bash
-# 1. Clone repository
-git clone https://github.com/AbdelrahmanHussein1/aesh_gu_bus.git
-cd aesh_gu_bus
+Run `npm run package:release` and `npm run package:vbox`. The archives appear in `dist-release/` with versioned names. Only Git-tracked source files are included, so stage newly added release files before packaging. Neither archive includes `.env` files or downloaded APKs.
 
-# 2. Build and launch containers in background
-docker compose up -d --build
-
-# 3. Apply migrations and seed data
-docker compose exec app npm run db:migrate --workspace=apps/api
-docker compose exec app npm run db:seed --workspace=apps/api
-```
-
-Your service will now be live:
-- **API**: `http://<your-server-ip>:3000`
-- **Web App**: `http://<your-server-ip>:3001`
-
----
-
-## 3. Deploy to PaaS (Railway / Render / Fly.io)
-
-### Railway
-1. Click **New Project** -> **Deploy from GitHub Repo**.
-2. Select `AbdelrahmanHussein1/aesh_gu_bus`.
-3. Add a **PostgreSQL** database service.
-4. Set environment variables:
-   - `PORT`: `3000`
-   - `JWT_SECRET`: `<your-secure-secret>`
-   - `DATABASE_URL`: `${{Postgres.DATABASE_URL}}`
-   - `NEXT_PUBLIC_API_URL`: `<your-railway-url>`
-5. Deploy.
-
----
-
-## 4. Local Release Packaging Command
-
-To generate a new downloadable distribution archive locally:
-```bash
-npm run package:release
-```
-The resulting archive will be created in `dist-release/bus-aesh-v1.0.0-production.zip`.
+Android CI uploads a versioned QA APK artifact. It currently uses the development signing key; configure private release signing before store distribution.

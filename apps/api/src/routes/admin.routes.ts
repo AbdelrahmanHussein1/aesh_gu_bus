@@ -2,11 +2,12 @@ import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { db } from '../db/index.js';
 import * as schema from '../db/schema.js';
-import { eq, and, or, desc, inArray, ne, count, ilike, sql } from 'drizzle-orm';
+import { eq, and, or, asc, desc, inArray, ne, count, ilike, sql } from 'drizzle-orm';
 import { WebSocketHub } from '../websocket/hub.js';
 import { redis } from '../redis.js';
 import { logSecurityEvent } from '../services/audit.service.js';
 import { CacheService } from '../services/cache.service.js';
+import { EmailOutboxService } from '../services/email-outbox.service.js';
 import {
   countHeldSeatsForTrips,
   getSeatLockHolders,
@@ -31,23 +32,99 @@ export async function adminRoutes(fastify: FastifyInstance) {
     if (!isUuid(bookingId)) return reply.status(400).send({ error: 'Invalid bookingId' });
     const booking = await db.query.bookings.findFirst({ where: eq(schema.bookings.id, bookingId) });
     if (!booking) return reply.status(404).send({ error: 'Booking not found' });
-    if (!['confirmed', 'swapped'].includes(booking.status) || booking.paymentStatus !== 'receipt_uploaded') {
-      return reply.status(409).send({ error: 'Booking is not awaiting receipt verification' });
+    let paymentEvidence: string | null = booking.receiptRef;
+    try {
+      await db.transaction(async tx => {
+        const bookingIds = [booking.id, booking.pairedBookingId].filter((id): id is string => Boolean(id));
+        const lockedBookings = await tx.select().from(schema.bookings)
+          .where(inArray(schema.bookings.id, bookingIds))
+          .orderBy(asc(schema.bookings.id))
+          .for('update');
+        const current = lockedBookings.find(row => row.id === bookingId);
+        if (!current) throw new Error('BOOKING_NOT_FOUND');
+        if (!['confirmed', 'swapped'].includes(current.status) || current.paymentStatus !== 'receipt_uploaded') {
+          throw new Error('BOOKING_NOT_AWAITING_PAYMENT');
+        }
+        if (!current.receiptRef && !current.receiptImage) throw new Error('BOOKING_RECEIPT_MISSING');
+        paymentEvidence = current.receiptRef;
+
+        const paired = current.bookingType === 'round_trip' && current.pairedBookingId
+          ? lockedBookings.find(row => row.id === current.pairedBookingId)
+          : undefined;
+        if (current.bookingType === 'round_trip' && !paired) throw new Error('BOOKING_PAIR_MISSING');
+
+        await tx.update(schema.bookings)
+          .set({ paymentStatus: 'paid', updatedAt: new Date() })
+          .where(eq(schema.bookings.id, bookingId));
+
+        if (current.bookingType === 'round_trip' && current.pairedBookingId) {
+          if (paired?.paymentStatus === 'paid') {
+            await EmailOutboxService.enqueueBookingConfirmation(tx, [current.id, paired.id]);
+          }
+        } else {
+          await EmailOutboxService.enqueueBookingConfirmation(tx, [current.id]);
+        }
+      });
+    } catch (error) {
+      if (error instanceof Error && error.message === 'BOOKING_NOT_FOUND') {
+        return reply.status(404).send({ error: 'Booking not found' });
+      }
+      if (error instanceof Error && error.message === 'BOOKING_NOT_AWAITING_PAYMENT') {
+        return reply.status(409).send({ error: 'Booking is not awaiting receipt verification' });
+      }
+      if (error instanceof Error && error.message === 'BOOKING_RECEIPT_MISSING') {
+        return reply.status(400).send({ error: 'Booking has no receipt evidence' });
+      }
+      if (error instanceof Error && error.message === 'BOOKING_PAIR_MISSING') {
+        return reply.status(409).send({ error: 'Round-trip booking pair is missing; payment was not changed' });
+      }
+      throw error;
     }
-    if (!booking.receiptRef && !booking.receiptImage) {
-      return reply.status(400).send({ error: 'Booking has no receipt evidence' });
-    }
-    await db.update(schema.bookings).set({ paymentStatus: 'paid', updatedAt: new Date() })
-      .where(and(eq(schema.bookings.id, bookingId), eq(schema.bookings.paymentStatus, 'receipt_uploaded')));
     await logSecurityEvent({
       userId: request.user.id,
       action: 'ADMIN_VERIFIED_PAYMENT',
       entityType: 'booking',
       entityId: bookingId,
-      details: { bookingId, receiptRef: booking.receiptRef },
+      details: { bookingId, receiptRef: paymentEvidence },
       ipAddress: request.ip,
     });
     return { success: true, bookingId, paymentStatus: 'paid' };
+  });
+
+  fastify.get('/api/admin/email-outbox/failed', {
+    preValidation: [(fastify as any).authenticate, requireRole(['admin'])],
+  }, async () => {
+    const jobs = await db.select({
+      id: schema.emailOutbox.id,
+      eventType: schema.emailOutbox.eventType,
+      attempts: schema.emailOutbox.attempts,
+      lastError: schema.emailOutbox.lastError,
+      createdAt: schema.emailOutbox.createdAt,
+      updatedAt: schema.emailOutbox.updatedAt,
+    })
+      .from(schema.emailOutbox)
+      .where(eq(schema.emailOutbox.status, 'failed'))
+      .orderBy(desc(schema.emailOutbox.updatedAt))
+      .limit(100);
+    return { jobs };
+  });
+
+  fastify.post('/api/admin/email-outbox/:jobId/retry', {
+    preValidation: [(fastify as any).authenticate, requireRole(['admin'])],
+  }, async (request: any, reply) => {
+    const { jobId } = request.params as { jobId: string };
+    if (!isUuid(jobId)) return reply.status(400).send({ error: 'Invalid jobId' });
+    const retried = await EmailOutboxService.retryFailed(jobId);
+    if (!retried) return reply.status(409).send({ error: 'Email job is not in a failed state' });
+    await logSecurityEvent({
+      userId: request.user.id,
+      action: 'EMAIL_OUTBOX_RETRY',
+      entityType: 'email_outbox',
+      entityId: jobId,
+      details: { jobId },
+      ipAddress: request.ip,
+    });
+    return { success: true, jobId, status: 'pending' };
   });
 
   // 1. Dynamic Fleet Status Overview (Live Real-Time Fleet Monitor)

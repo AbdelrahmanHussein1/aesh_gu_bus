@@ -1,14 +1,9 @@
-import { Resend } from 'resend';
 import QRCode from 'qrcode';
 import dotenv from 'dotenv';
+import { MailService } from './mail.service.js';
 
 dotenv.config();
 
-const resendApiKey = process.env.RESEND_API_KEY || 're_mock_key';
-const emailFrom = process.env.EMAIL_FROM || 'Bus Aesh <onboarding@resend.dev>';
-const sandboxOverrideRecipient = process.env.SANDBOX_OVERRIDE_RECIPIENT || '';
-
-const resend = new Resend(resendApiKey);
 const escapeHtml = (value: unknown): string => String(value ?? '')
   .replace(/&/g, '&amp;')
   .replace(/</g, '&lt;')
@@ -26,25 +21,8 @@ const timeSlotLabels: Record<string, string> = {
 };
 
 export class EmailService {
-  static getEffectiveRecipient(originalEmail: string): string {
-    if (emailFrom.includes('onboarding@resend.dev')) {
-      return sandboxOverrideRecipient;
-    }
-    return originalEmail;
-  }
-
   static async sendForgotPasswordEmail(email: string, name: string, tempPassword: string) {
-    const recipient = this.getEffectiveRecipient(email);
-    console.log(`[Email] Sending password reset code to ${recipient} (original: ${email})...`);
-    if (resendApiKey === 're_mock_key') {
-      throw new Error('Email provider is not configured');
-    }
-
-    await resend.emails.send({
-      from: emailFrom,
-      to: recipient,
-      subject: `🔑 Bus Aesh: Password Reset Code`,
-      html: `
+    await MailService.sendEmail(email, 'Bus Aesh: Password Reset Code', `
         <div style="max-width: 600px; margin: 0 auto; font-family: 'Segoe UI', Arial, sans-serif; background: #0f172a; color: #e2e8f0; padding: 32px; border-radius: 12px;">
           <h2 style="color: #38bdf8; margin-bottom: 16px;">🔑 Password Reset Request</h2>
           <p>Hello <strong>${escapeHtml(name)}</strong>,</p>
@@ -56,8 +34,7 @@ export class EmailService {
           <p style="color: #f59e0b; font-size: 13px;">⚠️ Use this temporary password to log in. You can update your password in your settings once logged in.</p>
           <p style="color: #64748b; font-size: 11px; margin-top: 24px;">If you did not request this, you can ignore this email.</p>
         </div>
-      `,
-    });
+      `);
   }
 
   static async sendConfirmationEmail(
@@ -70,20 +47,11 @@ export class EmailService {
     bookingType: string,
     paymentId: string
   ) {
-    const recipient = this.getEffectiveRecipient(email);
-    if (resendApiKey === 're_mock_key') {
-      throw new Error('Email provider is not configured');
-    }
-
     const qrUrl = await QRCode.toDataURL(qrToken, { width: 250, margin: 1 });
     const legLabel = legType === 'from_campus' ? 'Return Home' : 'Trip to Campus';
     const legLabelAr = legType === 'from_campus' ? 'عودة للمنزل' : 'ذهاب للجامعة';
 
-    await resend.emails.send({
-      from: emailFrom,
-      to: recipient,
-      subject: `🚌 Bus Aesh Ticket: ${trip.route.nameEn} — Seat ${seatNumber}`,
-      html: this.buildInvoiceHtml({
+    await MailService.sendEmail(email, 'Bus Aesh: Ticket Confirmation', this.buildInvoiceHtml({
         name,
         bookingType,
         legs: [
@@ -102,8 +70,7 @@ export class EmailService {
         paymentId,
         amount: `${Number(trip.priceEgp ?? 0).toFixed(2)} EGP`,
         cancellationLockHours: trip.cancellationLockHours,
-      }),
-    });
+      }));
   }
 
   static async sendRoundTripEmailConfirmation(
@@ -117,21 +84,12 @@ export class EmailService {
     fromCampusQR: string,
     paymentId: string
   ) {
-    const recipient = this.getEffectiveRecipient(email);
-    if (resendApiKey === 're_mock_key') {
-      throw new Error('Email provider is not configured');
-    }
-
     const [arrivalQRUrl, returnQRUrl] = await Promise.all([
       QRCode.toDataURL(toCampusQR, { width: 250, margin: 1 }),
       QRCode.toDataURL(fromCampusQR, { width: 250, margin: 1 }),
     ]);
 
-    await resend.emails.send({
-      from: emailFrom,
-      to: recipient,
-      subject: `🚌 Bus Aesh Round-Trip Tickets: ${toCampusTrip.route.nameEn}`,
-      html: this.buildInvoiceHtml({
+    await MailService.sendEmail(email, 'Bus Aesh: Round-Trip Ticket Confirmation', this.buildInvoiceHtml({
         name,
         bookingType: 'round_trip',
         legs: [
@@ -161,22 +119,12 @@ export class EmailService {
         paymentId,
         amount: `${(Number(toCampusTrip.priceEgp ?? 0) + Number(fromCampusTrip.priceEgp ?? 0)).toFixed(2)} EGP`,
         cancellationLockHours: toCampusTrip.cancellationLockHours,
-      }),
-    });
+      }));
   }
 
   static async sendSwapNotificationEmail(email: string, name: string, oldTrip: any, newTrip: any, seatNumber: number, qrToken: string) {
-    const recipient = this.getEffectiveRecipient(email);
-    if (resendApiKey === 're_mock_key') {
-      throw new Error('Email provider is not configured');
-    }
-
     const qrUrl = await QRCode.toDataURL(qrToken, { width: 250, margin: 1 });
-    await resend.emails.send({
-      from: emailFrom,
-      to: recipient,
-      subject: `⚠️ Bus Reassignment: New Seat Assigned`,
-      html: `
+    await MailService.sendEmail(email, 'Bus Aesh: Ticket Reassignment', `
         <div style="max-width: 600px; margin: 0 auto; font-family: 'Segoe UI', Arial, sans-serif; background: #0f172a; color: #e2e8f0; padding: 32px; border-radius: 12px;">
           <h2 style="color: #f59e0b; margin-bottom: 16px;">⚠️ Notice: Ticket Reassignment</h2>
           <p>Hello <strong>${escapeHtml(name)}</strong>,</p>
@@ -190,11 +138,10 @@ export class EmailService {
           <hr style="border: 1px solid #334155; margin: 24px 0;" />
           <p style="color: #f59e0b;">⚠️ Your old QR code is now invalidated. Present this new QR code to board:</p>
           <div style="text-align: center; padding: 16px;">
-            <img src="${qrUrl}" alt="New QR Code" style="border: 3px solid #38bdf8; border-radius: 8px; padding: 8px; background: white;" />
+            <img src="${escapeHtml(qrUrl)}" alt="New QR Code" style="border: 3px solid #38bdf8; border-radius: 8px; padding: 8px; background: white;" />
           </div>
         </div>
-      `,
-    });
+      `);
   }
 
   private static buildInvoiceHtml(data: {

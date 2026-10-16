@@ -3,18 +3,11 @@ import axios from 'axios';
 import { db } from '../db/index.js';
 import * as schema from '../db/schema.js';
 import { eq, and, gt, desc } from 'drizzle-orm';
-import { Resend } from 'resend';
 import { MailService } from './mail.service.js';
-import { N8nService } from './n8n.service.js';
 import { redisClient } from '../redis.js';
 
-const resendApiKey = process.env.RESEND_API_KEY || 're_mock_key';
-const emailFrom = process.env.EMAIL_FROM || 'Bus Aesh <onboarding@resend.dev>';
-const sandboxRecipient = process.env.SANDBOX_OVERRIDE_RECIPIENT || '';
 const sheerIdApiKey = process.env.SHEERID_API_KEY;
 const sheerIdProgramId = process.env.SHEERID_PROGRAM_ID || 'galala-university-students';
-
-const resend = new Resend(resendApiKey);
 
 export interface VerificationResult {
   success: boolean;
@@ -144,29 +137,22 @@ export class SheerIDService {
     const verificationToken = crypto.randomUUID();
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 mins expiry
 
-    await db.insert(schema.verificationTokens).values({
-      email: email.toLowerCase().trim(),
-      token: verificationToken,
-      code: verificationCode,
-      academicId: academicId.trim(),
-      expiresAt,
-    });
+    await db.transaction(async tx => {
+      await tx.insert(schema.verificationTokens).values({
+        email: email.toLowerCase().trim(),
+        token: verificationToken,
+        code: verificationCode,
+        academicId: academicId.trim(),
+        expiresAt,
+      });
 
-    // Prefer the optional n8n Outlook workflow, then fall back to the API mail provider.
-    const n8nSent = await N8nService.notifyStudentOtp({
-      email: email.toLowerCase().trim(),
-      fullName,
-      academicId,
-      otp: verificationCode,
-    });
-    if (!n8nSent) {
       await MailService.sendStudentOtpEmail({
         email: email.toLowerCase().trim(),
         fullName,
         academicId,
         otp: verificationCode,
       });
-    }
+    });
 
     return {
       success: true,

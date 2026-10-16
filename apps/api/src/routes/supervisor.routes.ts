@@ -4,7 +4,7 @@ import { db } from '../db/index.js';
 import * as schema from '../db/schema.js';
 import { eq, and, desc, inArray, or, sql } from 'drizzle-orm';
 import { WebSocketHub } from '../websocket/hub.js';
-import { EmailService } from '../services/email.service.js';
+import { EmailOutboxService } from '../services/email-outbox.service.js';
 import { getHoursUntilDeparture } from '../utils/trip-time.js';
 import { CacheService } from '../services/cache.service.js';
 
@@ -88,28 +88,31 @@ export async function supervisorRoutes(fastify: FastifyInstance) {
       legType: oldBooking.legType as 'to_campus' | 'from_campus',
     }, jwtSecret);
 
-    await db.update(schema.bookings)
-      .set({
-        tripId: targetTripId,
-        seatNumber: targetSeatNumber,
-        qrToken: newQrToken,
-        qrVersion: newQrVersion,
-        qrExpiresAt: getQrExpiresAt(targetTrip.departureTime),
-        qrUsedAt: null,
-        status: 'swapped',
-        updatedAt: new Date(),
-      })
-      .where(eq(schema.bookings.id, bookingId));
+    await db.transaction(async tx => {
+      await tx.update(schema.bookings)
+        .set({
+          tripId: targetTripId,
+          seatNumber: targetSeatNumber,
+          qrToken: newQrToken,
+          qrVersion: newQrVersion,
+          qrExpiresAt: getQrExpiresAt(targetTrip.departureTime),
+          qrUsedAt: null,
+          status: 'swapped',
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.bookings.id, bookingId));
 
-    await db.insert(schema.swapLogs).values({
-      oldBookingId: bookingId,
-      newBookingId: bookingId,
-      performedBy: supervisorId,
-      reason: reason || 'Operational seat swap',
-      oldTripId,
-      oldSeatNumber,
-      newTripId: targetTripId,
-      newSeatNumber: targetSeatNumber,
+      const [swapLog] = await tx.insert(schema.swapLogs).values({
+        oldBookingId: bookingId,
+        newBookingId: bookingId,
+        performedBy: supervisorId,
+        reason: reason || 'Operational seat swap',
+        oldTripId,
+        oldSeatNumber,
+        newTripId: targetTripId,
+        newSeatNumber: targetSeatNumber,
+      }).returning({ id: schema.swapLogs.id });
+      await EmailOutboxService.enqueueSwapNotification(tx, swapLog.id);
     });
 
     WebSocketHub.broadcastToTripRoom(oldTripId, {
@@ -121,17 +124,6 @@ export async function supervisorRoutes(fastify: FastifyInstance) {
       type: 'seat_booked',
       tripId: targetTripId,
       seatNumber: targetSeatNumber,
-    });
-
-    EmailService.sendSwapNotificationEmail(
-      oldBooking.user.email,
-      oldBooking.user.fullName,
-      oldBooking.trip,
-      targetTrip,
-      targetSeatNumber,
-      newQrToken
-    ).catch(err => {
-      console.error('Swap email notification failed:', err.message);
     });
 
     await CacheService.invalidateSeatCache(oldBooking.tripId);

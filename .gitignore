@@ -57,3 +57,8 @@ dist-release/
 stitch.zip
 stitch/
 *.zip
+
+# Generated native downloads and compiler caches
+*.apk
+*.aab
+*.tsbuildinfo

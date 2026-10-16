@@ -11,6 +11,8 @@ import { tripsRoutes } from './routes/trips.routes.js';
 import { bookingsRoutes } from './routes/bookings.routes.js';
 import { supervisorRoutes } from './routes/supervisor.routes.js';
 import { adminRoutes } from './routes/admin.routes.js';
+import { EmailOutboxService } from './services/email-outbox.service.js';
+import { MailService } from './services/mail.service.js';
 
 dotenv.config();
 
@@ -20,7 +22,6 @@ const jwtSecret = process.env.JWT_SECRET || '';
 if (!jwtSecret) {
   throw new Error('JWT_SECRET environment variable is missing.');
 }
-const resendApiKey = process.env.RESEND_API_KEY || 're_mock_key';
 const configuredOrigins = (process.env.CORS_ORIGINS || 'http://localhost:3001,http://127.0.0.1:3001')
   .split(',')
   .map(origin => origin.trim())
@@ -134,7 +135,17 @@ fastify.decorate('authenticate', async (request: any, reply: any) => {
 
 // Health Check
 fastify.get('/health', async () => {
-  return { status: 'OK', time: new Date() };
+  const mail = MailService.getHealth();
+  try {
+    const email = await EmailOutboxService.getSummary();
+    return { status: 'OK', time: new Date(), email: { ...email, checkedAt: mail.checkedAt } };
+  } catch {
+    return {
+      status: 'OK',
+      time: new Date(),
+      email: { status: 'degraded', pending: null, failed: null, checkedAt: mail.checkedAt },
+    };
+  }
 });
 
 // 1. WebSocket: Live Seat Map Updates per Trip Room
@@ -216,6 +227,8 @@ await fastify.register(adminRoutes);
 // Graceful Shutdown
 const gracefulShutdown = async (signal: string) => {
   console.log(`[${signal}] Shutting down Fastify server gracefully...`);
+  await EmailOutboxService.stop();
+  await MailService.close();
   await fastify.close();
   await redis.quit();
   process.exit(0);
@@ -229,11 +242,8 @@ async function start() {
   try {
     await fastify.listen({ port, host });
     console.log(`Fastify production server running on http://${host}:${port}`);
-
-    if (resendApiKey === 're_mock_key') {
-      console.log('\n⚠️  [Email] Running in MOCK MODE — no real emails will be sent.');
-      console.log('    To enable real emails, set RESEND_API_KEY in apps/api/.env\n');
-    }
+    void MailService.start();
+    EmailOutboxService.start();
   } catch (err) {
     fastify.log.error(err);
     process.exit(1);

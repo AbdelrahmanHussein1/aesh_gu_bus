@@ -27,16 +27,7 @@ if ! docker info > /dev/null 2>&1; then
     fi
 fi
 
-# 3. Always compose down before doing anything (clean teardown)
-echo "🛑 Stopping and cleaning any existing containers..."
-$DOCKER_COMPOSE down --remove-orphans 2>/dev/null || true
-
-# 4. Check and pull latest repository updates if running inside git clone
-if [ -d ".git" ]; then
-    echo "🔄 Checking for latest repository updates from GitHub..."
-    git pull origin main 2>/dev/null || echo "ℹ️  Continuing with local files..."
-fi
-
+# Deploy the checked-out release without stopping services or pulling another version.
 # Check for permanent Cloudflare Tunnel Token in .env
 if [ -f ".env" ] && grep -q '^CLOUDFLARE_TUNNEL_TOKEN=' .env; then
     export $(grep '^CLOUDFLARE_TUNNEL_TOKEN=' .env | xargs)
@@ -47,8 +38,8 @@ if [ -n "$CLOUDFLARE_TUNNEL_TOKEN" ]; then
     export CLOUDFLARE_TUNNEL_COMMAND="tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}"
 fi
 
-echo "🚀 Building fresh Docker image (no cache)..."
-$DOCKER_COMPOSE build --no-cache app
+echo "🚀 Building Docker image for the checked-out release..."
+$DOCKER_COMPOSE build app
 echo "🚀 Starting all services..."
 $DOCKER_COMPOSE up -d
 

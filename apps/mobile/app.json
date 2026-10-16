@@ -2,21 +2,23 @@
   "expo": {
     "name": "Bus Aesh",
     "slug": "bus-aesh",
-    "version": "1.2.1",
+    "version": "1.3.0",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "icon": "./assets/icon.png",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.bus.aesh",
-      "icon": "./assets/icon.png"
+      "icon": "./assets/icon.png",
+      "buildNumber": "3"
     },
     "android": {
       "package": "com.bus.aesh",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0b0f19"
-      }
+      },
+      "versionCode": 3
     },
     "plugins": [
       [

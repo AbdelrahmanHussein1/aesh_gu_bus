@@ -1,5 +1,4 @@
-import nodemailer from 'nodemailer';
-import { Resend } from 'resend';
+import nodemailer, { type Transporter } from 'nodemailer';
 import path from 'node:path';
 import dotenv from 'dotenv';
 
@@ -7,44 +6,141 @@ dotenv.config();
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 dotenv.config({ path: path.resolve(process.cwd(), 'apps/api/.env') });
 
-function getTransporter() {
-  const smtpHost = process.env.SMTP_HOST || 'smtp.gmail.com';
-  const smtpPort = parseInt(process.env.SMTP_PORT || '587', 10);
-  const smtpUser = process.env.SMTP_USER || '';
-  const smtpPass = process.env.SMTP_PASS || '';
-  const smtpSecure = process.env.SMTP_SECURE === 'true' || smtpPort === 465;
+export type EmailHealth = 'checking' | 'ready' | 'degraded' | 'unconfigured';
 
-  if (smtpUser && smtpPass) {
-    return nodemailer.createTransport({
-      host: smtpHost,
-      port: smtpPort,
-      secure: smtpSecure,
-      auth: {
-        user: smtpUser,
-        pass: smtpPass,
-      },
-      connectionTimeout: 10000,
-      greetingTimeout: 10000,
-      socketTimeout: 15000,
-    });
+export class EmailDeliveryError extends Error {
+  constructor(public readonly errorCode: string) {
+    super('Email could not be delivered.');
+    this.name = 'EmailDeliveryError';
   }
-  return null;
 }
 
-const resendApiKey = process.env.RESEND_API_KEY || '';
-const resend = resendApiKey && resendApiKey !== 're_mock_key' ? new Resend(resendApiKey) : null;
+function getConfiguration() {
+  const port = Number(process.env.SMTP_PORT || '587');
+  const user = process.env.SMTP_USER?.trim() || '';
+  const password = process.env.SMTP_PASS || '';
+
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    return null;
+  }
+
+  if (!user || !password) return null;
+
+  return {
+    host: process.env.SMTP_HOST?.trim() || 'smtp.office365.com',
+    port,
+    secure: process.env.SMTP_SECURE === 'true' || port === 465,
+    user,
+    password,
+    from: process.env.EMAIL_FROM?.trim() || `Galala University Bus <${user}>`,
+  };
+}
+
+let transporter: Transporter | null = null;
+let health: EmailHealth = 'unconfigured';
+let lastCheckedAt: string | null = null;
+let healthTimer: NodeJS.Timeout | null = null;
+
+function getTransporter(): Transporter | null {
+  if (transporter) return transporter;
+  const config = getConfiguration();
+  if (!config) return null;
+
+  transporter = nodemailer.createTransport({
+    host: config.host,
+    port: config.port,
+    secure: config.secure,
+    auth: { user: config.user, pass: config.password },
+    connectionTimeout: 10_000,
+    greetingTimeout: 10_000,
+    socketTimeout: 15_000,
+  });
+  return transporter;
+}
+
+function safeErrorCode(error: unknown): string {
+  if (!error || typeof error !== 'object') return 'SMTP_ERROR';
+  const candidate = error as { code?: unknown; responseCode?: unknown };
+  if (typeof candidate.code === 'string' && /^[A-Z0-9_-]{1,40}$/i.test(candidate.code)) {
+    return candidate.code;
+  }
+  if (typeof candidate.responseCode === 'number') return `SMTP_${candidate.responseCode}`;
+  return 'SMTP_ERROR';
+}
 
 export class MailService {
-  /**
-   * Sends a high-priority verification OTP email to a student's Outlook / Galala email.
-   */
+  static getHealth(): { status: EmailHealth; checkedAt: string | null } {
+    return { status: health, checkedAt: lastCheckedAt };
+  }
+
+  static async verifyConnection(): Promise<boolean> {
+    const mailTransporter = getTransporter();
+    lastCheckedAt = new Date().toISOString();
+    if (!mailTransporter) {
+      const changed = health !== 'unconfigured';
+      health = 'unconfigured';
+      if (changed) console.warn('[MailService] SMTP is not configured. Email delivery is unavailable.');
+      return false;
+    }
+
+    const previousHealth = health;
+    if (previousHealth !== 'ready') health = 'checking';
+    try {
+      await mailTransporter.verify();
+      const recovered = previousHealth === 'degraded' || previousHealth === 'unconfigured';
+      health = 'ready';
+      if (recovered) console.info('[MailService] SMTP connection verified.');
+      return true;
+    } catch (error) {
+      const changed = previousHealth !== 'degraded';
+      health = 'degraded';
+      if (changed) console.warn(`[MailService] SMTP verification failed (${safeErrorCode(error)}).`);
+      return false;
+    }
+  }
+
+  static async start(): Promise<void> {
+    await this.verifyConnection();
+    if (healthTimer) clearInterval(healthTimer);
+    healthTimer = setInterval(() => void this.verifyConnection(), 60_000);
+    healthTimer.unref();
+  }
+
+  static async sendEmail(to: string, subject: string, html: string): Promise<void> {
+    const mailTransporter = getTransporter();
+    const config = getConfiguration();
+    if (!mailTransporter || !config) {
+      health = 'unconfigured';
+      throw new EmailDeliveryError('SMTP_UNCONFIGURED');
+    }
+
+    try {
+      await mailTransporter.sendMail({ from: config.from, to, subject, html });
+      const recovered = health === 'degraded' || health === 'unconfigured';
+      health = 'ready';
+      lastCheckedAt = new Date().toISOString();
+      if (recovered) console.info('[MailService] SMTP delivery recovered.');
+    } catch (error) {
+      health = 'degraded';
+      lastCheckedAt = new Date().toISOString();
+      const code = safeErrorCode(error);
+      console.warn(`[MailService] SMTP send failed (${code}).`);
+      throw new EmailDeliveryError(code);
+    }
+  }
+
   static async sendStudentOtpEmail(params: {
     email: string;
     fullName: string;
     academicId: string;
     otp: string;
-  }): Promise<{ success: boolean; method: string }> {
-    const { email, fullName, academicId, otp } = params;
+  }): Promise<{ success: true; method: 'smtp' }> {
+    const escapeHtml = (value: unknown): string => String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
 
     const htmlContent = `
 <!DOCTYPE html>
@@ -55,41 +151,30 @@ export class MailService {
 </head>
 <body style="margin: 0; padding: 24px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #0b1120; color: #f1f5f9;">
   <div style="max-width: 540px; margin: 0 auto; background: #0f172a; border: 1px solid #1e293b; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
-    <!-- Header -->
     <div style="background: linear-gradient(135deg, #002b49 0%, #0369a1 100%); padding: 24px; text-align: center; border-bottom: 2px solid #38bdf8;">
       <h1 style="color: #ffffff; margin: 0; font-size: 20px; font-weight: 800; letter-spacing: 0.5px;">جامعة الجلالة — Galala University</h1>
       <p style="color: #bae6fd; margin: 6px 0 0 0; font-size: 13px; font-weight: 500;">منظومة النقل الذكي للطلاب (Bus Aesh Transit)</p>
     </div>
-
-    <!-- Body -->
     <div style="padding: 28px; text-align: center;">
       <div style="display: inline-block; padding: 4px 12px; background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 20px; color: #38bdf8; font-size: 11px; font-weight: 700; margin-bottom: 16px;">
         🔐 بريد Outlook الأكاديمي الرسمي
       </div>
-
       <h2 style="color: #f8fafc; font-size: 18px; margin: 0 0 8px 0;">رمز تفعيل الحساب والتحقق من القيد</h2>
       <p style="color: #94a3b8; font-size: 13px; margin: 0 0 20px 0; line-height: 1.6;">
-        مرحباً <strong>${fullName}</strong>،<br>
-        تم استلام طلب تسجيل حساب طالب باستخدام الرقم الأكاديمي (<strong>${academicId}</strong>).
+        مرحباً <strong>${escapeHtml(params.fullName)}</strong>،<br>
+        تم استلام طلب تسجيل حساب طالب باستخدام الرقم الأكاديمي (<strong>${escapeHtml(params.academicId)}</strong>).
       </p>
-
-      <!-- OTP Box -->
       <div style="background: #1e293b; border: 2px dashed #38bdf8; border-radius: 12px; padding: 20px; margin: 20px 0;">
         <span style="display: block; color: #94a3b8; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px;">كود التحقق الخاص بك (One-Time Password)</span>
-        <span style="font-family: 'Courier New', Courier, monospace; font-size: 34px; font-weight: 900; letter-spacing: 8px; color: #38bdf8;">${otp}</span>
+        <span style="font-family: 'Courier New', Courier, monospace; font-size: 34px; font-weight: 900; letter-spacing: 8px; color: #38bdf8;">${escapeHtml(params.otp)}</span>
       </div>
-
       <p style="color: #f59e0b; font-size: 12px; margin: 16px 0 24px 0;">
         ⏱️ هذا الرمز صالح للاستخدام خلال <strong>15 دقيقة</strong> فقط.
       </p>
-
-      <!-- Open Outlook Button -->
       <a href="https://outlook.office.com/mail/" target="_blank" style="display: inline-block; padding: 12px 24px; background: #0284c7; color: #ffffff; text-decoration: none; border-radius: 10px; font-weight: 700; font-size: 13px; box-shadow: 0 4px 12px rgba(2, 132, 199, 0.35);">
         📥 فتح بريد Outlook الجامعي (outlook.office.com)
       </a>
     </div>
-
-    <!-- Footer -->
     <div style="background: #0b0f19; padding: 16px 24px; text-align: center; border-top: 1px solid #1e293b; font-size: 11px; color: #64748b;">
       <p style="margin: 0;">إذا لم تقم بطلب هذا الرمز، يُرجى تجاهل هذه الرسالة أو التواصل مع دعم تقنية المعلومات بجامعة الجلالة.</p>
       <p style="margin: 4px 0 0 0; color: #475569;">© 2026 Galala University Transit System. All rights reserved.</p>
@@ -99,46 +184,14 @@ export class MailService {
 </html>
     `;
 
-    // 1. Try SMTP first if configured
-    const transporter = getTransporter();
-    const smtpHost = process.env.SMTP_HOST || 'smtp.gmail.com';
-    const smtpPort = parseInt(process.env.SMTP_PORT || '587', 10);
-    const smtpUser = process.env.SMTP_USER || '';
-    const emailFrom = process.env.EMAIL_FROM || (smtpUser ? `Galala University Bus <${smtpUser}>` : 'Bus Aesh <support@gu.edu.eg>');
+    await this.sendEmail(params.email, 'رمز التحقق الخاص بحسابك في باصات جامعة الجلالة', htmlContent);
+    return { success: true, method: 'smtp' };
+  }
 
-    if (transporter) {
-      try {
-        console.log(`[MailService] Sending OTP to Outlook email ${email} via SMTP (${smtpHost}:${smtpPort})...`);
-        await transporter.sendMail({
-          from: emailFrom,
-          to: email,
-          subject: 'رمز التحقق الخاص بحسابك في باصات جامعة الجلالة',
-          html: htmlContent,
-        });
-        console.log(`[MailService] ✅ OTP email delivered via SMTP to ${email}`);
-        return { success: true, method: 'smtp' };
-      } catch (err: any) {
-        console.warn(`[MailService] SMTP delivery failed (${err.message}). Falling back...`);
-      }
-    }
-
-    // 2. Try Resend if configured
-    if (resend) {
-      try {
-        console.log(`[MailService] Sending OTP to ${email} via Resend...`);
-        await resend.emails.send({
-          from: emailFrom,
-          to: email,
-          subject: 'رمز التحقق الخاص بجامعة الجلالة',
-          html: htmlContent,
-        });
-        console.log(`[MailService] ✅ OTP email sent via Resend to ${email}`);
-        return { success: true, method: 'resend' };
-      } catch (err: any) {
-        console.warn(`[MailService] Resend delivery failed (${err.message}).`);
-      }
-    }
-
-    throw new Error('No email provider is configured');
+  static async close(): Promise<void> {
+    if (healthTimer) clearInterval(healthTimer);
+    healthTimer = null;
+    transporter?.close();
+    transporter = null;
   }
 }

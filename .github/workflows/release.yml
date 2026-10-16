@@ -1,94 +1,36 @@
-name: Build & Publish Release Package
-
+name: Build and publish source release
 on:
   push:
-    tags:
-      - 'v*'
+    tags: ['v*']
   workflow_dispatch:
-    inputs:
-      version:
-        description: 'Release version tag (e.g. v1.0.0)'
-        required: true
-        default: 'v1.0.0'
-
 permissions:
   contents: write
-
 jobs:
-  build-and-release:
-    name: Build & Package Production Release
+  release:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout Source Code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js 22.x
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: 'npm'
-
-      - name: Install Monorepo Dependencies
-        run: npm ci
-
-      - name: Build Shared Types & Models
-        run: npm run build --workspace=packages/shared
-
-      - name: Build Fastify API Backend
-        run: npm run build --workspace=apps/api
-
-      - name: Build Next.js Web Frontend
-        run: npm run build --workspace=apps/web
-
-      - name: Package Production Distribution Bundles
-        run: |
-          node scripts/package-release.js
-          node scripts/package-vbox.js
-
-      - name: Determine Release Tag
-        id: vars
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "tag=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
-          else
-            echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Publish GitHub Release with Downloadable Asset
-        uses: softprops/action-gh-release@v2
+          cache: npm
+      - run: npm ci
+      - run: npm run build --workspace=packages/shared
+      - run: npm run build --workspace=apps/api
+      - run: npm run build --workspace=apps/web
+      - run: npm run ts:check --workspace=apps/mobile
+      - name: Verify tag matches package version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: node -e "if (process.env.GITHUB_REF_NAME !== 'v' + require('./package.json').version) process.exit(1)"
+      - run: npm run package:release
+      - run: npm run package:vbox
+      - run: npm run check:release
+      - uses: actions/upload-artifact@v4
         with:
-          tag_name: ${{ steps.vars.outputs.tag }}
-          name: Release ${{ steps.vars.outputs.tag }}
-          draft: false
-          prerelease: false
+          name: source-release
+          path: dist-release/*.zip
+      - uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          body_path: CHANGELOG.md
           files: dist-release/*.zip
-          body: |
-            ## 🚌 Bus Aesh — Galala University Smart Transit Platform
-            ### Production Release ${{ steps.vars.outputs.tag }}
-
-            This release delivers major operational features, stability enhancements, and critical sync fixes:
-            - **Both-Way (ذهاب وعودة) Dual-Shift Scheduling**: 3-option trip type selector in Admin Console to atomically schedule coordinated morning arrival and afternoon return shifts with unified fleet assignments.
-            - **Supervisor Live Boarding & Manual Check-In**: One-click manual check-in button (`تسجيل صعود`) for each passenger on the live manifest, with real-time boarding count synchronization and audio feedback.
-            - **Rider UI Refresh & Real-Time Sync**: Instant manual refresh button (`تحديث الرحلات`) for live bus availability, redesigned shift cards, and improved seat locking clarity.
-            - **Schedule Purge Parity**: Instant synchronization between PostgreSQL and Redis cache when clearing shifts, eliminating ghost scheduled trips.
-            - **Optimized PDF Manifests**: Professional, well-structured passenger manifests with clear Arabic typography, driver/supervisor headers, and seat layouts.
-            - **Rock-Solid Docker Boot**: Cleaned seeding queries and enforced process termination to prevent container hangs and eliminate Cloudflare 502 Bad Gateway errors.
-
-            ---
-
-            ### 🚀 Quick Start from Downloaded Package:
-            ```bash
-            # 1. Unzip the downloaded release archive
-            unzip bus-aesh-*.zip -d bus-aesh
-            cd bus-aesh
-
-            # 2. Install production dependencies
-            npm install --omit=dev
-
-            # 3. Start Fastify API (Port 3000)
-            npm run start --workspace=apps/api
-
-            # 4. Start Web Application (Port 3001)
-            npm run start --workspace=apps/web
-            ```

@@ -5,8 +5,7 @@ import * as schema from '../db/schema.js';
 import { redis } from '../redis.js';
 import { eq, and, desc, inArray, sql } from 'drizzle-orm';
 import { WebSocketHub } from '../websocket/hub.js';
-import { EmailService } from '../services/email.service.js';
-import { N8nService, type BookingLegPayload } from '../services/n8n.service.js';
+import { EmailOutboxService } from '../services/email-outbox.service.js';
 import { getHoursUntilDeparture } from '../utils/trip-time.js';
 import { CacheService } from '../services/cache.service.js';
 import { randomBytes, randomUUID } from 'node:crypto';
@@ -26,38 +25,6 @@ function generatePaymentId(): string {
 function generateBookingRef(): string {
   return `GU-${randomBytes(5).toString('hex').toUpperCase()}`;
 }
-
-function formatTripClock(value: Date): string {
-  return value.toLocaleTimeString('en-GB', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-    timeZone: 'Africa/Cairo',
-  });
-}
-
-function buildBookingLeg(params: {
-  kind: 'go' | 'return';
-  trip: any;
-  seatNumber: number;
-  boardingCode: string;
-}): BookingLegPayload {
-  const isReturn = params.kind === 'return';
-  const routeName = params.trip.route?.nameEn || 'Galala Route';
-  return {
-    kind: params.kind,
-    label: isReturn ? 'Return home' : 'Go to campus',
-    labelAr: isReturn ? 'عودة للمنزل' : 'ذهاب للجامعة',
-    route: routeName,
-    pickup: isReturn ? 'Galala University' : routeName,
-    dropoff: isReturn ? routeName : 'Galala University',
-    date: params.trip.tripDate,
-    time: formatTripClock(new Date(params.trip.departureTime)),
-    seatNumber: params.seatNumber,
-    boardingCode: params.boardingCode,
-  };
-}
-
 
 export async function bookingsRoutes(fastify: FastifyInstance) {
   // 1. Create one-way booking (Pessimistic Lock & Unique Index Concurrency Proof)
@@ -89,9 +56,6 @@ export async function bookingsRoutes(fastify: FastifyInstance) {
       });
     }
     const userId = request.user.id;
-    const userEmail = request.user.email;
-    const userName = request.user.fullName;
-
     let bookingResult: any;
     try {
       bookingResult = await db.transaction(async (tx) => {
@@ -167,6 +131,10 @@ export async function bookingsRoutes(fastify: FastifyInstance) {
           .set({ qrToken })
           .where(eq(schema.bookings.id, booking.id));
 
+        if (paymentStatus === 'paid') {
+          await EmailOutboxService.enqueueBookingConfirmation(tx, [booking.id]);
+        }
+
         return { booking, trip, qrToken, paymentId };
       });
     } catch (err: any) {
@@ -209,35 +177,6 @@ export async function bookingsRoutes(fastify: FastifyInstance) {
     await CacheService.invalidateSeatCache(tripId);
     await CacheService.invalidateTripsAndFleetCache(tripId);
 
-    // Payment confirmation must never wait on, or fail because of, ticket delivery.
-    if (booking.paymentStatus === 'paid') {
-      const kind = legType === 'from_campus' ? 'return' : 'go';
-      void N8nService.notifyBookingConfirmation({
-        studentName: userName,
-        studentId: request.user.academicId || userId,
-        studentEmail: userEmail,
-        route: trip.route.nameEn,
-        date: trip.tripDate,
-        price: `${Number(trip.priceEgp ?? 0)} EGP`,
-        bookingRef: booking.bookingRef!,
-        paymentRef: booking.paymentId!,
-        bookingType: 'one_way',
-        legs: [
-          buildBookingLeg({
-            kind,
-            trip,
-            seatNumber,
-            boardingCode: booking.boardingCode!,
-          }),
-        ],
-      }).then((sent) => {
-        if (sent) return;
-        return EmailService.sendConfirmationEmail(userEmail, userName, trip, seatNumber, qrToken, legType, bookingType, booking.paymentId!);
-      }).catch(err => {
-        console.error('Failed to send booking confirmation:', err);
-      });
-    }
-
     return {
       success: true,
       bookingId: booking.id,
@@ -277,9 +216,6 @@ export async function bookingsRoutes(fastify: FastifyInstance) {
       });
     }
     const userId = request.user.id;
-    const userEmail = request.user.email;
-    const userName = request.user.fullName;
-
     let roundTripResult: any;
     try {
       roundTripResult = await db.transaction(async (tx) => {
@@ -394,6 +330,10 @@ export async function bookingsRoutes(fastify: FastifyInstance) {
         await tx.update(schema.bookings).set({ qrToken: arrivalQR }).where(eq(schema.bookings.id, arrivalBooking.id));
         await tx.update(schema.bookings).set({ qrToken: returnQR }).where(eq(schema.bookings.id, returnBooking.id));
 
+        if (paymentStatus === 'paid') {
+          await EmailOutboxService.enqueueBookingConfirmation(tx, [arrivalBooking.id, returnBooking.id]);
+        }
+
         return {
           arrivalBooking,
           returnBooking,
@@ -432,49 +372,6 @@ export async function bookingsRoutes(fastify: FastifyInstance) {
     await CacheService.invalidateSeatCache(toCampusTripId);
     await CacheService.invalidateSeatCache(fromCampusTripId);
     await CacheService.invalidateTripsAndFleetCache();
-
-    if (arrivalBooking.paymentStatus === 'paid') {
-      void N8nService.notifyBookingConfirmation({
-        studentName: userName,
-        studentId: request.user.academicId || userId,
-        studentEmail: userEmail,
-        route: toCampusTrip.route.nameEn,
-        date: toCampusTrip.tripDate,
-        price: `${Number(toCampusTrip.priceEgp ?? 0) + Number(fromCampusTrip.priceEgp ?? 0)} EGP`,
-        bookingRef: arrivalBooking.bookingRef!,
-        paymentRef: arrivalBooking.paymentId!,
-        bookingType: 'round_trip',
-        legs: [
-          buildBookingLeg({
-            kind: 'go',
-            trip: toCampusTrip,
-            seatNumber: toCampusSeatNumber,
-            boardingCode: arrivalBooking.boardingCode!,
-          }),
-          buildBookingLeg({
-            kind: 'return',
-            trip: fromCampusTrip,
-            seatNumber: fromCampusSeatNumber,
-            boardingCode: returnBooking.boardingCode!,
-          }),
-        ],
-      }).then((sent) => {
-        if (sent) return;
-        return EmailService.sendRoundTripEmailConfirmation(
-          userEmail,
-          userName,
-          toCampusTrip,
-          toCampusSeatNumber,
-          arrivalQR,
-          fromCampusTrip,
-          fromCampusSeatNumber,
-          returnQR,
-          paymentId
-        );
-      }).catch(err => {
-        console.error('Failed to send round-trip confirmation:', err);
-      });
-    }
 
     return {
       success: true,
