@@ -1,10 +1,10 @@
+import { swapBooking } from '../services/booking.service.js';
 import { FastifyInstance } from 'fastify';
 import { SwapBookingSchema, VerifyScanSchema, CancelBookingSchema, QRCodec } from '@bus-aesh/shared';
 import { db } from '../db/index.js';
 import * as schema from '../db/schema.js';
 import { eq, and, desc, inArray, or, sql } from 'drizzle-orm';
 import { WebSocketHub } from '../websocket/hub.js';
-import { EmailOutboxService } from '../services/email-outbox.service.js';
 import { getHoursUntilDeparture } from '../utils/trip-time.js';
 import { CacheService } from '../services/cache.service.js';
 
@@ -43,78 +43,16 @@ export async function supervisorRoutes(fastify: FastifyInstance) {
     const { bookingId, targetTripId, targetSeatNumber, reason } = bodyResult.data;
     const supervisorId = request.user.id;
 
-    const oldBooking = await db.query.bookings.findFirst({
-      where: eq(schema.bookings.id, bookingId),
-      with: {
-        trip: { with: { route: true } },
-        user: true,
-      },
-    });
-
-    if (!oldBooking) {
-      return reply.status(404).send({ error: 'Booking not found' });
+    let result;
+    try {
+      result = await swapBooking({userId:supervisorId,role:request.user.role,sessionId:request.user.sessionId},bodyResult.data,request.headers['idempotency-key']);
+    } catch (error: any) {
+      const conflict = error.message === 'SEAT_ALREADY_BOOKED' || error.code === '23505' || error.message === 'IDEMPOTENCY_KEY_REUSED';
+      return reply.status(conflict ? 409 : error.message?.endsWith('not found') ? 404 : 400).send({error:error.message,code:error.message});
     }
+    const {oldBooking,newQrToken,oldTripId,oldSeatNumber} = result;
 
-    const targetConflict = await db.query.bookings.findFirst({
-      where: and(
-        eq(schema.bookings.tripId, targetTripId),
-        eq(schema.bookings.seatNumber, targetSeatNumber),
-        inArray(schema.bookings.status, ['confirmed', 'swapped'])
-      ),
-    });
-    if (targetConflict) {
-      return reply.status(400).send({ error: 'Target seat is already occupied' });
-    }
-
-    const targetTrip = await db.query.trips.findFirst({
-      where: eq(schema.trips.id, targetTripId),
-      with: { route: true },
-    });
-
-    if (!targetTrip) {
-      return reply.status(404).send({ error: 'Target trip not found' });
-    }
-
-    const oldTripId = oldBooking.tripId;
-    const oldSeatNumber = oldBooking.seatNumber;
-    const newQrVersion = oldBooking.qrVersion + 1;
-
-    const newQrToken = QRCodec.encode({
-      bookingId: oldBooking.id,
-      tripId: targetTripId,
-      seatNumber: targetSeatNumber,
-      date: targetTrip.tripDate,
-      version: newQrVersion,
-      legType: oldBooking.legType as 'to_campus' | 'from_campus',
-    }, jwtSecret);
-
-    await db.transaction(async tx => {
-      await tx.update(schema.bookings)
-        .set({
-          tripId: targetTripId,
-          seatNumber: targetSeatNumber,
-          qrToken: newQrToken,
-          qrVersion: newQrVersion,
-          qrExpiresAt: getQrExpiresAt(targetTrip.departureTime),
-          qrUsedAt: null,
-          status: 'swapped',
-          updatedAt: new Date(),
-        })
-        .where(eq(schema.bookings.id, bookingId));
-
-      const [swapLog] = await tx.insert(schema.swapLogs).values({
-        oldBookingId: bookingId,
-        newBookingId: bookingId,
-        performedBy: supervisorId,
-        reason: reason || 'Operational seat swap',
-        oldTripId,
-        oldSeatNumber,
-        newTripId: targetTripId,
-        newSeatNumber: targetSeatNumber,
-      }).returning({ id: schema.swapLogs.id });
-      await EmailOutboxService.enqueueSwapNotification(tx, swapLog.id);
-    });
-
+    if (!result.replayed) {
     WebSocketHub.broadcastToTripRoom(oldTripId, {
       type: 'seat_unlocked',
       tripId: oldTripId,
@@ -129,6 +67,8 @@ export async function supervisorRoutes(fastify: FastifyInstance) {
     await CacheService.invalidateSeatCache(oldBooking.tripId);
     await CacheService.invalidateSeatCache(targetTripId);
     await CacheService.invalidateTripsAndFleetCache();
+
+    }
 
     return { success: true, newQrToken };
   });

@@ -7,7 +7,7 @@ dotenv.config();
 
 const connectionString = process.env.DATABASE_URL || 'postgres://aesh_user:aesh_password@localhost:5432/aesh_db';
 
-const pool = new pg.Pool({
+export const pool = new pg.Pool({
   connectionString,
 });
 

@@ -336,3 +336,5 @@ export class QRCodec {
     return constantTimeEqual(signature.toLowerCase(), expectedSignature.toLowerCase());
   }
 }
+
+export interface Actor { userId: string; role: string; sessionId: string; }

@@ -6,10 +6,10 @@ services:
     ports:
       - "3000:3000"
       - "3001:3001"
-    env_file:
+    env_file: &api_env_files
       - path: apps/api/.env
         required: false
-    environment:
+    environment: &api_environment
       - NODE_ENV=production
       - PORT=3000
       - HOST=0.0.0.0
@@ -21,6 +21,20 @@ services:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    entrypoint: ["node", "apps/api/dist/worker.js"]
+    env_file: *api_env_files
+    environment: *api_environment
+    depends_on:
+      app:
+        condition: service_started
+      postgres:
         condition: service_healthy
     restart: unless-stopped
 

@@ -498,6 +498,20 @@ From `apps/mobile`, run `npx expo install --check`. Offline dependency validatio
 
 Use the **CODEX DEVELOPMENT TEST ROUTE - NO REAL SERVICE** fixture and identified QA records. Bound request volume. Check seat conflicts, repeated scans, positive-fare rejection of `none`, network failures without local tickets, and uncertain POST outcomes before retry. Remove only test-created records; preserve existing rider data and the fixture. Scripts under `scripts/` and `scratch/` may change data; inspect before running.
 
+## Foundation: request replay and durable jobs
+
+The foundation adds migration `0009_nosy_jetstream.sql`, shared booking services, and a separate background worker. Existing email-outbox processing remains in the API and is not moved into this queue.
+
+For `POST /api/bookings`, `/api/bookings/round-trip`, and `/api/bookings/swap`, clients may supply `Idempotency-Key` (8–128 ASCII letters/digits or `._:-`). Reuse the same key and request body after an uncertain connection result. A successful result is retained for 24 hours, scoped to authenticated account and operation. Reusing the key with a different validated body returns HTTP 409. Failed transactions create neither a replay record nor a partial booking. Authentication and role checks still run on every request. Existing clients without a key retain their previous behavior; keys do not replace seat-conflict handling.
+
+A replay returns the original result, not current booking state. Fetch booking history to check subsequent cancellation, swap, or boarding. Replays skip Redis hold deletion and seat broadcasts so they cannot disturb a later rider's seat hold. Booking, paired booking, and swap mutations use shared transactional services and record audit entries.
+
+The default Compose `worker` service runs `npm run worker --workspace=apps/api` after the API container starts; cycles retry while startup migrations finish. Outside Compose, build the API, apply migrations, provide its private environment, and start that command separately. Jobs use PostgreSQL row claims, a two-minute renewable lease, fenced completion, five-second polling, retry backoff, and ten-attempt exhaustion, including expired claims. The first registered job prunes expired request replay records in bounded batches. Future notification/import jobs are not implemented yet. Job handlers must tolerate at-least-once execution; a lease alone cannot make external side effects exactly once.
+
+The new `serviceTimeToInstant` helper converts an explicit service date/time in `Africa/Cairo` (or an explicit zone), rejecting nonexistent/ambiguous daylight-saving times. Existing cancellation-time logic is unchanged by this foundation.
+
+Checks: `npm run check:foundation --workspace=apps/api`. For database checks, build the API and use `FOUNDATION_ALLOW_CREATE_DATABASE=1 npm run check:foundation-db --workspace=apps/api` with a configured PostgreSQL account permitted to create/drop a separate test database. The check creates only a uniquely named `codex_foundation_*` database and removes it afterward; it does not create bookings in the configured application database. Never point operational cleanup commands at rider data.
+
 ## Known limits
 
 - Mobile lacks paid checkout, round-trip booking UI, persistent sessions, full admin screens, and verified Arabic localization parity.

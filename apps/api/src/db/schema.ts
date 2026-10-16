@@ -260,3 +260,47 @@ export const boardingLogsRelations = relations(boardingLogs, ({ one }) => ({
 export const auditLogsRelations = relations(auditLogs, ({ one }) => ({
   user: one(users, { fields: [auditLogs.userId], references: [users.id] }),
 }));
+
+export const idempotencyRecords = pgTable('idempotency_records', {
+    id: uuid('id').defaultRandom().primaryKey(), actorId: uuid('actor_id').notNull(),
+    operation: varchar('operation', {
+        length: 80
+    }).notNull(), key: varchar('key', {
+        length: 128
+    }).notNull(),
+    requestHash: varchar('request_hash', {
+        length: 64
+    }).notNull(), result: jsonb('result').notNull(),
+    expiresAt: timestamp('expires_at', {
+        withTimezone: true
+    }).notNull(),
+}, t => ({
+    replay: dCore.uniqueIndex('idx_idempotency_replay').on(t.actorId, t.operation, t.key), expiry: dCore.index('idx_idempotency_expiry').on(t.expiresAt)
+}));
+export const backgroundJobs = pgTable('background_jobs', {
+    id: uuid('id').defaultRandom().primaryKey(), type: varchar('type', {
+        length: 80
+    }).notNull(),
+    eventKey: varchar('event_key', {
+        length: 255
+    }).notNull().unique(), payload: jsonb('payload').notNull(),
+    status: varchar('status', {
+        length: 20
+    }).default('pending').notNull(), attempts: integer('attempts').default(0).notNull(),
+    runAt: timestamp('run_at', {
+        withTimezone: true
+    }).defaultNow().notNull(),
+    lockedUntil: timestamp('locked_until', {
+        withTimezone: true
+    }), claimToken: uuid('claim_token'),
+    lastError: varchar('last_error', {
+        length: 80
+    }), createdAt: timestamp('created_at', {
+        withTimezone: true
+    }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', {
+        withTimezone: true
+    }).defaultNow().notNull(),
+}, t => ({
+    ready: dCore.index('idx_background_ready').on(t.status, t.runAt)
+}));

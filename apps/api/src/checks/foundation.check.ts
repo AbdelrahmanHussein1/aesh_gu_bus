@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';
+import { canonicalHash, validateIdempotencyKey } from '../services/idempotency.service.js';
+import { serviceTimeToInstant } from '../utils/service-time.js';
+assert.equal(canonicalHash({ b: 2, a: 1 }), canonicalHash({ a: 1, b: 2 }));
+assert.notEqual(canonicalHash({ a: 1 }), canonicalHash({ a: 2 }));
+assert.throws(() => validateIdempotencyKey('bad key'));
+assert.equal(validateIdempotencyKey(undefined), undefined);
+assert.equal(serviceTimeToInstant('2026-01-15', '09:00').toISOString(), '2026-01-15T07:00:00.000Z');
+assert.equal(serviceTimeToInstant('2026-07-15', '09:00').toISOString(), '2026-07-15T06:00:00.000Z');
+assert.throws(() => serviceTimeToInstant('2026-04-24', '00:30'), /NONEXISTENT/);
+assert.throws(() => serviceTimeToInstant('2026-10-29', '23:30'), /AMBIGUOUS/);
+console.log('Foundation pure checks passed.');

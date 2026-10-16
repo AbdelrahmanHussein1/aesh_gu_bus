@@ -1,30 +1,15 @@
+import { createBooking, createRoundTripBooking } from '../services/booking.service.js';
 import { FastifyInstance } from 'fastify';
-import { CreateBookingSchema, CreateRoundTripBookingSchema, CancelBookingSchema, SwapBookingSchema, QRCodec, generateBoardingCode } from '@bus-aesh/shared';
+import { CreateBookingSchema, CreateRoundTripBookingSchema, CancelBookingSchema } from '@bus-aesh/shared';
 import { db } from '../db/index.js';
 import * as schema from '../db/schema.js';
 import { redis } from '../redis.js';
 import { eq, and, desc, inArray, sql } from 'drizzle-orm';
 import { WebSocketHub } from '../websocket/hub.js';
-import { EmailOutboxService } from '../services/email-outbox.service.js';
 import { getHoursUntilDeparture } from '../utils/trip-time.js';
 import { CacheService } from '../services/cache.service.js';
-import { randomBytes, randomUUID } from 'node:crypto';
 
-const jwtSecret = process.env.JWT_SECRET || '';
-const QR_EXPIRY_HOURS = 24;
 const mockPaymentsEnabled = process.env.ENABLE_MOCK_PAYMENTS === 'true';
-
-function getQrExpiresAt(departureTime: Date): Date {
-  return new Date(departureTime.getTime() + QR_EXPIRY_HOURS * 60 * 60 * 1000);
-}
-
-function generatePaymentId(): string {
-  return `TXN-${randomUUID().replace(/-/g, '').slice(0, 12).toUpperCase()}`;
-}
-
-function generateBookingRef(): string {
-  return `GU-${randomBytes(5).toString('hex').toUpperCase()}`;
-}
 
 export async function bookingsRoutes(fastify: FastifyInstance) {
   // 1. Create one-way booking (Pessimistic Lock & Unique Index Concurrency Proof)
@@ -58,86 +43,9 @@ export async function bookingsRoutes(fastify: FastifyInstance) {
     const userId = request.user.id;
     let bookingResult: any;
     try {
-      bookingResult = await db.transaction(async (tx) => {
-        // Atomic pessimistic lock: lock any existing confirmed booking row
-        await tx.execute(sql`
-          SELECT id FROM bookings 
-          WHERE trip_id = ${tripId} 
-            AND seat_number = ${seatNumber} 
-            AND status IN ('confirmed', 'swapped') 
-          FOR UPDATE
-        `);
-
-        // Check seat conflict
-        const conflict = await tx.query.bookings.findFirst({
-          where: and(
-            eq(schema.bookings.tripId, tripId),
-            eq(schema.bookings.seatNumber, seatNumber),
-            inArray(schema.bookings.status, ['confirmed', 'swapped'])
-          ),
-        });
-        if (conflict) {
-          throw new Error('SEAT_ALREADY_BOOKED');
-        }
-
-        const trip = await tx.query.trips.findFirst({
-          where: eq(schema.trips.id, tripId),
-          with: { route: true, bus: true },
-        });
-
-        if (!trip) {
-          throw new Error('Trip not found');
-        }
-        if (paymentMethod === 'none' && Number(trip.priceEgp) !== 0) {
-          throw new Error('PAYMENT_REQUIRED');
-        }
-        if (Number(trip.priceEgp) > 0 && !receiptRef?.trim() && !receiptImage?.trim() && paymentMethod !== 'visa_mock') {
-          throw new Error('Receipt evidence is required for paid trips');
-        }
-
-        const paymentStatus = Number(trip.priceEgp) === 0 || paymentMethod === 'visa_mock' ? 'paid' : 'receipt_uploaded';
-        const qrExpiresAt = getQrExpiresAt(trip.departureTime);
-        const paymentId = generatePaymentId();
-        const bookingRef = generateBookingRef();
-
-        const boardingCode = generateBoardingCode();
-
-        const [booking] = await tx.insert(schema.bookings).values({
-          tripId,
-          userId,
-          seatNumber,
-          status: 'confirmed',
-          bookingType,
-          legType,
-          boardingCode,
-          bookingRef,
-          paymentId,
-          paymentStatus,
-          receiptImage,
-          receiptRef,
-          qrExpiresAt,
-        }).returning();
-
-        const qrToken = QRCodec.encode({
-          bookingId: booking.id,
-          tripId,
-          seatNumber,
-          date: trip.tripDate,
-          version: 1,
-          legType: legType as 'to_campus' | 'from_campus',
-        }, jwtSecret);
-
-        await tx.update(schema.bookings)
-          .set({ qrToken })
-          .where(eq(schema.bookings.id, booking.id));
-
-        if (paymentStatus === 'paid') {
-          await EmailOutboxService.enqueueBookingConfirmation(tx, [booking.id]);
-        }
-
-        return { booking, trip, qrToken, paymentId };
-      });
+      bookingResult = await createBooking({ userId, role: request.user.role, sessionId: request.user.sessionId }, bodyResult.data, request.headers['idempotency-key']);
     } catch (err: any) {
+      if (err.message === 'IDEMPOTENCY_KEY_REUSED') return reply.status(409).send({ code: err.message, error: 'Key already used for a different request.' });
       if (err.message === 'SEAT_ALREADY_BOOKED' || err?.code === '23505') {
         return reply.status(409).send({
           success: false,
@@ -160,6 +68,7 @@ export async function bookingsRoutes(fastify: FastifyInstance) {
 
     const { booking, trip, qrToken } = bookingResult;
 
+    if (!bookingResult.replayed) {
     // Release temporary Redis lock
     try {
       await redis.del(`seat_lock:${tripId}:${seatNumber}`);
@@ -176,6 +85,8 @@ export async function bookingsRoutes(fastify: FastifyInstance) {
 
     await CacheService.invalidateSeatCache(tripId);
     await CacheService.invalidateTripsAndFleetCache(tripId);
+
+    }
 
     return {
       success: true,
@@ -218,133 +129,9 @@ export async function bookingsRoutes(fastify: FastifyInstance) {
     const userId = request.user.id;
     let roundTripResult: any;
     try {
-      roundTripResult = await db.transaction(async (tx) => {
-        const toCampusTrip = await tx.query.trips.findFirst({
-          where: eq(schema.trips.id, toCampusTripId),
-          with: { route: true, bus: true },
-        });
-        const fromCampusTrip = await tx.query.trips.findFirst({
-          where: eq(schema.trips.id, fromCampusTripId),
-          with: { route: true, bus: true },
-        });
-
-        if (!toCampusTrip) throw new Error('To-campus trip not found');
-        if (!fromCampusTrip) throw new Error('From-campus trip not found');
-        if ((Number(toCampusTrip.priceEgp) > 0 || Number(fromCampusTrip.priceEgp) > 0) && !receiptRef?.trim() && !receiptImage?.trim() && paymentMethod !== 'visa_mock') {
-          throw new Error('Receipt evidence is required for paid trips');
-        }
-
-        // Check seat conflicts with pessimistic lock
-        await tx.execute(sql`
-          SELECT id FROM bookings 
-          WHERE ((trip_id = ${toCampusTripId} AND seat_number = ${toCampusSeatNumber})
-             OR  (trip_id = ${fromCampusTripId} AND seat_number = ${fromCampusSeatNumber}))
-            AND status IN ('confirmed', 'swapped') 
-          FOR UPDATE
-        `);
-
-        const toCampusConflict = await tx.query.bookings.findFirst({
-          where: and(
-            eq(schema.bookings.tripId, toCampusTripId),
-            eq(schema.bookings.seatNumber, toCampusSeatNumber),
-            inArray(schema.bookings.status, ['confirmed', 'swapped'])
-          ),
-        });
-        if (toCampusConflict) {
-          throw new Error('SEAT_ALREADY_BOOKED');
-        }
-
-        const fromCampusConflict = await tx.query.bookings.findFirst({
-          where: and(
-            eq(schema.bookings.tripId, fromCampusTripId),
-            eq(schema.bookings.seatNumber, fromCampusSeatNumber),
-            inArray(schema.bookings.status, ['confirmed', 'swapped'])
-          ),
-        });
-        if (fromCampusConflict) {
-          throw new Error('SEAT_ALREADY_BOOKED');
-        }
-
-        const paymentStatus = (Number(toCampusTrip.priceEgp) === 0 && Number(fromCampusTrip.priceEgp) === 0) || paymentMethod === 'visa_mock' ? 'paid' : 'receipt_uploaded';
-        const paymentId = generatePaymentId();
-        const bookingRef = generateBookingRef();
-
-        const arrivalBoardingCode = generateBoardingCode();
-        const returnBoardingCode = generateBoardingCode();
-
-        const [arrivalBooking] = await tx.insert(schema.bookings).values({
-          tripId: toCampusTripId,
-          userId,
-          seatNumber: toCampusSeatNumber,
-          status: 'confirmed',
-          bookingType: 'round_trip',
-          legType: 'to_campus',
-          boardingCode: arrivalBoardingCode,
-          bookingRef,
-          paymentId,
-          paymentStatus,
-          receiptImage,
-          receiptRef,
-          qrExpiresAt: getQrExpiresAt(toCampusTrip.departureTime),
-        }).returning();
-
-        const [returnBooking] = await tx.insert(schema.bookings).values({
-          tripId: fromCampusTripId,
-          userId,
-          seatNumber: fromCampusSeatNumber,
-          status: 'confirmed',
-          bookingType: 'round_trip',
-          legType: 'from_campus',
-          boardingCode: returnBoardingCode,
-          bookingRef,
-          pairedBookingId: arrivalBooking.id,
-          paymentId,
-          paymentStatus,
-          receiptImage,
-          receiptRef,
-          qrExpiresAt: getQrExpiresAt(fromCampusTrip.departureTime),
-        }).returning();
-
-        await tx.update(schema.bookings)
-          .set({ pairedBookingId: returnBooking.id })
-          .where(eq(schema.bookings.id, arrivalBooking.id));
-
-        const arrivalQR = QRCodec.encode({
-          bookingId: arrivalBooking.id,
-          tripId: toCampusTripId,
-          seatNumber: toCampusSeatNumber,
-          date: toCampusTrip.tripDate,
-          version: 1,
-          legType: 'to_campus',
-        }, jwtSecret);
-
-        const returnQR = QRCodec.encode({
-          bookingId: returnBooking.id,
-          tripId: fromCampusTripId,
-          seatNumber: fromCampusSeatNumber,
-          date: fromCampusTrip.tripDate,
-          version: 1,
-          legType: 'from_campus',
-        }, jwtSecret);
-
-        await tx.update(schema.bookings).set({ qrToken: arrivalQR }).where(eq(schema.bookings.id, arrivalBooking.id));
-        await tx.update(schema.bookings).set({ qrToken: returnQR }).where(eq(schema.bookings.id, returnBooking.id));
-
-        if (paymentStatus === 'paid') {
-          await EmailOutboxService.enqueueBookingConfirmation(tx, [arrivalBooking.id, returnBooking.id]);
-        }
-
-        return {
-          arrivalBooking,
-          returnBooking,
-          toCampusTrip,
-          fromCampusTrip,
-          arrivalQR,
-          returnQR,
-          paymentId,
-        };
-      });
+      roundTripResult = await createRoundTripBooking({ userId, role: request.user.role, sessionId: request.user.sessionId }, bodyResult.data, request.headers['idempotency-key']);
     } catch (err: any) {
+      if (err.message === 'IDEMPOTENCY_KEY_REUSED') return reply.status(409).send({ code: err.message, error: 'Key already used for a different request.' });
       if (err.message === 'SEAT_ALREADY_BOOKED' || err?.code === '23505') {
         return reply.status(409).send({
           success: false,
@@ -359,6 +146,7 @@ export async function bookingsRoutes(fastify: FastifyInstance) {
 
     const { arrivalBooking, returnBooking, toCampusTrip, fromCampusTrip, arrivalQR, returnQR, paymentId } = roundTripResult;
 
+    if (!roundTripResult.replayed) {
     try {
       await redis.del(`seat_lock:${toCampusTripId}:${toCampusSeatNumber}`);
       await redis.del(`seat_lock:${fromCampusTripId}:${fromCampusSeatNumber}`);
@@ -372,6 +160,8 @@ export async function bookingsRoutes(fastify: FastifyInstance) {
     await CacheService.invalidateSeatCache(toCampusTripId);
     await CacheService.invalidateSeatCache(fromCampusTripId);
     await CacheService.invalidateTripsAndFleetCache();
+
+    }
 
     return {
       success: true,
