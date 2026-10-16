@@ -6,10 +6,10 @@ import { useLanguage } from '@/lib/i18n/LanguageContext';
 export default function SeatGrid() {
   const {
     bookingType, activeTrip, activeArrivalTrip, activeReturnTrip,
-    seats, selectedSeat, heldExpiresAt, lockingSeatNumber,
+    seats, selectedSeat, heldExpiresAt, lockingSeatNumber, seatLoadStatus, seatError, retrySeatMap,
     handleSeatClick, setShowCheckout, user,
   } = useApp();
-  const { t, locale } = useLanguage();
+  const { locale } = useLanguage();
 
   const [now, setNow] = useState<number>(Date.now());
 
@@ -26,50 +26,26 @@ export default function SeatGrid() {
     ? Boolean(activeArrivalTrip && activeReturnTrip)
     : Boolean(activeTrip);
 
-  const currentTrip = activeTrip || activeArrivalTrip;
-  const fare = currentTrip?.priceEgp ?? 160;
-  const totalFare = bookingType === 'round_trip' ? fare * 2 : fare;
+  const currentTrip = bookingType === 'round_trip' ? activeArrivalTrip : activeTrip;
+  const fare = Number(currentTrip?.priceEgp ?? 0);
+  const totalFare = bookingType === 'round_trip' ? fare + Number(activeReturnTrip?.priceEgp ?? 0) : fare;
 
   const holdTimeLeft = heldExpiresAt ? Math.max(0, Math.floor((heldExpiresAt - now) / 1000)) : 0;
   const holdMins = Math.floor(holdTimeLeft / 60);
   const holdSecs = holdTimeLeft % 60;
   const countdownFormatted = `${holdMins}:${holdSecs.toString().padStart(2, '0')}`;
 
-  // Map 50 seats into structured rows
-  // Rows 1-12 have 4 seats each (Seats 1-48)
-  // Row 13 has seats 49 and 50 (Rear 5-seat bench configuration)
   const rows = useMemo(() => {
-    const seatMap = new Map<number, typeof seats[0]>();
-    seats.forEach(s => seatMap.set(s.seatNumber, s));
-
-    const result = [];
-    // Rows 1 to 12
-    for (let r = 1; r <= 12; r++) {
-      const base = (r - 1) * 4;
-      result.push({
-        rowNumber: r,
-        rowLabel: r.toString().padStart(2, '0'),
-        seats: [
-          { code: `${r.toString().padStart(2, '0')}A`, num: base + 1, col: 'A', isWindow: true, seat: seatMap.get(base + 1) },
-          { code: `${r.toString().padStart(2, '0')}B`, num: base + 2, col: 'B', isWindow: false, seat: seatMap.get(base + 2) },
-          { code: `${r.toString().padStart(2, '0')}C`, num: base + 3, col: 'C', isWindow: false, seat: seatMap.get(base + 3) },
-          { code: `${r.toString().padStart(2, '0')}D`, num: base + 4, col: 'D', isWindow: true, seat: seatMap.get(base + 4) },
-        ],
-      });
-    }
-
-    // Row 13 (Rear Bench - Seats 49, 50 + comfort placeholders)
-    result.push({
-      rowNumber: 13,
-      rowLabel: '13',
-      isRearBench: true,
-      seats: [
-        { code: '13A', num: 49, col: 'A', isWindow: true, seat: seatMap.get(49) },
-        { code: '13B', num: 50, col: 'B', isWindow: false, seat: seatMap.get(50) },
-      ],
-    });
-
-    return result;
+    const seatMap = new Map(seats.map(seat => [seat.seatNumber, seat]));
+    const rowNumbers = Array.from(new Set(seats.map(seat => Math.ceil(seat.seatNumber / 4)))).sort((a, b) => a - b);
+    return rowNumbers.map(row => ({
+      rowNumber: row,
+      rowLabel: row.toString().padStart(2, '0'),
+      seats: ['A', 'B', 'C', 'D'].map((col, index) => ({
+        code: `${row.toString().padStart(2, '0')}${col}`, num: (row - 1) * 4 + index + 1,
+        col, isWindow: index === 0 || index === 3, seat: seatMap.get((row - 1) * 4 + index + 1),
+      })),
+    }));
   }, [seats]);
 
   const selectedSeatObj = useMemo(() => {
@@ -97,7 +73,7 @@ export default function SeatGrid() {
           </span>
           <span className="text-[var(--text-muted)]">•</span>
           <span className="font-mono text-xs text-[var(--text-muted)]">
-            GU-402 High-Deck Grand Tourer (50 {locale === 'ar' ? 'راكباً' : 'Seats'})
+            {currentTrip?.bus.name || (locale === 'ar' ? 'الحافلة' : 'Bus')} · {seats.length} {locale === 'ar' ? 'مقعداً' : 'seats'}
           </span>
         </div>
         <h2 className="text-xl sm:text-2xl font-bold text-[var(--foreground)] tracking-tight">
@@ -152,9 +128,19 @@ export default function SeatGrid() {
           <span className="material-symbols-outlined text-4xl mb-2 text-[var(--text-muted)] block">directions_bus</span>
           <span>{locale === 'ar' ? 'يرجى اختيار رحلة من القائمة أعلاه لعرض مخطط المقاعد.' : 'Please select a trip schedule above to display the interactive coach cabin floorplan.'}</span>
         </div>
+      ) : seatLoadStatus !== 'ready' ? (
+        <div role={seatLoadStatus === 'error' ? 'alert' : 'status'} aria-live="polite" aria-busy={seatLoadStatus === 'loading'} className="py-12 px-4 text-center text-sm bg-[var(--background)] rounded-2xl border border-[var(--card-border)] max-w-lg mx-auto space-y-4">
+          <span className={`material-symbols-outlined text-3xl block ${seatLoadStatus === 'loading' ? 'animate-spin' : ''}`} aria-hidden="true">{seatLoadStatus === 'loading' ? 'progress_activity' : seatLoadStatus === 'error' ? 'cloud_off' : 'event_seat'}</span>
+          <p>{seatLoadStatus === 'loading'
+            ? locale === 'ar' ? 'جاري تحميل المقاعد المتاحة...' : 'Loading seat availability…'
+            : seatLoadStatus === 'error'
+              ? locale === 'ar' ? 'تعذر تحميل المقاعد. تحقق من الاتصال وحاول مرة أخرى.' : seatError
+              : locale === 'ar' ? 'لا توجد مقاعد متاحة لهذه الرحلة.' : 'No seats were returned for this trip.'}</p>
+          {seatLoadStatus !== 'loading' && <button type="button" onClick={() => void retrySeatMap()} className="min-h-11 rounded-xl px-6 bg-primary-container text-white font-semibold">{locale === 'ar' ? 'إعادة المحاولة' : 'Retry seat availability'}</button>}
+        </div>
       ) : (
         /* MAIN COACH BLUEPRINT CHASSIS CONTAINER */
-        <div className="relative w-full max-w-[540px] mx-auto bg-[var(--background)] rounded-[44px] p-4 sm:p-8 shadow-xl border border-[var(--card-border)]">
+        <div dir="ltr" className="relative w-full max-w-[540px] mx-auto bg-[var(--background)] rounded-[44px] p-3 sm:p-8 shadow-xl border border-[var(--card-border)]">
           {/* Exterior Wing Mirrors */}
           <div className="absolute -left-3 top-20 w-3 h-10 bg-slate-800 rounded-l-md shadow-md border-r border-slate-700 flex items-center justify-center pointer-events-none">
             <div className="w-1 h-6 bg-slate-600 rounded-sm"></div>
@@ -235,99 +221,6 @@ export default function SeatGrid() {
                 // Mid-Cabin Emergency Exit Divider between row 7 and 8
                 const renderExitDivider = row.rowNumber === 8;
 
-                if (row.isRearBench) {
-                  return (
-                    <React.Fragment key="rear-bench">
-                      <div className="grid grid-cols-5 gap-2 sm:gap-3 items-center pt-3 mt-2 border-t border-dashed border-[var(--card-border)]">
-                        {/* Seat 49 */}
-                        {(() => {
-                          const sItem = row.seats[0];
-                          const s = sItem.seat;
-                          if (!s) return <div className="h-12" />;
-                          const isSelected = selectedSeat === s.seatNumber;
-                          const isHeldByMe = s.status === 'held' && s.userId === user?.id;
-                          const isBooked = s.status === 'booked';
-                          const isHeldByOther = s.status === 'held' && !isHeldByMe;
-                          const isDisabled = isBooked || isHeldByOther;
-
-                          let seatClasses = 'bg-[var(--card-bg)] border border-slate-300 dark:border-slate-700 text-[var(--foreground)] hover:border-primary-container shadow-xs';
-                          if (isBooked) seatClasses = 'bg-slate-200 dark:bg-slate-800 text-slate-400 cursor-not-allowed opacity-60 border border-slate-300 dark:border-slate-700';
-                          else if (isSelected || isHeldByMe) seatClasses = 'bg-[#14259B] text-white shadow-md border border-blue-400/40 scale-105';
-                          else if (isHeldByOther) seatClasses = 'bg-amber-100 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-300 cursor-not-allowed';
-
-                          return (
-                            <button
-                              key={s.seatNumber}
-                              type="button"
-                              disabled={isDisabled}
-                              onClick={() => handleSeatClick(s.seatNumber, s.status)}
-                              className={`relative h-12 rounded-xl flex flex-col items-center justify-center transition-all ${seatClasses}`}
-                              title={`Seat #${s.seatNumber} (13A)`}
-                              aria-label={`Seat ${s.seatNumber}, 13A`}
-                            >
-                              <div className={`absolute top-0.5 inset-x-3 h-1 rounded-sm ${isSelected || isHeldByMe ? 'bg-blue-300' : 'bg-slate-300 dark:bg-slate-600'}`}></div>
-                              <span className="font-mono text-xs font-bold mt-1">49</span>
-                              {isSelected || isHeldByMe ? (
-                                <span className="material-symbols-outlined text-[12px] text-emerald-300 -mt-0.5">check_circle</span>
-                              ) : isBooked ? (
-                                <span className="material-symbols-outlined text-[12px] -mt-0.5">lock</span>
-                              ) : isHeldByOther ? (
-                                <span className="material-symbols-outlined text-[12px] text-amber-600 -mt-0.5">schedule</span>
-                              ) : null}
-                            </button>
-                          );
-                        })()}
-
-                        {/* Center spacer */}
-                        <div className="h-12 col-span-3 flex items-center justify-center bg-[var(--background)] rounded-lg border border-dashed border-[var(--card-border)] px-2">
-                          <span className="text-[10px] font-mono text-[var(--text-muted)] tracking-wider uppercase font-semibold">
-                            {locale === 'ar' ? 'المقاعد الخلفية' : 'REAR 50-CAPACITY BENCH'}
-                          </span>
-                        </div>
-
-                        {/* Seat 50 */}
-                        {(() => {
-                          const sItem = row.seats[1];
-                          const s = sItem.seat;
-                          if (!s) return <div className="h-12" />;
-                          const isSelected = selectedSeat === s.seatNumber;
-                          const isHeldByMe = s.status === 'held' && s.userId === user?.id;
-                          const isBooked = s.status === 'booked';
-                          const isHeldByOther = s.status === 'held' && !isHeldByMe;
-                          const isDisabled = isBooked || isHeldByOther;
-
-                          let seatClasses = 'bg-[var(--card-bg)] border border-slate-300 dark:border-slate-700 text-[var(--foreground)] hover:border-primary-container shadow-xs';
-                          if (isBooked) seatClasses = 'bg-slate-200 dark:bg-slate-800 text-slate-400 cursor-not-allowed opacity-60 border border-slate-300 dark:border-slate-700';
-                          else if (isSelected || isHeldByMe) seatClasses = 'bg-[#14259B] text-white shadow-md border border-blue-400/40 scale-105';
-                          else if (isHeldByOther) seatClasses = 'bg-amber-100 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-300 cursor-not-allowed';
-
-                          return (
-                            <button
-                              key={s.seatNumber}
-                              type="button"
-                              disabled={isDisabled}
-                              onClick={() => handleSeatClick(s.seatNumber, s.status)}
-                              className={`relative h-12 rounded-xl flex flex-col items-center justify-center transition-all ${seatClasses}`}
-                              title={`Seat #${s.seatNumber} (13D)`}
-                              aria-label={`Seat ${s.seatNumber}, 13D`}
-                            >
-                              <div className={`absolute top-0.5 inset-x-3 h-1 rounded-sm ${isSelected || isHeldByMe ? 'bg-blue-300' : 'bg-slate-300 dark:bg-slate-600'}`}></div>
-                              <span className="font-mono text-xs font-bold mt-1">50</span>
-                              {isSelected || isHeldByMe ? (
-                                <span className="material-symbols-outlined text-[12px] text-emerald-300 -mt-0.5">check_circle</span>
-                              ) : isBooked ? (
-                                <span className="material-symbols-outlined text-[12px] -mt-0.5">lock</span>
-                              ) : isHeldByOther ? (
-                                <span className="material-symbols-outlined text-[12px] text-amber-600 -mt-0.5">schedule</span>
-                              ) : null}
-                            </button>
-                          );
-                        })()}
-                      </div>
-                    </React.Fragment>
-                  );
-                }
-
                 return (
                   <React.Fragment key={row.rowNumber}>
                     {renderExitDivider && (
@@ -386,7 +279,7 @@ export default function SeatGrid() {
       )}
 
       {/* FLOATING SELECTION MINI-DOCK / SUMMARY CARD */}
-      {selectedSeat && (
+      {selectedSeat && seatLoadStatus === 'ready' && (
         <div className="w-full max-w-2xl mx-auto mt-8 bg-[var(--card-bg)]/95 backdrop-blur-md rounded-2xl p-5 shadow-2xl border-2 border-primary-container flex flex-col sm:flex-row items-center justify-between gap-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
           <div className="flex items-center gap-4 w-full sm:w-auto">
             <div className="w-12 h-12 rounded-xl bg-primary-container text-white flex items-center justify-center shadow-sm shrink-0">
@@ -428,6 +321,7 @@ export default function SeatGrid() {
             <button
               type="button"
               onClick={() => setShowCheckout(true)}
+              disabled={lockingSeatNumber !== null}
               className="bg-primary-container hover:bg-primary-container/90 active:scale-[0.98] text-white font-mono text-xs font-bold px-6 py-3 rounded-xl transition shadow flex items-center gap-2 cursor-pointer"
             >
               <span>{locale === 'ar' ? 'تأكيد الحجز والدفع' : 'Confirm Seats'}</span>
@@ -449,7 +343,7 @@ export default function SeatGrid() {
     const isHeldByMe = s.status === 'held' && s.userId === user?.id;
     const isBooked = s.status === 'booked';
     const isHeldByOther = s.status === 'held' && !isHeldByMe;
-    const isDisabled = isBooked || isHeldByOther;
+    const isDisabled = isBooked || isHeldByOther || lockingSeatNumber !== null || seatLoadStatus !== 'ready';
 
     let seatClasses = 'bg-[var(--card-bg)] border border-slate-300 dark:border-slate-700 text-[var(--foreground)] hover:border-primary-container hover:-translate-y-0.5 shadow-xs';
     if (isBooked) seatClasses = 'bg-slate-200 dark:bg-slate-800 text-slate-400 cursor-not-allowed opacity-60 border border-slate-300 dark:border-slate-700';
@@ -464,6 +358,7 @@ export default function SeatGrid() {
         onClick={() => handleSeatClick(s.seatNumber, s.status)}
         className={`relative h-12 rounded-xl flex flex-col items-center justify-center transition-all ${seatClasses}`}
         title={`Seat #${s.seatNumber} (${sItem.code})`}
+        aria-pressed={isSelected}
         aria-label={`Seat ${s.seatNumber}, ${sItem.code}${isSelected ? ', Selected' : isBooked ? ', Booked' : isHeldByOther ? ', Held' : ', Available'}`}
       >
         {/* Headrest Tab */}

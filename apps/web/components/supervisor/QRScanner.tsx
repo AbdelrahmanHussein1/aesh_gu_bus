@@ -7,7 +7,7 @@ export default function QRScanner() {
   const {
     scanInputToken, setScanInputToken, scanResult, setScanResult,
     isScanning, isCameraActive, cameraStream, cameraError,
-    handleSimulatedScan, startCameraScan, stopCameraScan, setIsScanning,
+    verifyScanToken, startCameraScan, stopCameraScan,
   } = useApp();
 
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -17,7 +17,7 @@ export default function QRScanner() {
   const lastDecodeTimeRef = useRef<number>(0);
 
   const decodeFrame = useCallback(() => {
-    if (!videoRef.current || !canvasRef.current || !isCameraActive) return;
+    if (!videoRef.current || !canvasRef.current || !isCameraActive || isScanning) return;
     const now = Date.now();
     // Throttle decoding to once every 180ms to prevent excessive CPU and battery drain
     if (now - lastDecodeTimeRef.current < 180) {
@@ -43,27 +43,26 @@ export default function QRScanner() {
       }
       lastScannedRef.current = { token: code.data, at: now };
       setScanInputToken(code.data);
-      handleSimulatedScan();
+      void verifyScanToken(code.data);
       return;
     }
     animRef.current = requestAnimationFrame(decodeFrame);
-  }, [isCameraActive, handleSimulatedScan, setScanInputToken]);
+  }, [isCameraActive, isScanning, verifyScanToken, setScanInputToken]);
 
-  useEffect(() => {
-    if (cameraStream && videoRef.current) {
-      videoRef.current.srcObject = cameraStream;
-    }
+  const attachVideo = useCallback((video: HTMLVideoElement | null) => {
+    videoRef.current = video;
+    if (video) video.srcObject = cameraStream;
   }, [cameraStream]);
 
   useEffect(() => {
-    if (isCameraActive && !scanResult) {
+    if (isCameraActive && !scanResult && !isScanning) {
       animRef.current = requestAnimationFrame(decodeFrame);
     }
     return () => cancelAnimationFrame(animRef.current);
-  }, [isCameraActive, scanResult, decodeFrame]);
+  }, [isCameraActive, scanResult, isScanning, decodeFrame]);
 
   return (
-    <div className="xl:col-span-1 bg-surface-container border border-border-whisper rounded-xl p-6 flex flex-col items-center h-fit space-y-4 shadow-[0_2px_8px_-2px_rgba(15,23,42,0.05)]">
+    <div className="xl:col-span-1 bg-surface-container border border-border-whisper rounded-xl p-4 sm:p-6 flex flex-col items-center h-fit space-y-4 shadow-[0_2px_8px_-2px_rgba(15,23,42,0.05)]">
       <div className="text-center">
         <h2 className="text-lg font-semibold text-text-primary flex items-center justify-center gap-2 mb-1">
           <span className="material-symbols-outlined text-xl text-success-galala">photo_camera</span>
@@ -105,12 +104,12 @@ export default function QRScanner() {
                   </div>
                 </>
               )}
-              <button onClick={() => { setScanResult(null); setScanInputToken(''); lastScannedRef.current = null; }} className="px-4 py-1.5 bg-outline text-white rounded-lg text-[10px] font-semibold hover:opacity-80">Scan Next</button>
+              <button onClick={() => { setScanResult(null); setScanInputToken(''); lastScannedRef.current = null; }} className="px-4 min-h-11 py-1.5 bg-outline text-white rounded-lg text-[10px] font-semibold hover:opacity-80">Scan Next</button>
             </div>
           </div>
         ) : isCameraActive ? (
           <>
-            <video ref={videoRef} autoPlay playsInline muted className="absolute inset-0 w-full h-full object-cover" />
+            <video ref={attachVideo} autoPlay playsInline muted className="absolute inset-0 w-full h-full object-cover" />
             <div className="absolute inset-0 border-[3px] border-success-galala/60 pointer-events-none" />
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-3/4 h-1/3 border-2 border-success-galala/80 rounded-xl pointer-events-none" />
           </>
@@ -129,7 +128,7 @@ export default function QRScanner() {
           <p className="text-center text-[10px] text-destructive-alt font-medium bg-error-container/50 border border-error-container p-2.5 rounded-xl">{cameraError}</p>
         )}
         {isCameraActive ? (
-          <button onClick={stopCameraScan} className="w-full py-2.5 px-4 bg-destructive-alt hover:opacity-90 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition">
+          <button onClick={stopCameraScan} className="w-full min-h-11 py-2.5 px-4 bg-destructive-alt hover:opacity-90 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition">
             <span className="material-symbols-outlined text-sm">videocam_off</span> Stop Camera
           </button>
         ) : (
@@ -152,7 +151,7 @@ export default function QRScanner() {
           onSubmit={(e) => {
             e.preventDefault();
             if (scanInputToken && !isScanning && !isCameraActive) {
-              handleSimulatedScan();
+              void verifyScanToken(scanInputToken);
             }
           }}
           className="flex gap-2"
@@ -160,15 +159,20 @@ export default function QRScanner() {
           <input
             type="text"
             value={scanInputToken}
-            onChange={e => setScanInputToken(e.target.value.toUpperCase())}
+            onChange={e => setScanInputToken(e.target.value)}
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            aria-label="Boarding code or QR token"
+            dir="ltr"
             placeholder="Enter Boarding Code (e.g. GU-7X4K)"
             autoComplete="off"
-            className="flex-1 bg-surface border border-border-whisper rounded-xl px-4 py-2.5 text-xs font-mono font-bold text-text-primary tracking-wider placeholder:font-normal placeholder:tracking-normal focus:outline-none focus:border-primary-container focus:ring-1 focus:ring-primary-container uppercase"
+            className="min-w-0 flex-1 bg-surface border border-border-whisper rounded-xl px-4 py-2.5 text-xs font-mono font-bold text-text-primary tracking-wider placeholder:font-normal placeholder:tracking-normal focus:outline-none focus:border-primary-container focus:ring-1 focus:ring-primary-container"
           />
           <button
             type="submit"
-            disabled={!scanInputToken || isScanning || isCameraActive}
-            className="px-4 py-2.5 bg-primary-container hover:opacity-90 text-on-primary-container rounded-xl text-xs font-bold disabled:opacity-40 transition flex items-center gap-1 shadow-sm whitespace-nowrap"
+            disabled={!scanInputToken.trim() || isScanning || isCameraActive}
+            className="min-h-11 px-4 py-2.5 bg-primary-container hover:opacity-90 text-on-primary-container rounded-xl text-xs font-bold disabled:opacity-40 transition flex items-center gap-1 shadow-sm whitespace-nowrap"
           >
             <span className="material-symbols-outlined text-[16px]">check_circle</span>
             Verify

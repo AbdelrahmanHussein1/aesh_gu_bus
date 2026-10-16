@@ -1,4 +1,4 @@
-export type RouteCategoryKey = 'cairo' | 'suez' | 'shorouk_badr';
+export type RouteCategoryKey = 'cairo' | 'suez' | 'shorouk_badr' | 'other';
 
 export interface RouteCategoryInfo {
   key: RouteCategoryKey;
@@ -12,6 +12,7 @@ export const ROUTE_CATEGORIES: RouteCategoryInfo[] = [
   { key: 'cairo', labelAr: 'القاهرة', labelEn: 'Cairo', icon: 'apartment', count: 17 },
   { key: 'suez', labelAr: 'السويس', labelEn: 'Suez', icon: 'sailing', count: 4 },
   { key: 'shorouk_badr', labelAr: 'الشروق وبدر', labelEn: 'El Shorouk & Badr', icon: 'near_me', count: 1 },
+  { key: 'other', labelAr: 'خطوط أخرى', labelEn: 'Other routes', icon: 'route', count: 0 },
 ];
 
 export interface PredefinedRoute {
@@ -69,7 +70,7 @@ export function getCategoryLabel(category: RouteCategoryKey, lang: 'ar' | 'en' =
 
 export function getRouteCategory(routeId: number): RouteCategoryKey {
   const found = PREDEFINED_ROUTES.find(r => r.id === routeId);
-  return found ? found.category : 'cairo';
+  return found ? found.category : 'other';
 }
 
 export function getDefaultRouteIdForCategory(category: RouteCategoryKey): number {
@@ -78,20 +79,7 @@ export function getDefaultRouteIdForCategory(category: RouteCategoryKey): number
 }
 
 export function getCategoryRoutes(category: RouteCategoryKey, allRoutes: Array<{ id: number; nameAr: string; nameEn: string }>) {
-  const predefinedCategoryIds = new Set(
-    PREDEFINED_ROUTES.filter(r => r.category === category).map(r => r.id)
-  );
-
-  const matchedFromLoaded = allRoutes.filter(r => predefinedCategoryIds.has(r.id));
-  if (matchedFromLoaded.length > 0) {
-    return matchedFromLoaded;
-  }
-
-  return PREDEFINED_ROUTES.filter(r => r.category === category).map(r => ({
-    id: r.id,
-    nameAr: r.nameAr,
-    nameEn: r.nameEn,
-  }));
+  return allRoutes.filter(route => getRouteCategory(route.id) === category);
 }
 
 export function formatTimeString(val: string | Date | undefined): string {

@@ -271,3 +271,38 @@ body {
 .icon-fill {
   font-variation-settings: 'FILL' 1;
 }
+
+/* Keyboard focus stays visible across the light and navy themes. */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--accent, #60a5fa);
+  outline-offset: 3px;
+}
+
+.skip-link {
+  position: fixed;
+  inset-block-start: 0.5rem;
+  inset-inline-start: 0.5rem;
+  z-index: 200;
+  transform: translateY(-200%);
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  background: var(--card-bg);
+  color: var(--foreground);
+}
+.skip-link:focus { transform: translateY(0); }
+.mobile-dashboard-bar {
+  height: calc(4rem + env(safe-area-inset-top));
+  padding-block-start: env(safe-area-inset-top);
+}
+
+@media (max-width: 767px) {
+  input:not([type='checkbox']):not([type='radio']), select, textarea { font-size: 16px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

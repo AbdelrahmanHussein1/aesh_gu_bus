@@ -13,6 +13,8 @@ export default function RootLayout() {
           headerTintColor: '#fff',
           headerTitleStyle: { fontWeight: 'bold' },
           contentStyle: { backgroundColor: '#0b0f19' },
+          statusBarStyle: 'light',
+          statusBarColor: '#0b0f19',
         }}
       >
         <Stack.Screen name="index" options={{ title: 'Bus Aesh' }} />

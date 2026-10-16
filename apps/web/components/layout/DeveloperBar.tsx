@@ -6,7 +6,7 @@ const devEmailEnv = (process.env.NEXT_PUBLIC_DEV_EMAIL || '').toLowerCase().trim
 
 export default function DeveloperBar() {
   const { user, role, switchRole, isOffline, setIsOffline } = useApp();
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(false);
 
   // Strictly enforce: Available on localhost/127.0.0.1 for local developer testing, or configured admin
   const isLocalhost = typeof window !== 'undefined' && (
@@ -34,6 +34,7 @@ export default function DeveloperBar() {
               onClick={() => setExpanded(false)}
               className="text-slate-400 hover:text-white p-0.5 rounded"
               title="Minimize console"
+              aria-label="Minimize developer console"
             >
               <span className="material-symbols-outlined text-sm">minimize</span>
             </button>

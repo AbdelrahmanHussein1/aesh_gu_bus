@@ -1,9 +1,10 @@
 import React, { useRef, useState } from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, ActivityIndicator, TextInput, Modal } from 'react-native';
+import { StyleSheet, Text, View, TouchableOpacity, ActivityIndicator, TextInput, Modal, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { ApiError, apiRequest } from '../src/api';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppContext } from '../src/app-context';
 
 interface ScanResult {
@@ -18,6 +19,7 @@ interface ScanResult {
 
 export default function QRScanner() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { legType } = useLocalSearchParams<{ legType?: string }>();
   const { serverUrl, user } = useAppContext();
   const [permission, requestPermission] = useCameraPermissions();
@@ -85,7 +87,7 @@ export default function QRScanner() {
     return (
       <View style={styles.container}>
         <Text style={styles.permissionText}>Sign in with a supervisor account to use boarding scan.</Text>
-        <TouchableOpacity style={styles.permissionBtn} onPress={() => router.replace('/')}>
+        <TouchableOpacity accessibilityRole="button" style={styles.permissionBtn} onPress={() => router.replace('/')}>
           <Text style={styles.permissionBtnText}>Return to sign in</Text>
         </TouchableOpacity>
       </View>
@@ -98,7 +100,7 @@ export default function QRScanner() {
         permission?.granted ? <CameraView
           style={StyleSheet.absoluteFillObject}
           facing="back"
-          onBarcodeScanned={handleBarcodeScanned}
+          onBarcodeScanned={manualModalVisible ? undefined : handleBarcodeScanned}
           barcodeScannerSettings={{
             barcodeTypes: ['qr'],
           }}
@@ -113,7 +115,7 @@ export default function QRScanner() {
         </CameraView> : <View style={styles.verifyingState}>
           {permission ? <>
             <Text style={styles.permissionText}>Camera permission is needed to scan QR codes. You can still enter a boarding code manually.</Text>
-            <TouchableOpacity style={styles.permissionBtn} onPress={requestPermission}>
+            <TouchableOpacity accessibilityRole="button" style={styles.permissionBtn} onPress={requestPermission}>
               <Text style={styles.permissionBtnText}>Grant Permission</Text>
             </TouchableOpacity>
           </> : <ActivityIndicator size="large" color="#38bdf8" />}
@@ -148,7 +150,7 @@ export default function QRScanner() {
                   <Text style={styles.errorMsg}>{result.message}</Text>
                 )}
 
-                <TouchableOpacity style={styles.scanNextBtn} onPress={resetScanner}>
+                <TouchableOpacity accessibilityRole="button" style={styles.scanNextBtn} onPress={resetScanner}>
                   <Text style={styles.scanNextBtnText}>Scan Next Passenger</Text>
                 </TouchableOpacity>
               </View>
@@ -158,13 +160,13 @@ export default function QRScanner() {
       )}
 
       {/* Bottom controls */}
-      <View style={styles.bottomControls}>
+      <View style={[styles.bottomControls, { bottom: Math.max(24, insets.bottom + 12) }]}>
         {!scanned && (
-          <TouchableOpacity style={styles.manualCodeBtn} onPress={() => setManualModalVisible(true)}>
+          <TouchableOpacity accessibilityRole="button" style={styles.manualCodeBtn} onPress={() => setManualModalVisible(true)}>
             <Text style={styles.manualCodeBtnText}>⌨ Enter Code Manually (رمز الصعود)</Text>
           </TouchableOpacity>
         )}
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+        <TouchableOpacity accessibilityRole="button" style={styles.backBtn} onPress={() => router.back()}>
           <Text style={styles.backBtnText}>✕ Close Scanner</Text>
         </TouchableOpacity>
       </View>
@@ -176,8 +178,9 @@ export default function QRScanner() {
         animationType="fade"
         onRequestClose={() => setManualModalVisible(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.manualModalCard}>
+        <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <View style={[styles.manualModalCard, { maxHeight: '100%' }]} >
+            <ScrollView style={{ width: '100%' }} keyboardShouldPersistTaps="handled" contentContainerStyle={{ alignItems: 'center' }}>
             <Text style={styles.manualModalTitle}>Manual Boarding Code</Text>
             <Text style={styles.manualModalSubtitle}>Type student's unique 4-character code (e.g. GU-7X4K or 7X4K)</Text>
             <TextInput
@@ -189,24 +192,28 @@ export default function QRScanner() {
               autoCapitalize="characters"
               autoCorrect={false}
               autoFocus
+              accessibilityLabel="Manual boarding code"
+              returnKeyType="done"
+              onSubmitEditing={handleManualSubmit}
             />
-            <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
-              <TouchableOpacity
+            <View style={{ width: '100%', flexDirection: 'row', gap: 10, marginTop: 16 }}>
+              <TouchableOpacity accessibilityRole="button"
                 style={[styles.modalBtn, { backgroundColor: '#1e293b' }]}
                 onPress={() => { setManualModalVisible(false); setManualCodeInput(''); }}
               >
                 <Text style={styles.modalBtnText}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalBtn, { backgroundColor: '#38bdf8' }]}
+              <TouchableOpacity accessibilityRole="button"
+                style={[styles.modalBtn, { backgroundColor: '#38bdf8', opacity: manualCodeInput.trim() ? 1 : 0.5 }]}
                 onPress={handleManualSubmit}
                 disabled={!manualCodeInput.trim()}
               >
                 <Text style={[styles.modalBtnText, { color: '#0b0f19', fontWeight: 'bold' }]}>Verify & Board</Text>
               </TouchableOpacity>
             </View>
+            </ScrollView>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -432,6 +439,8 @@ const styles = StyleSheet.create({
   modalBtn: {
     flex: 1,
     paddingVertical: 12,
+    minHeight: 48,
+    justifyContent: 'center',
     borderRadius: 10,
     alignItems: 'center',
   },

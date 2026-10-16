@@ -157,9 +157,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       <MobileTopBar />
       <SideNavBar />
-      <div className={`flex flex-col min-w-0 transition-all duration-300 pt-16 md:pt-0 ${sidebarCollapsed ? 'md:ml-16' : 'md:ml-64'}`}>
+      <a href="#dashboard-content" className="skip-link">Skip to content / الانتقال للمحتوى</a>
+      <div className={`flex flex-col min-w-0 pt-[calc(4rem+env(safe-area-inset-top))] md:pt-0 ${sidebarCollapsed ? 'md:ms-16' : 'md:ms-64'}`}>
         <TopBar />
-        <main className="flex-1 overflow-auto px-margin-mobile md:px-margin-desktop py-6 md:py-8">
+        <main id="dashboard-content" tabIndex={-1} className="min-w-0 flex-1 px-4 sm:px-6 lg:px-8 py-5 md:py-8 pb-[max(2rem,env(safe-area-inset-bottom))]">
           {children}
         </main>
       </div>

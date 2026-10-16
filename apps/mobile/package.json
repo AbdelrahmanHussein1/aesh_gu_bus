@@ -8,7 +8,8 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "npx expo start --web",
-    "ts:check": "tsc"
+    "ts:check": "tsc",
+    "check:api-url": "node scripts/check-api-url.cjs"
   },
   "dependencies": {
     "@bus-aesh/shared": "*",

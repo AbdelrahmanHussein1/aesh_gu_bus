@@ -26,7 +26,7 @@ export function getInitialApiUrl(): string {
 }
 
 export function normalizeApiUrl(value: string): string {
-  const trimmed = value.trim().replace(/\/+$/, '');
+  const trimmed = value.trim();
   if (!trimmed) throw new Error('Enter the API server URL.');
 
   let parsed: URL;
@@ -40,7 +40,11 @@ export function normalizeApiUrl(value: string): string {
     throw new Error('Use an http:// or https:// URL without embedded credentials.');
   }
 
-  return trimmed;
+  if (!/^https?:\/\/[^/?#]+\/?$/i.test(trimmed) || parsed.pathname !== '/' || parsed.search || parsed.hash) {
+    throw new Error('Use only the server origin, such as https://example.com or http://192.168.1.7:3000. Remove paths, queries, and fragments.');
+  }
+
+  return parsed.origin.toLowerCase();
 }
 
 interface ApiRequestOptions extends Omit<RequestInit, 'body'> {
@@ -96,5 +100,7 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions): P
 
 export function toWebSocketUrl(baseUrl: string): string {
   if (!baseUrl) return '';
-  return baseUrl.replace(/^http/i, 'ws');
+  const parsed = new URL(normalizeApiUrl(baseUrl));
+  parsed.protocol = parsed.protocol === 'https:' ? 'wss:' : 'ws:';
+  return parsed.origin;
 }

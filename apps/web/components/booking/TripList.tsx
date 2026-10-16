@@ -1,5 +1,5 @@
 'use client';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useApp } from '@/hooks/useAppStore';
 import { formatShiftDisplay } from '@/lib/routes-config';
 import { useLanguage } from '@/lib/i18n/LanguageContext';
@@ -20,7 +20,7 @@ export default function TripList() {
     setActiveArrivalTrip,
     activeReturnTrip,
     setActiveReturnTrip,
-    isTripsLoading,
+    isTripsLoading, tripsError,
     refreshTrips,
     lastTripsRefreshTime,
     selectedDate,
@@ -30,15 +30,33 @@ export default function TripList() {
 
   const handleManualRefresh = async () => {
     await refreshTrips();
-    setRecentlyRefreshed(true);
-    setTimeout(() => setRecentlyRefreshed(false), 3000);
+
   };
+
+  useEffect(() => {
+    if (!lastTripsRefreshTime) { setRecentlyRefreshed(false); return; }
+    setRecentlyRefreshed(true);
+    const timer = setTimeout(() => setRecentlyRefreshed(false), 3000);
+    return () => clearTimeout(timer);
+  }, [lastTripsRefreshTime]);
 
   // Format last updated time
   const lastUpdatedDisplay = useMemo(() => {
     if (!lastTripsRefreshTime) return null;
     return lastTripsRefreshTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   }, [lastTripsRefreshTime]);
+
+  if (tripsError || isTripsLoading && trips.length === 0) {
+    return (
+      <section role={tripsError ? 'alert' : 'status'} aria-live="polite" aria-busy={isTripsLoading} className="rounded-2xl bg-surface border border-border-whisper p-6 text-center space-y-4">
+        <span aria-hidden="true" className={`material-symbols-outlined text-3xl text-blue-500 ${isTripsLoading ? 'animate-spin' : ''}`}>{isTripsLoading ? 'progress_activity' : 'cloud_off'}</span>
+        <p className="text-sm text-text-primary">{isTripsLoading
+          ? locale === 'ar' ? 'جاري تحميل جدول الرحلات...' : 'Loading the trip schedule…'
+          : locale === 'ar' ? 'تعذر تحميل الرحلات. تحقق من الاتصال وحاول مرة أخرى.' : tripsError}</p>
+        {tripsError && <button type="button" onClick={handleManualRefresh} disabled={isTripsLoading} className="min-h-11 rounded-xl px-6 bg-blue-600 text-white font-semibold disabled:opacity-50">{locale === 'ar' ? 'إعادة المحاولة' : 'Retry trip schedule'}</button>}
+      </section>
+    );
+  }
 
   // Render an individual unique & delicate bus ticket card
   const renderTripCard = (
@@ -239,7 +257,7 @@ export default function TripList() {
                   e.stopPropagation();
                   onSelect();
                 }}
-                className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all duration-200 flex items-center gap-2 shadow-sm ${
+                className={`min-h-11 px-4 py-2.5 rounded-xl text-xs font-bold transition-all duration-200 flex items-center gap-2 shadow-sm ${
                   isSelected
                     ? 'bg-blue-600 hover:bg-blue-700 text-white ring-2 ring-blue-400/50 active:scale-95'
                     : 'bg-surface-container hover:bg-blue-600 hover:text-white text-text-primary border border-border-whisper hover:border-blue-600 active:scale-95'
@@ -292,7 +310,7 @@ export default function TripList() {
             type="button"
             onClick={handleManualRefresh}
             disabled={isTripsLoading}
-            className="px-4 py-2 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white transition flex items-center gap-2 shadow-sm active:scale-95 disabled:opacity-50"
+            className="min-h-11 px-4 py-2 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white transition flex items-center gap-2 shadow-sm active:scale-95 disabled:opacity-50"
           >
             <span className={`material-symbols-outlined text-base ${isTripsLoading ? 'animate-spin' : ''}`}>
               sync
@@ -393,7 +411,7 @@ export default function TripList() {
               type="button"
               onClick={handleManualRefresh}
               disabled={isTripsLoading}
-              className={`px-3 py-2 rounded-xl text-xs font-bold border transition flex items-center gap-1.5 shadow-sm active:scale-95 ${
+              className={`min-h-11 px-3 py-2 rounded-xl text-xs font-bold border transition flex items-center gap-1.5 shadow-sm active:scale-95 ${
                 recentlyRefreshed
                   ? 'bg-emerald-500/15 text-emerald-700 border-emerald-500/30'
                   : 'bg-surface hover:bg-surface-container text-text-primary border-border-whisper hover:border-blue-400'
@@ -555,7 +573,7 @@ export default function TripList() {
             type="button"
             onClick={handleManualRefresh}
             disabled={isTripsLoading}
-            className={`px-3 py-2 rounded-xl text-xs font-bold border transition flex items-center gap-1.5 shadow-sm active:scale-95 ${
+            className={`min-h-11 px-3 py-2 rounded-xl text-xs font-bold border transition flex items-center gap-1.5 shadow-sm active:scale-95 ${
               recentlyRefreshed
                 ? 'bg-emerald-500/15 text-emerald-700 border-emerald-500/30'
                 : 'bg-surface hover:bg-surface-container text-text-primary border-border-whisper hover:border-blue-400'

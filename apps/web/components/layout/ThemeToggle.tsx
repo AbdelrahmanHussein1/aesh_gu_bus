@@ -21,8 +21,10 @@ function applyTheme(theme: Theme) {
 
 export function useTheme() {
   const [theme, setThemeState] = useState<Theme>('system');
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
     const stored = localStorage.getItem('theme') as Theme | null;
     const initial = stored || 'system';
     setThemeState(initial);
@@ -36,6 +38,7 @@ export function useTheme() {
         applyTheme('system');
       }
     };
+    mq.addEventListener('change', handler);
     // Listen for custom theme change events across components
     const customThemeHandler = (e: Event) => {
       const customEvent = e as CustomEvent<Theme>;
@@ -70,7 +73,7 @@ export function useTheme() {
     window.dispatchEvent(new CustomEvent('theme_change', { detail: t }));
   };
 
-  const resolvedTheme = theme === 'system' ? getSystemTheme() : theme;
+  const resolvedTheme = !mounted ? 'light' : theme === 'system' ? getSystemTheme() : theme;
 
   return { theme, setTheme, resolvedTheme };
 }
@@ -94,7 +97,7 @@ export default function ThemeToggle({ className = '' }: { className?: string }) 
   return (
     <button
       onClick={cycleTheme}
-      className={`relative w-8 h-8 rounded-lg border border-[var(--card-border)] bg-[var(--card-bg)] text-[var(--text-muted)] hover:text-[var(--accent)] hover:border-[var(--accent)] flex items-center justify-center transition-all ${className}`}
+      className={`relative w-11 h-11 shrink-0 rounded-lg border border-[var(--card-border)] bg-[var(--card-bg)] text-[var(--text-muted)] hover:text-[var(--accent)] hover:border-[var(--accent)] flex items-center justify-center transition-colors ${className}`}
       title={label}
       aria-label={`Theme: ${label}. Click to change.`}
     >
